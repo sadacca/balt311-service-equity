@@ -5,25 +5,39 @@
 
 ---
 
-## Vintage Alignment Strategy
+## Primary Unit of Analysis: Census Tract (not CSA)
 
-The central design decision is which geographic vintages to use across the 16-year 311 span.
+**CSAs are too coarse for neighborhood-level analysis.** Baltimore has 55 CSAs averaging ~10,600 residents and ~18,000 311 requests/year each — large enough to mask significant within-CSA variation between adjacent neighborhoods with very different socioeconomic profiles. Adjacent neighborhoods like Sandtown-Winchester and Reservoir Hill can share a CSA while having meaningfully different service outcomes.
 
-| 311 Data Period | Census Tract Vintage | CSA Crosswalk | TIGER File |
+**Census tracts are the correct primary unit:**
+- ~200 tracts in Baltimore City, averaging ~2,900 residents and ~5,000 311 requests/year — sufficient for median/quartile analysis
+- ACS 5-year and Census PDB data are native at tract level; no aggregation required
+- Regression controls (income, race, renter rate) attach directly to tracts without interpolation
+- BNIA crosswalk tables (Section 7) roll tracts up to CSAs when needed for BNIA Vital Signs comparison
+
+**CSAs are retained as a secondary roll-up layer only** — for alignment with BNIA Vital Signs indicators, which are CSA-level only. All primary metrics and maps should be at the tract level.
+
+### Vintage Alignment
+
+| 311 Data Period | Primary Unit | TIGER File | PDB / ACS Vintage |
 |---|---|---|---|
-| 2010–2019 | 2010 Census tracts | `CSA2010.csv` (GEOID10 → CSA2010) | `tl_2010_24_tract10.zip` |
-| 2020–2026 | 2020 Census tracts | `CSA2020.csv` (GEOID20 → CSA2010 name) | `tl_2020_24_tract.zip` |
+| 2010–2019 | 2010 Census tracts | `tl_2010_24_tract10.zip` | ACS 2019 5-yr (`/data/2019/acs/acs5`) |
+| 2020–2026 | 2020 Census tracts | `tl_2020_24_tract.zip` | PDB 2024 (`pdb2024tr.csv`) / ACS 2024 5-yr |
 
-**Key fact:** BNIA did not redraw CSA polygon boundaries after the 2020 Census. The same 55 CSA polygons work for the full 2010–2026 period. Only the tract-to-CSA crosswalk assignments changed slightly. Use `CSA2010` as the stable identifier throughout — the 2020 crosswalk maps 2020 tract GEOIDs back to 2010 CSA names for continuity.
+**Prototype approach:** Use the PDB 2024 tract CSV (`pdb2024tr.csv`) — a single flat file with 531 pre-computed demographic variables, no API key needed. Migrate to the ACS API when variable requirements are better defined.
 
-**Recommended CRS for analysis:** Reproject all layers to EPSG:4326 (WGS84) for spatial joins and GeoJSON output, or EPSG:32618 (UTM Zone 18N, meters) for distance/area calculations.
+**Key fact on CSA boundaries:** BNIA did not redraw CSA polygon boundaries after the 2020 Census. The same 55 CSA polygons work for the full 2010–2026 period. Use `CSA2010` as the stable roll-up identifier when aggregating tract results to CSA level.
+
+**Recommended CRS for analysis:** EPSG:32618 (UTM Zone 18N, meters) for area/distance calculations; EPSG:4326 (WGS84) for GeoJSON output and spatial joins.
 
 ---
 
 ## 1. Baltimore CSA (Community Statistical Area) Boundaries
 
+> **Secondary layer only.** Use census tracts (Section 3) as the primary analysis unit. CSAs are used here solely to roll up tract results for comparison with BNIA Vital Signs indicators.
+
 **Publisher:** BNIA-JFI (Baltimore Neighborhood Indicators Alliance – Jacob France Institute)  
-**Count:** 55 CSAs  
+**Count:** 55 CSAs (~10,600 residents avg.)  
 **Boundary stability:** Polygon geometry unchanged since 2010 redistricting. Safe to use one file for all vintages.  
 **Native CRS:** EPSG:2248 (Maryland State Plane, NAD83, US feet); ArcGIS REST API auto-reprojects to EPSG:4326 when `f=pgeojson`.
 
@@ -76,6 +90,8 @@ Download formats: **Shapefile, GeoJSON, CSV, KML**.
 ---
 
 ## 3. Census TIGER/Line Boundaries
+
+> **Primary boundary layer for analysis.** Use 2010 tracts for 2010–2019 311 data, 2020 tracts for 2020–2026 data. Join to PDB 2024 or ACS via `GEOID`. Filter all Maryland state files to `COUNTYFP == '510'` (Baltimore City).
 
 **Publisher:** U.S. Census Bureau  
 **Base FTP:** `https://www2.census.gov/geo/tiger/`  
