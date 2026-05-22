@@ -1,0 +1,19 @@
+# Pipeline data — large, rebuilt from source
+data/raw/
+data/interim/
+
+# Streamlit secrets — never commit
+.streamlit/secrets.toml
+
+# Python artifacts
+*.pyc
+*.pyo
+__pycache__/
+.ipynb_checkpoints/
+*.egg-info/
+dist/
+build/
+.eggs/
+.env
+.venv/
+venv/
