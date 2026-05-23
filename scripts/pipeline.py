@@ -6,44 +6,41 @@ Equivalent to running notebooks 01-03 in sequence. Designed to run in CI
 (GitHub Actions) or locally without Jupyter.
 
 Usage:
+    # Run everything (local use)
     python scripts/pipeline.py --year 2024
-    python scripts/pipeline.py --year 2026 --live
+
+    # Run only Stage 1 — fetch raw data (CI ingest job)
+    python scripts/pipeline.py --year 2025 --stage ingest
+
+    # Run only Stages 2+3 — clean, join, aggregate (CI process job)
+    # Requires data/raw/requests_{year}.parquet to already exist
+    python scripts/pipeline.py --year 2025 --stage process [--live]
 """
 
 import argparse
 import shutil
 import sys
+import tempfile
 import time
 import urllib.request
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-import geopandas as gpd
 import pandas as pd
 
 from balt311.ingest import fetch_year
-from balt311.metrics import (
-    aggregate_tract,
-    clean_strings,
-    compute_days_to_close,
-    compute_due_date_gap,
-    filter_equity_subset,
-    flag_request_source,
-    parse_timestamps,
-    rollup_to_csa,
-)
 
 RAW_DIR = ROOT / "data" / "raw"
 INTERIM = ROOT / "data" / "interim"
 PROC    = ROOT / "data" / "processed"
 
-# Census Bureau cartographic boundary file — all Maryland tracts, 2020 definitions.
-# Filtered to Baltimore City (COUNTYFP=510) after download.
-# Using GENZ2023 (latest available); uses 2020 decennial census tract boundaries.
-MD_TRACTS_URL = (
-    "https://www2.census.gov/geo/tiger/GENZ2023/json/gz_2023_24_140_00_500k.json"
+# Census Bureau cartographic boundary shapefile — Maryland tracts, 2020 definitions.
+# ZIP format is unambiguous; JSON naming conventions have changed across Census releases.
+MD_TRACTS_ZIP_URL = (
+    "https://www2.census.gov/geo/tiger/GENZ2023/shp/cb_2023_24_tract_500k.zip"
 )
 
 
@@ -65,38 +62,70 @@ def download_with_retry(url: str, dest: Path, retries: int = 4) -> None:
 
 
 def _fetch_baltimore_tracts(dest: Path) -> None:
-    """Download Maryland cartographic tract file and filter to Baltimore City."""
-    import tempfile
-    tmp = Path(tempfile.mktemp(suffix=".json"))
-    try:
-        log("Downloading Maryland census tract boundaries from Census Bureau ...")
-        download_with_retry(MD_TRACTS_URL, tmp)
-        md = gpd.read_file(tmp).to_crs("EPSG:4326")
+    """Download Census cartographic boundary ZIP, extract SHP, filter to Baltimore City."""
+    import geopandas as gpd
+
+    log("Downloading Maryland census tract boundaries (Census GENZ2023 shapefile) ...")
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp)
+        zip_path = tmp_dir / "tracts.zip"
+        download_with_retry(MD_TRACTS_ZIP_URL, zip_path)
+
+        with zipfile.ZipFile(zip_path) as z:
+            z.extractall(tmp_dir)
+
+        shp_path = next(tmp_dir.glob("*.shp"))
+        md = gpd.read_file(shp_path).to_crs("EPSG:4326")
         balt = md[md["COUNTYFP"] == "510"].copy()
         balt.to_file(dest, driver="GeoJSON")
         log(f"  {len(balt)} Baltimore City tracts saved → {dest.name}")
-    finally:
-        tmp.unlink(missing_ok=True)
 
 
-def run(year: int, is_live: bool) -> None:
+def stage_ingest(year: int) -> None:
+    """Stage 1: fetch raw 311 records from ArcGIS FeatureServer."""
     for d in (RAW_DIR, INTERIM, PROC):
         d.mkdir(parents=True, exist_ok=True)
 
-    right_censor_days = 30 if is_live else 0
-    log(f"Pipeline start — year={year}  live={is_live}  right_censor_days={right_censor_days}")
     t0 = time.time()
+    log(f"=== Stage 1: Ingest {year} ===")
 
-    # ── Stage 1: Ingest ──────────────────────────────────────────────────────
-    log("=== Stage 1: Ingest ===")
     raw_path = RAW_DIR / f"requests_{year}.parquet"
     records = fetch_year(year)
     df_raw = pd.DataFrame(records)
     df_raw.to_parquet(raw_path, index=False)
     log(f"Saved {len(df_raw):,} rows → {raw_path.name}  ({time.time()-t0:.0f}s elapsed)")
 
+
+def stage_process(year: int, is_live: bool) -> None:
+    """Stages 2+3: clean, spatial join, aggregate. Reads data/raw/requests_{year}.parquet."""
+    import geopandas as gpd
+    from balt311.metrics import (
+        aggregate_tract,
+        clean_strings,
+        compute_days_to_close,
+        compute_due_date_gap,
+        filter_equity_subset,
+        flag_request_source,
+        parse_timestamps,
+        rollup_to_csa,
+    )
+
+    for d in (RAW_DIR, INTERIM, PROC):
+        d.mkdir(parents=True, exist_ok=True)
+
+    right_censor_days = 30 if is_live else 0
+    t0 = time.time()
+
     # ── Stage 2: Clean + spatial join ────────────────────────────────────────
-    log("=== Stage 2: Clean + spatial join ===")
+    log(f"=== Stage 2: Clean + spatial join (right_censor_days={right_censor_days}) ===")
+
+    raw_path = RAW_DIR / f"requests_{year}.parquet"
+    if not raw_path.exists():
+        raise FileNotFoundError(
+            f"{raw_path} not found. Run --stage ingest first."
+        )
+    df_raw = pd.read_parquet(raw_path)
+    log(f"Loaded {len(df_raw):,} rows from {raw_path.name}")
 
     tracts_path = RAW_DIR / "baltimore_tracts.geojson"
     if not tracts_path.exists():
@@ -167,16 +196,29 @@ def run(year: int, is_live: bool) -> None:
         shutil.copy(csa_geo, PROC / "csa_boundaries.geojson")
         log("Copied CSA boundaries → processed/csa_boundaries.geojson")
 
-    log(f"Pipeline complete — total elapsed: {time.time()-t0:.0f}s")
+    log(f"Process stages complete — total elapsed: {time.time()-t0:.0f}s")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Baltimore 311 equity pipeline")
     parser.add_argument("--year", type=int, required=True, help="Year to process")
     parser.add_argument(
+        "--stage",
+        choices=["ingest", "process", "all"],
+        default="all",
+        help="ingest=Stage 1 only; process=Stages 2+3 only; all=full pipeline (default)",
+    )
+    parser.add_argument(
         "--live",
         action="store_true",
         help="Current-year live file — applies 30-day right-censoring",
     )
     args = parser.parse_args()
-    run(args.year, args.live)
+
+    if args.stage == "ingest":
+        stage_ingest(args.year)
+    elif args.stage == "process":
+        stage_process(args.year, args.live)
+    else:
+        stage_ingest(args.year)
+        stage_process(args.year, args.live)

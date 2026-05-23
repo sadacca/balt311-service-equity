@@ -14,37 +14,77 @@ on:
           - "2025"
           - "2026"
       is_live_year:
-        description: "Live current-year file? (applies 30-day right-censoring for open requests)"
+        description: "Live current-year file? (applies 30-day right-censoring)"
         required: false
         default: false
         type: boolean
 
 jobs:
-  run-pipeline:
+  # ── Job 1: Fetch raw 311 data from ArcGIS ──────────────────────────────────
+  # Only needs pandas + pyarrow. Uploads raw Parquet as a workflow artifact
+  # so the process job can be re-run independently without re-fetching.
+  ingest:
+    name: "Stage 1 — Fetch raw data (${{ inputs.year }})"
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
-      - name: Checkout main
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: main
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
 
       - name: Install dependencies
-        run: pip install pandas pyarrow geopandas requests
+        run: pip install pandas pyarrow
 
-      - name: Run pipeline
+      - name: Fetch raw 311 records
+        run: python scripts/pipeline.py --year ${{ inputs.year }} --stage ingest
+
+      - name: Upload raw Parquet as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-311-${{ inputs.year }}
+          path: data/raw/requests_${{ inputs.year }}.parquet
+          retention-days: 7
+
+  # ── Job 2: Clean, aggregate, commit ────────────────────────────────────────
+  # Downloads raw Parquet from Job 1, runs clean + spatial join + aggregate,
+  # and pushes data/processed/ back to main.
+  # Can be re-run independently if it fails (Actions UI → Re-run failed jobs).
+  process:
+    name: "Stages 2+3 — Clean, aggregate, commit (${{ inputs.year }})"
+    needs: ingest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pandas pyarrow geopandas
+
+      - name: Download raw Parquet from ingest job
+        uses: actions/download-artifact@v4
+        with:
+          name: raw-311-${{ inputs.year }}
+          path: data/raw/
+
+      - name: Clean, spatial join, aggregate
         run: |
           LIVE_FLAG=""
           [ "${{ inputs.is_live_year }}" = "true" ] && LIVE_FLAG="--live"
-          python scripts/pipeline.py --year ${{ inputs.year }} $LIVE_FLAG
+          python scripts/pipeline.py --year ${{ inputs.year }} --stage process $LIVE_FLAG
 
       - name: Commit and push processed outputs
         run: |
