@@ -28,7 +28,8 @@ FIELDS = (
 )
 
 DEFAULT_PAGE_SIZE = 2000
-DEFAULT_WORKERS = 8
+DEFAULT_WORKERS = 4   # conservative — ArcGIS times out above ~5 concurrent connections
+FETCH_TIMEOUT = 60    # seconds; server can be slow under parallel load
 
 
 def _query_max_record_count(base_url: str) -> int:
@@ -71,7 +72,7 @@ def fetch_page(
     url = f"{base_url}/query?{params}"
     for attempt in range(1, retries + 1):
         try:
-            with urllib.request.urlopen(url, timeout=30) as r:
+            with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT) as r:
                 data = json.loads(r.read())
             return [f["attributes"] for f in data.get("features", [])]
         except Exception as exc:
