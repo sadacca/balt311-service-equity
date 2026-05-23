@@ -23,7 +23,12 @@ FIELDS = (
 )
 
 
-def fetch_page(base_url: str, offset: int, page_size: int = 2000) -> list[dict]:
+def fetch_page(
+    base_url: str,
+    offset: int,
+    page_size: int = 2000,
+    retries: int = 4,
+) -> list[dict]:
     params = urllib.parse.urlencode({
         "where": "1=1",
         "outFields": FIELDS,
@@ -33,9 +38,18 @@ def fetch_page(base_url: str, offset: int, page_size: int = 2000) -> list[dict]:
         "f": "json",
     })
     url = f"{base_url}/query?{params}"
-    with urllib.request.urlopen(url, timeout=30) as r:
-        data = json.loads(r.read())
-    return [f["attributes"] for f in data.get("features", [])]
+    for attempt in range(1, retries + 1):
+        try:
+            with urllib.request.urlopen(url, timeout=30) as r:
+                data = json.loads(r.read())
+            return [f["attributes"] for f in data.get("features", [])]
+        except Exception as exc:
+            if attempt == retries:
+                raise
+            wait = 2 ** attempt
+            print(f"  offset={offset} attempt {attempt} failed ({exc}); retrying in {wait}s")
+            time.sleep(wait)
+    return []  # unreachable; satisfies type checkers
 
 
 def fetch_year(year: int, page_size: int = 2000) -> list[dict]:
@@ -51,5 +65,5 @@ def fetch_year(year: int, page_size: int = 2000) -> list[dict]:
         if len(page) < page_size:
             break
         offset += page_size
-        time.sleep(0.1)
+        time.sleep(0.25)  # polite pause; slightly longer for CI stability
     return records

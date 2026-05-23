@@ -1,0 +1,59 @@
+name: Update 311 processed data
+
+on:
+  workflow_dispatch:
+    inputs:
+      year:
+        description: "Year to process"
+        required: true
+        default: "2025"
+        type: choice
+        options:
+          - "2023"
+          - "2024"
+          - "2025"
+          - "2026"
+      is_live_year:
+        description: "Live current-year file? (applies 30-day right-censoring for open requests)"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pandas pyarrow geopandas requests
+
+      - name: Run pipeline
+        run: |
+          LIVE_FLAG=""
+          [ "${{ inputs.is_live_year }}" = "true" ] && LIVE_FLAG="--live"
+          python scripts/pipeline.py --year ${{ inputs.year }} $LIVE_FLAG
+
+      - name: Commit and push processed outputs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/processed/
+          if git diff --staged --quiet; then
+            echo "Processed data unchanged — nothing to commit."
+          else
+            git commit -m "pipeline: update processed data for ${{ inputs.year }}"
+            git push origin main
+          fi

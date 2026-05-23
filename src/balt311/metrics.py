@@ -53,8 +53,10 @@ def compute_due_date_gap(df: pd.DataFrame) -> pd.DataFrame:
     df["due_date_gap_days"] = (
         (df["DueDate"] - df["CreatedDate"]).dt.total_seconds() / 86400
     )
+    # Only evaluate closed records with a valid (positive-gap) DueDate.
+    # Open records have no CloseDate and should not count as "late".
     df["is_on_time"] = np.where(
-        df["due_date_gap_days"] > 0,  # exclude types with due-before-created artifacts
+        (df["due_date_gap_days"] > 0) & df["CloseDate"].notna(),
         df["CloseDate"] <= df["DueDate"],
         np.nan,
     )
