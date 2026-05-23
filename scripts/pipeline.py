@@ -96,20 +96,49 @@ def _fetch_baltimore_tracts(dest: Path) -> None:
         log(f"  {len(balt)} Baltimore City tracts saved → {dest.name}")
 
 
-def _fetch_baltimore_population(dest: Path) -> None:
-    """Download ACS 2023 5-year total population for Baltimore City census tracts."""
+def _fetch_baltimore_population(dest: Path) -> bool:
+    """Download ACS 2023 5-year total population for Baltimore City census tracts.
+
+    Returns True on success. On failure logs a warning and returns False so the
+    pipeline can continue without population data (requests_per_1k will be omitted).
+    """
     log("Downloading ACS 2023 5-year population estimates (Baltimore City tracts) ...")
-    with tempfile.TemporaryDirectory() as tmp:
-        raw = Path(tmp) / "pop.json"
-        download_with_retry(ACS_POPULATION_URL, raw)
-        rows = json.loads(raw.read_text())
-    # rows[0] is the header; rows[1:] are data
+    for attempt in range(1, 5):
+        try:
+            req = urllib.request.Request(
+                ACS_POPULATION_URL, headers={"Accept": "application/json"}
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                if resp.status != 200:
+                    raise ValueError(f"HTTP {resp.status}")
+                raw = resp.read().decode("utf-8").strip()
+            if not raw:
+                raise ValueError("Empty response body")
+            rows = json.loads(raw)
+            break
+        except json.JSONDecodeError:
+            log(f"  Census API returned non-JSON (first 500 chars): {raw[:500]!r}")
+            if attempt < 4:
+                time.sleep(2 ** attempt)
+                continue
+            log("  WARNING: population download failed — requests_per_1k will be omitted")
+            return False
+        except Exception as exc:
+            if attempt == 4:
+                log(f"  WARNING: population download failed ({exc}) — requests_per_1k will be omitted")
+                return False
+            wait = 2 ** attempt
+            log(f"  Attempt {attempt} failed ({exc}); retrying in {wait}s")
+            time.sleep(wait)
+
     headers, data = rows[0], rows[1:]
     df = pd.DataFrame(data, columns=headers)
     df["geoid"] = df["state"] + df["county"] + df["tract"]
     df = df.rename(columns={"B01003_001E": "population"})
     df["population"] = pd.to_numeric(df["population"], errors="coerce")
     df[["geoid", "population"]].to_csv(dest, index=False)
+    log(f"  {len(df)} tracts → {dest.name}")
+    return True
     log(f"  {len(df)} tracts → {dest.name}")
 
 
@@ -241,18 +270,21 @@ def stage_process(year: int, is_live: bool) -> None:
 
     tract_metrics = aggregate_tract(df_eq)
 
-    # ── Population enrichment ────────────────────────────────────────────────
+    # ── Population enrichment (optional — soft failure) ──────────────────────
     pop_path = RAW_DIR / "tract_population.csv"
     if not pop_path.exists():
         _fetch_baltimore_population(pop_path)
-    pop = pd.read_csv(pop_path)
-    tract_metrics = tract_metrics.merge(pop, on="geoid", how="left")
-    tract_metrics["requests_per_1k"] = (
-        tract_metrics["total_requests"] / tract_metrics["population"].replace(0, float("nan")) * 1000
-    )
-    missing_pop = tract_metrics["population"].isna().sum()
-    if missing_pop:
-        log(f"  WARNING: {missing_pop} tract(s) missing population data")
+    if pop_path.exists():
+        pop = pd.read_csv(pop_path)
+        tract_metrics = tract_metrics.merge(pop, on="geoid", how="left")
+        tract_metrics["requests_per_1k"] = (
+            tract_metrics["total_requests"] / tract_metrics["population"].replace(0, float("nan")) * 1000
+        )
+        missing_pop = tract_metrics["population"].isna().sum()
+        if missing_pop:
+            log(f"  WARNING: {missing_pop} tract(s) missing population data")
+    else:
+        log("  Population unavailable — population and requests_per_1k columns omitted")
 
     out_tract = PROC / f"tract_metrics_{year}.parquet"
     tract_metrics.to_parquet(out_tract, index=False)
