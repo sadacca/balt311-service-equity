@@ -161,7 +161,7 @@ These gaps limit the analysis but do not block it. They are documented here to s
 1. Does the 311 dataset include a `request_source` field distinguishing app, phone, and staff-initiated entries? If so, the resident-to-staff ratio analysis is immediately executable.
 2. Is there a status history table or status change log, or only a current status snapshot? Reopen analysis depends on this.
 3. What is the city's definition of "closed" vs. "resolved"? Some 311 systems auto-close requests after a time period regardless of actual resolution.
-4. Does the 2026 daily file include all historical records from January 2026 forward, or only a rolling window?
+4. ~~Does the 2026 daily file include all historical records from January 2026 forward, or only a rolling window?~~ **RESOLVED**: Accumulates from Jan 1 of each year — oldest record in the 2026 endpoint is 2026-01-01 00:09:36 UTC. All annual files follow the same pattern. For live-year analysis, exclude requests created within the last 30 days to avoid right-censoring (recently opened requests haven't had time to close, which deflates closure rate and inflates days-to-close).
 5. Should the analysis include requests that span multiple agencies (e.g., a streetlight request involving both DOT and BGE)? How are these coded?
 
 ---

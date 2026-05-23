@@ -126,7 +126,7 @@ that depend on them can proceed.
 | Does `MethodReceived` distinguish staff vs. resident? | P0-1 ✅ | **RESOLVED**: System+Internal = staff/proactive (~30%); Phone+API+Mail+Email = resident (~70%) |
 | Is there a reopen signal in `LastActivity`? | P0-1 ✅ | **RESOLVED**: No signal. LastActivity = 'Service Response' or NULL only. Reopen metric dropped. |
 | What is the `SRStatus` == "Closed" / `CloseDate` consistency? | P0-1 ✅ | **RESOLVED**: Perfect consistency, no mismatches. Closure rate = (SRStatus contains "Closed") / total. |
-| Does the 2025 file cover full year or rolling window? | P0-3 | Still pending — need full ingest to confirm date range |
+| Does the 2025 file cover full year or rolling window? | P0-3 | **RESOLVED**: Full calendar year Jan 1–Dec 31. Confirmed by 2026 endpoint: oldest record is 2026-01-01 00:09:36 UTC — accumulates from Jan 1, no rolling cutoff. Apply same assumption to all annual files. |
 | Are there duplicate `SRRecordID`s across years? | P0-2, P0-3 | Still pending — need both years downloaded |
 | What percentage of records are geocodeable? | P0-1 ✅ | **RESOLVED**: 73% overall; ~99% for resident non-ECC types. ECC types intentionally have no address. |
 

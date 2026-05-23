@@ -53,20 +53,32 @@ def compute_due_date_gap(df: pd.DataFrame) -> pd.DataFrame:
     df["due_date_gap_days"] = (
         (df["DueDate"] - df["CreatedDate"]).dt.total_seconds() / 86400
     )
+    # Only evaluate closed records with a valid (positive-gap) DueDate.
+    # Open records have no CloseDate and should not count as "late".
     df["is_on_time"] = np.where(
-        df["due_date_gap_days"] > 0,  # exclude types with due-before-created artifacts
+        (df["due_date_gap_days"] > 0) & df["CloseDate"].notna(),
         df["CloseDate"] <= df["DueDate"],
         np.nan,
     )
     return df
 
 
-def filter_equity_subset(df: pd.DataFrame) -> pd.DataFrame:
-    """Return resident-initiated, non-ECC requests suitable for spatial equity analysis."""
+def filter_equity_subset(
+    df: pd.DataFrame,
+    right_censor_days: int = 30,
+) -> pd.DataFrame:
+    """Return resident-initiated, non-ECC, geocoded requests suitable for equity analysis.
+
+    right_censor_days: exclude requests created within this many days of the data pull date
+    to avoid deflating closure rates for still-open recent requests. Set to 0 for annual
+    files where the year is complete; use 30 for the live current-year endpoint.
+    """
+    cutoff = df["CreatedDate"].max() - pd.Timedelta(days=right_censor_days)
     return df[
         df["is_resident"]
         & ~df["SRType"].str.startswith(ECC_PREFIX, na=False)
         & df["tract_geoid"].notna()
+        & (df["CreatedDate"] <= cutoff)
     ].copy()
 
 
