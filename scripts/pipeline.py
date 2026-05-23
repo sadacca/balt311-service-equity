@@ -282,7 +282,7 @@ def stage_process(year: int, is_live: bool) -> None:
     if not pop_path.exists():
         _fetch_baltimore_population(pop_path)
     if pop_path.exists():
-        pop = pd.read_csv(pop_path)
+        pop = pd.read_csv(pop_path, dtype={"geoid": str})
         tract_metrics = tract_metrics.merge(pop, on="geoid", how="left")
         tract_metrics["requests_per_1k"] = (
             tract_metrics["total_requests"] / tract_metrics["population"].replace(0, float("nan")) * 1000
