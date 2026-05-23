@@ -141,9 +141,13 @@ def rollup_to_csa(
     tract_df: pd.DataFrame,
     tract_to_csa: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Aggregate tract metrics to CSA level, weighting days-to-close by tract population."""
+    """Aggregate tract metrics to CSA level, weighting days-to-close by tract population.
+
+    tract_to_csa must have columns [geoid, csa_name]. Population is taken from
+    tract_df (added during pipeline enrichment) so the crosswalk stays minimal.
+    """
     merged = tract_df.merge(
-        tract_to_csa[["geoid", "csa_name", "population"]],
+        tract_to_csa[["geoid", "csa_name"]],
         on="geoid",
         how="left",
     )
