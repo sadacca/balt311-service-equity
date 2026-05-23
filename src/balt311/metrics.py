@@ -161,17 +161,28 @@ def rollup_to_csa(
         .reset_index()
     )
 
-    valid = merged.dropna(subset=["median_days_to_close", "population"])
-    if not valid.empty:
-        wtd = (
-            valid.groupby("csa_name")
-            .apply(
-                lambda g: np.average(g["median_days_to_close"], weights=g["population"]),
-                include_groups=False,
+    valid_dtc = merged.dropna(subset=["median_days_to_close"])
+    if "population" in merged.columns:
+        # Population-weighted mean of tract medians
+        pop_valid = valid_dtc.dropna(subset=["population"])
+        if not pop_valid.empty:
+            wtd = (
+                pop_valid.groupby("csa_name")
+                .apply(
+                    lambda g: np.average(g["median_days_to_close"], weights=g["population"]),
+                    include_groups=False,
+                )
+                .reset_index(name="median_days_to_close")
             )
+            sums = sums.merge(wtd, on="csa_name", how="left")
+    else:
+        # Unweighted median fallback when population is unavailable
+        dtc = (
+            valid_dtc.groupby("csa_name")["median_days_to_close"]
+            .median()
             .reset_index(name="median_days_to_close")
         )
-        sums = sums.merge(wtd, on="csa_name", how="left")
+        sums = sums.merge(dtc, on="csa_name", how="left")
 
     sums["closure_rate"] = sums["closed_requests"] / sums["total_requests"].replace(0, np.nan)
     return sums.rename(columns={"csa_name": "geoid"})
