@@ -51,6 +51,13 @@ ACS_POPULATION_URL = (
     "?get=B01003_001E&for=tract:*&in=state:24%20county:510"
 )
 
+# BNIA VitalSigns 2020 census-tract → CSA crosswalk.
+# Columns: TRACT20, GEOID20 (11-digit), CSA2020.
+# Rows with empty GEOID20 are summary totals — filtered on load.
+CSA_CROSSWALK_URL = (
+    "https://raw.githubusercontent.com/BNIA/VitalSigns/main/CSA2020.csv"
+)
+
 
 def log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
@@ -89,14 +96,41 @@ def _fetch_baltimore_tracts(dest: Path) -> None:
         log(f"  {len(balt)} Baltimore City tracts saved → {dest.name}")
 
 
-def _fetch_baltimore_population(dest: Path) -> None:
-    """Download ACS 2023 5-year total population for Baltimore City census tracts."""
+def _fetch_baltimore_population(dest: Path) -> bool:
+    """Download ACS 2023 5-year total population for Baltimore City census tracts.
+
+    Returns True on success. On failure logs a warning and returns False so the
+    pipeline can continue without population data (requests_per_1k will be omitted).
+    """
     log("Downloading ACS 2023 5-year population estimates (Baltimore City tracts) ...")
-    with tempfile.TemporaryDirectory() as tmp:
-        raw = Path(tmp) / "pop.json"
-        download_with_retry(ACS_POPULATION_URL, raw)
-        rows = json.loads(raw.read_text())
-    # rows[0] is the header; rows[1:] are data
+    for attempt in range(1, 5):
+        try:
+            req = urllib.request.Request(
+                ACS_POPULATION_URL, headers={"Accept": "application/json"}
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                if resp.status != 200:
+                    raise ValueError(f"HTTP {resp.status}")
+                raw = resp.read().decode("utf-8").strip()
+            if not raw:
+                raise ValueError("Empty response body")
+            rows = json.loads(raw)
+            break
+        except json.JSONDecodeError:
+            log(f"  Census API returned non-JSON (first 500 chars): {raw[:500]!r}")
+            if attempt < 4:
+                time.sleep(2 ** attempt)
+                continue
+            log("  WARNING: population download failed — requests_per_1k will be omitted")
+            return False
+        except Exception as exc:
+            if attempt == 4:
+                log(f"  WARNING: population download failed ({exc}) — requests_per_1k will be omitted")
+                return False
+            wait = 2 ** attempt
+            log(f"  Attempt {attempt} failed ({exc}); retrying in {wait}s")
+            time.sleep(wait)
+
     headers, data = rows[0], rows[1:]
     df = pd.DataFrame(data, columns=headers)
     df["geoid"] = df["state"] + df["county"] + df["tract"]
@@ -104,6 +138,42 @@ def _fetch_baltimore_population(dest: Path) -> None:
     df["population"] = pd.to_numeric(df["population"], errors="coerce")
     df[["geoid", "population"]].to_csv(dest, index=False)
     log(f"  {len(df)} tracts → {dest.name}")
+    return True
+    log(f"  {len(df)} tracts → {dest.name}")
+
+
+def _fetch_csa_crosswalk(dest: Path) -> None:
+    """Download BNIA 2020 tract→CSA crosswalk and save as geoid,csa_name CSV."""
+    log("Downloading BNIA VitalSigns 2020 tract→CSA crosswalk ...")
+    with tempfile.TemporaryDirectory() as tmp:
+        raw = Path(tmp) / "csa2020.csv"
+        download_with_retry(CSA_CROSSWALK_URL, raw)
+        df = pd.read_csv(raw, dtype=str)
+    # Drop summary rows that have no GEOID (e.g. city-total row)
+    df = df[df["GEOID20"].notna() & (df["GEOID20"].str.strip() != "")].copy()
+    df = df.rename(columns={"GEOID20": "geoid", "CSA2020": "csa_name"})
+    df[["geoid", "csa_name"]].to_csv(dest, index=False)
+    log(f"  {len(df)} tracts → {df['csa_name'].nunique()} CSAs → {dest.name}")
+
+
+def _build_csa_boundaries(tracts_path: Path, crosswalk_path: Path, dest: Path) -> None:
+    """Dissolve tract polygons by CSA name to produce CSA boundary GeoJSON.
+
+    CSAs are defined as aggregations of census tracts, so this exactly matches
+    the authoritative definition — no separate boundary download needed.
+    """
+    import geopandas as gpd
+
+    log("Building CSA boundaries by dissolving tract polygons ...")
+    tracts = gpd.read_file(tracts_path).to_crs("EPSG:4326")[["GEOID", "geometry"]]
+    xwalk = pd.read_csv(crosswalk_path, dtype=str)
+    merged = tracts.merge(xwalk, left_on="GEOID", right_on="geoid", how="left")
+    csas = (
+        merged[merged["csa_name"].notna()]
+        .dissolve(by="csa_name", as_index=False)[["csa_name", "geometry"]]
+    )
+    csas.to_file(dest, driver="GeoJSON")
+    log(f"  {len(csas)} CSA polygons → {dest.name}")
 
 
 def stage_ingest(year: int) -> None:
@@ -200,43 +270,48 @@ def stage_process(year: int, is_live: bool) -> None:
 
     tract_metrics = aggregate_tract(df_eq)
 
-    # ── Population enrichment ────────────────────────────────────────────────
+    # ── Population enrichment (optional — soft failure) ──────────────────────
     pop_path = RAW_DIR / "tract_population.csv"
     if not pop_path.exists():
         _fetch_baltimore_population(pop_path)
-    pop = pd.read_csv(pop_path)
-    tract_metrics = tract_metrics.merge(pop, on="geoid", how="left")
-    tract_metrics["requests_per_1k"] = (
-        tract_metrics["total_requests"] / tract_metrics["population"].replace(0, float("nan")) * 1000
-    )
-    missing_pop = tract_metrics["population"].isna().sum()
-    if missing_pop:
-        log(f"  WARNING: {missing_pop} tract(s) missing population data")
+    if pop_path.exists():
+        pop = pd.read_csv(pop_path)
+        tract_metrics = tract_metrics.merge(pop, on="geoid", how="left")
+        tract_metrics["requests_per_1k"] = (
+            tract_metrics["total_requests"] / tract_metrics["population"].replace(0, float("nan")) * 1000
+        )
+        missing_pop = tract_metrics["population"].isna().sum()
+        if missing_pop:
+            log(f"  WARNING: {missing_pop} tract(s) missing population data")
+    else:
+        log("  Population unavailable — population and requests_per_1k columns omitted")
 
     out_tract = PROC / f"tract_metrics_{year}.parquet"
     tract_metrics.to_parquet(out_tract, index=False)
     log(f"Saved tract metrics ({len(tract_metrics)} tracts) → {out_tract.name}")
 
     crosswalk_path = RAW_DIR / "tract_to_csa.csv"
-    if crosswalk_path.exists():
-        xwalk = pd.read_csv(crosswalk_path)
-        # Ensure crosswalk has population for weighted CSA rollup
-        if "population" not in xwalk.columns:
-            xwalk = xwalk.merge(pop, on="geoid", how="left")
-        csa_metrics = rollup_to_csa(tract_metrics, xwalk)
-        out_csa = PROC / f"csa_metrics_{year}.parquet"
-        csa_metrics.to_parquet(out_csa, index=False)
-        log(f"Saved CSA metrics ({len(csa_metrics)} CSAs) → {out_csa.name}")
-    else:
-        log("No crosswalk at data/raw/tract_to_csa.csv — CSA rollup skipped")
+    if not crosswalk_path.exists():
+        _fetch_csa_crosswalk(crosswalk_path)
+
+    csa_geo = RAW_DIR / "baltimore_csas.geojson"
+    if not csa_geo.exists():
+        _build_csa_boundaries(tracts_path, crosswalk_path, csa_geo)
+
+    xwalk = pd.read_csv(crosswalk_path, dtype=str)
+    unmatched = set(tract_metrics["geoid"]) - set(xwalk["geoid"])
+    if unmatched:
+        log(f"  {len(unmatched)} tract(s) not in CSA crosswalk — excluded from CSA rollup")
+    csa_metrics = rollup_to_csa(tract_metrics, xwalk)
+    out_csa = PROC / f"csa_metrics_{year}.parquet"
+    csa_metrics.to_parquet(out_csa, index=False)
+    log(f"Saved CSA metrics ({len(csa_metrics)} CSAs) → {out_csa.name}")
 
     shutil.copy(tracts_path, PROC / "tract_boundaries.geojson")
     log("Copied tract boundaries → processed/tract_boundaries.geojson")
 
-    csa_geo = RAW_DIR / "baltimore_csas.geojson"
-    if csa_geo.exists():
-        shutil.copy(csa_geo, PROC / "csa_boundaries.geojson")
-        log("Copied CSA boundaries → processed/csa_boundaries.geojson")
+    shutil.copy(csa_geo, PROC / "csa_boundaries.geojson")
+    log("Copied CSA boundaries → processed/csa_boundaries.geojson")
 
     log(f"Process stages complete — total elapsed: {time.time()-t0:.0f}s")
 
