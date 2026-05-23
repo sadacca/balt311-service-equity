@@ -18,6 +18,7 @@ Usage:
 """
 
 import argparse
+import json
 import shutil
 import sys
 import tempfile
@@ -41,6 +42,13 @@ PROC    = ROOT / "data" / "processed"
 # ZIP format is unambiguous; JSON naming conventions have changed across Census releases.
 MD_TRACTS_ZIP_URL = (
     "https://www2.census.gov/geo/tiger/GENZ2023/shp/cb_2023_24_tract_500k.zip"
+)
+
+# ACS 2023 5-year total population (B01003) — all tracts in Baltimore City (state=24, county=510).
+# No API key required for this query.
+ACS_POPULATION_URL = (
+    "https://api.census.gov/data/2023/acs/acs5"
+    "?get=B01003_001E&for=tract:*&in=state:24%20county:510"
 )
 
 
@@ -79,6 +87,23 @@ def _fetch_baltimore_tracts(dest: Path) -> None:
         balt = md[md["COUNTYFP"] == "510"].copy()
         balt.to_file(dest, driver="GeoJSON")
         log(f"  {len(balt)} Baltimore City tracts saved → {dest.name}")
+
+
+def _fetch_baltimore_population(dest: Path) -> None:
+    """Download ACS 2023 5-year total population for Baltimore City census tracts."""
+    log("Downloading ACS 2023 5-year population estimates (Baltimore City tracts) ...")
+    with tempfile.TemporaryDirectory() as tmp:
+        raw = Path(tmp) / "pop.json"
+        download_with_retry(ACS_POPULATION_URL, raw)
+        rows = json.loads(raw.read_text())
+    # rows[0] is the header; rows[1:] are data
+    headers, data = rows[0], rows[1:]
+    df = pd.DataFrame(data, columns=headers)
+    df["geoid"] = df["state"] + df["county"] + df["tract"]
+    df = df.rename(columns={"B01003_001E": "population"})
+    df["population"] = pd.to_numeric(df["population"], errors="coerce")
+    df[["geoid", "population"]].to_csv(dest, index=False)
+    log(f"  {len(df)} tracts → {dest.name}")
 
 
 def stage_ingest(year: int) -> None:
@@ -174,6 +199,20 @@ def stage_process(year: int, is_live: bool) -> None:
     )
 
     tract_metrics = aggregate_tract(df_eq)
+
+    # ── Population enrichment ────────────────────────────────────────────────
+    pop_path = RAW_DIR / "tract_population.csv"
+    if not pop_path.exists():
+        _fetch_baltimore_population(pop_path)
+    pop = pd.read_csv(pop_path)
+    tract_metrics = tract_metrics.merge(pop, on="geoid", how="left")
+    tract_metrics["requests_per_1k"] = (
+        tract_metrics["total_requests"] / tract_metrics["population"].replace(0, float("nan")) * 1000
+    )
+    missing_pop = tract_metrics["population"].isna().sum()
+    if missing_pop:
+        log(f"  WARNING: {missing_pop} tract(s) missing population data")
+
     out_tract = PROC / f"tract_metrics_{year}.parquet"
     tract_metrics.to_parquet(out_tract, index=False)
     log(f"Saved tract metrics ({len(tract_metrics)} tracts) → {out_tract.name}")
@@ -181,6 +220,9 @@ def stage_process(year: int, is_live: bool) -> None:
     crosswalk_path = RAW_DIR / "tract_to_csa.csv"
     if crosswalk_path.exists():
         xwalk = pd.read_csv(crosswalk_path)
+        # Ensure crosswalk has population for weighted CSA rollup
+        if "population" not in xwalk.columns:
+            xwalk = xwalk.merge(pop, on="geoid", how="left")
         csa_metrics = rollup_to_csa(tract_metrics, xwalk)
         out_csa = PROC / f"csa_metrics_{year}.parquet"
         csa_metrics.to_parquet(out_csa, index=False)
