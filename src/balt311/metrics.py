@@ -185,4 +185,43 @@ def rollup_to_csa(
         sums = sums.merge(dtc, on="csa_name", how="left")
 
     sums["closure_rate"] = sums["closed_requests"] / sums["total_requests"].replace(0, np.nan)
+
+    # on_time_rate: request-weighted mean of tract rates
+    valid_otr = merged.dropna(subset=["on_time_rate"])
+    if not valid_otr.empty:
+        otr = (
+            valid_otr.groupby("csa_name")
+            .apply(
+                lambda g: np.average(g["on_time_rate"], weights=g["total_requests"]),
+                include_groups=False,
+            )
+            .reset_index(name="on_time_rate")
+        )
+        sums = sums.merge(otr, on="csa_name", how="left")
+
+    # requests_per_1k: CSA total requests / summed tract population
+    if "population" in merged.columns:
+        pop_sums = (
+            merged.groupby("csa_name")["population"]
+            .sum()
+            .reset_index(name="population")
+        )
+        sums = sums.merge(pop_sums, on="csa_name", how="left")
+        sums["requests_per_1k"] = (
+            sums["total_requests"] / sums["population"].replace(0, np.nan) * 1000
+        )
+
+    # top_sr_type: most common tract-level top type within each CSA
+    if "top_sr_type" in merged.columns:
+        top_type = (
+            merged.dropna(subset=["top_sr_type"])
+            .groupby(["csa_name", "top_sr_type"])
+            .size()
+            .reset_index(name="n")
+            .sort_values("n", ascending=False)
+            .drop_duplicates(subset="csa_name")
+            [["csa_name", "top_sr_type"]]
+        )
+        sums = sums.merge(top_type, on="csa_name", how="left")
+
     return sums.rename(columns={"csa_name": "geoid"})
