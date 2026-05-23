@@ -146,7 +146,6 @@ def _fetch_baltimore_population(dest: Path) -> bool:
     df[["geoid", "population"]].to_csv(dest, index=False)
     log(f"  {len(df)} tracts → {dest.name}")
     return True
-    log(f"  {len(df)} tracts → {dest.name}")
 
 
 def _fetch_csa_crosswalk(dest: Path) -> None:
