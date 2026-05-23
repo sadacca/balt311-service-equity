@@ -19,6 +19,7 @@ Usage:
 
 import argparse
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -99,15 +100,21 @@ def _fetch_baltimore_tracts(dest: Path) -> None:
 def _fetch_baltimore_population(dest: Path) -> bool:
     """Download ACS 2023 5-year total population for Baltimore City census tracts.
 
+    Reads CENSUS_API_KEY from the environment and appends it to the request.
+    Get a free key at https://api.census.gov/data/key_signup.html and set it
+    as a GitHub Actions secret named CENSUS_API_KEY.
+
     Returns True on success. On failure logs a warning and returns False so the
     pipeline can continue without population data (requests_per_1k will be omitted).
     """
+    api_key = os.environ.get("CENSUS_API_KEY", "").strip()
+    url = ACS_POPULATION_URL + (f"&key={api_key}" if api_key else "")
+    if not api_key:
+        log("  NOTE: CENSUS_API_KEY not set — request may be rate-limited")
     log("Downloading ACS 2023 5-year population estimates (Baltimore City tracts) ...")
     for attempt in range(1, 5):
         try:
-            req = urllib.request.Request(
-                ACS_POPULATION_URL, headers={"Accept": "application/json"}
-            )
+            req = urllib.request.Request(url, headers={"Accept": "application/json"})
             with urllib.request.urlopen(req, timeout=30) as resp:
                 if resp.status != 200:
                     raise ValueError(f"HTTP {resp.status}")
