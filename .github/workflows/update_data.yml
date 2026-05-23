@@ -81,6 +81,8 @@ jobs:
           path: data/raw/
 
       - name: Clean, spatial join, aggregate
+        env:
+          CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
         run: |
           LIVE_FLAG=""
           [ "${{ inputs.is_live_year }}" = "true" ] && LIVE_FLAG="--live"
