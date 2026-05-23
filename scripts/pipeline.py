@@ -39,10 +39,11 @@ RAW_DIR = ROOT / "data" / "raw"
 INTERIM = ROOT / "data" / "interim"
 PROC    = ROOT / "data" / "processed"
 
-TIGER_TRACT_URL = (
-    "https://tigerweb.geo.census.gov/arcgis/rest/services"
-    "/TIGERweb/tigerWMS_Current/MapServer/8/query"
-    "?where=STATE%3D24+AND+COUNTY%3D510&outFields=GEOID,NAME&f=geojson"
+# Census Bureau cartographic boundary file — all Maryland tracts, 2020 definitions.
+# Filtered to Baltimore City (COUNTYFP=510) after download.
+# Using GENZ2023 (latest available); uses 2020 decennial census tract boundaries.
+MD_TRACTS_URL = (
+    "https://www2.census.gov/geo/tiger/GENZ2023/json/gz_2023_24_140_00_500k.json"
 )
 
 
@@ -61,6 +62,21 @@ def download_with_retry(url: str, dest: Path, retries: int = 4) -> None:
             wait = 2 ** attempt
             log(f"  Download attempt {attempt} failed ({exc}); retrying in {wait}s")
             time.sleep(wait)
+
+
+def _fetch_baltimore_tracts(dest: Path) -> None:
+    """Download Maryland cartographic tract file and filter to Baltimore City."""
+    import tempfile
+    tmp = Path(tempfile.mktemp(suffix=".json"))
+    try:
+        log("Downloading Maryland census tract boundaries from Census Bureau ...")
+        download_with_retry(MD_TRACTS_URL, tmp)
+        md = gpd.read_file(tmp).to_crs("EPSG:4326")
+        balt = md[md["COUNTYFP"] == "510"].copy()
+        balt.to_file(dest, driver="GeoJSON")
+        log(f"  {len(balt)} Baltimore City tracts saved → {dest.name}")
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def run(year: int, is_live: bool) -> None:
@@ -84,9 +100,7 @@ def run(year: int, is_live: bool) -> None:
 
     tracts_path = RAW_DIR / "baltimore_tracts.geojson"
     if not tracts_path.exists():
-        log("Downloading Baltimore census tract boundaries from TIGER/Line ...")
-        download_with_retry(TIGER_TRACT_URL, tracts_path)
-        log(f"  Saved → {tracts_path.name}")
+        _fetch_baltimore_tracts(tracts_path)
 
     df = parse_timestamps(df_raw.copy())
     df = clean_strings(df)
