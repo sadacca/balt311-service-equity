@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 METRIC_OPTIONS: dict[str, str] = {
     "Median days to close": "median_days_to_close",
     "Closure rate": "closure_rate",
-    "Reopen rate": "reopen_rate",
+    "On-time rate": "on_time_rate",
     "Requests per 1,000 residents": "requests_per_1k",
 }
 

@@ -1,6 +1,13 @@
 import numpy as np
 import pandas as pd
 
+# Resident-initiated intake channels (excludes System=proactive and Internal=staff)
+RESIDENT_METHODS = {"Phone", "API", "Mail", "Email"}
+
+# ECC (Emergency Communications Center) types are informational — no physical address,
+# 92-100% missing coordinates, not relevant to service delivery equity analysis.
+ECC_PREFIX = "ECC-"
+
 
 def parse_timestamps(df: pd.DataFrame) -> pd.DataFrame:
     """Convert millisecond-epoch columns to UTC datetime."""
@@ -11,25 +18,71 @@ def parse_timestamps(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def clean_strings(df: pd.DataFrame) -> pd.DataFrame:
+    """Strip whitespace from string columns and normalize known encoding artifacts."""
+    str_cols = ("Agency", "SRType", "SRStatus", "MethodReceived", "Neighborhood",
+                "Outcome", "LastActivity")
+    df = df.copy()
+    for col in str_cols:
+        if col in df.columns:
+            df[col] = df[col].str.strip().str.replace(" ", " ", regex=False)
+    return df
+
+
+def flag_request_source(df: pd.DataFrame) -> pd.DataFrame:
+    """Add is_resident (bool) based on MethodReceived value set confirmed in validation."""
+    df = df.copy()
+    df["is_resident"] = df["MethodReceived"].isin(RESIDENT_METHODS)
+    return df
+
+
 def compute_days_to_close(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df["days_to_close"] = (
         (df["CloseDate"] - df["CreatedDate"]).dt.total_seconds() / 86400
     )
-    # Negative values indicate data error — treat as missing
-    df.loc[df["days_to_close"] < 0, "days_to_close"] = np.nan
+    # Sub-second negatives are timestamp precision artifacts in same-day closures — floor to 0.
+    # True negative values (data errors) have not been observed; keep this as floor not NaN.
+    df.loc[df["days_to_close"] < 0, "days_to_close"] = 0.0
     return df
 
 
+def compute_due_date_gap(df: pd.DataFrame) -> pd.DataFrame:
+    """Add due_date_gap_days and is_on_time. Types with negative gaps have bad DueDates — exclude."""
+    df = df.copy()
+    df["due_date_gap_days"] = (
+        (df["DueDate"] - df["CreatedDate"]).dt.total_seconds() / 86400
+    )
+    df["is_on_time"] = np.where(
+        df["due_date_gap_days"] > 0,  # exclude types with due-before-created artifacts
+        df["CloseDate"] <= df["DueDate"],
+        np.nan,
+    )
+    return df
+
+
+def filter_equity_subset(df: pd.DataFrame) -> pd.DataFrame:
+    """Return resident-initiated, non-ECC requests suitable for spatial equity analysis."""
+    return df[
+        df["is_resident"]
+        & ~df["SRType"].str.startswith(ECC_PREFIX, na=False)
+        & df["tract_geoid"].notna()
+    ].copy()
+
+
 def aggregate_tract(df: pd.DataFrame, geo_col: str = "tract_geoid") -> pd.DataFrame:
-    """Return one row per tract with core equity metrics."""
-    closed_mask = df["SRStatus"].str.strip().str.lower() == "closed"
+    """Return one row per tract with core equity metrics.
+
+    Expects input already filtered to the equity subset (resident, non-ECC, geocoded).
+    """
+    closed_statuses = {"closed", "closed (transferred)"}
+    closed_mask = df["SRStatus"].str.strip().str.lower().isin(closed_statuses)
 
     base = (
         df.groupby(geo_col)
         .agg(
             total_requests=("SRRecordID", "count"),
-            closed_requests=("SRStatus", lambda s: (s.str.strip().str.lower() == "closed").sum()),
+            closed_requests=("SRStatus", lambda s: s.str.strip().str.lower().isin(closed_statuses).sum()),
         )
         .reset_index()
     )
@@ -40,6 +93,17 @@ def aggregate_tract(df: pd.DataFrame, geo_col: str = "tract_geoid") -> pd.DataFr
         .median()
         .reset_index(name="median_days_to_close")
     )
+
+    # On-time rate: only for records with a valid (positive-gap) DueDate
+    valid_due = df.loc[df["is_on_time"].notna()]
+    if not valid_due.empty:
+        ontime = (
+            valid_due.groupby(geo_col)["is_on_time"]
+            .mean()
+            .reset_index(name="on_time_rate")
+        )
+    else:
+        ontime = pd.DataFrame(columns=[geo_col, "on_time_rate"])
 
     top_type = (
         df.groupby([geo_col, "SRType"])
@@ -54,6 +118,7 @@ def aggregate_tract(df: pd.DataFrame, geo_col: str = "tract_geoid") -> pd.DataFr
     out = (
         base
         .merge(dtc, on=geo_col, how="left")
+        .merge(ontime, on=geo_col, how="left")
         .merge(top_type, on=geo_col, how="left")
     )
     out["closure_rate"] = out["closed_requests"] / out["total_requests"].replace(0, np.nan)
@@ -80,7 +145,6 @@ def rollup_to_csa(
         .reset_index()
     )
 
-    # Population-weighted mean of tract medians as proxy for CSA median
     valid = merged.dropna(subset=["median_days_to_close", "population"])
     if not valid.empty:
         wtd = (
