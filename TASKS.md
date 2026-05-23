@@ -6,12 +6,18 @@ Ordered by dependency. Complete data investigation tasks before building on thei
 
 ## Phase 0 — Data Investigation (run locally, network required)
 
-- [ ] **P0-1: Run `validate_2025_sample.ipynb`** — execute all cells and record outputs
-  - What is the `MethodReceived` value set? Is staff-vs-resident distinction present?
-  - What percentage of records have valid lat/lon?
-  - Do any `LastActivity` values signal reopen events?
-  - What is the `days_to_close` distribution? Any negative values?
-  - Does `SRStatus` == "Closed" correlate cleanly with `CloseDate` presence?
+- [x] **P0-1: Run `validate_2025_sample.ipynb`** — executed against `data/sample/sample_311_2025.json` (2000 records, 2025-12-31)
+  - **MethodReceived**: Phone 53%, System 27%, API 16%, Internal 3%, Mail 1%, Email <1%. Staff/proactive = System+Internal. Resident = Phone+API+Mail+Email. **Distinction is viable.**
+  - **Coordinate coverage**: 73% overall. After excluding ECC- prefix types: ~99%. Missing coords are intentional — ECC info/lookup requests have no physical address.
+  - **LastActivity reopen signal**: NONE. Only values are 'Service Response' (69%) and NULL (30%). **Reopen rate metric is not computable; dropped from spec.**
+  - **days_to_close**: Negatives are sub-second precision artifacts in same-day same-millisecond closures; floor to 0. No values > 365 days in sample. p50=0 driven by proactive types; p90=14d, p99=91d.
+  - **SRStatus / CloseDate consistency**: Perfect — zero mismatches.
+  - **DueDate**: 100% populated. Standardized per SRType (pothole=1d, water leak=2d, vacant building=15d, SW cleaning=42d). ECC and proactive types have DueDate < CreatedDate (artifact) — exclude from on-time calculation.
+  - **On-time rate**: 53.2% overall; varies dramatically by type. Valid equity metric once ECC/proactive artifact types are excluded.
+  - **Agency**: Trailing whitespace in values — strip in pipeline.
+  - **Outcome**: Non-breaking space (U+00A0) in 'Work could not be\xa0completed' — normalize.
+  - **ECC types**: 27.6% of volume in sample (info requests, vehicle lookup, permit support). No coordinates, not service delivery — exclude from equity analysis subset.
+  - **Sample coverage note**: All 2000 records are from 2025-12-31 (DESC sort). Year-end may oversample proactive types. Distribution shapes confirmed; year-round representative sample not required for pipeline design.
 
 - [ ] **P0-2: Run `01_ingest.ipynb` for 2024** — download full 2024 dataset to `data/raw/`
   - Record total record count
@@ -75,10 +81,12 @@ Ordered by dependency. Complete data investigation tasks before building on thei
   - If per-type aggregation is needed, add a `sr_type` column to the aggregate and
     produce separate Parquet files per type, or a multi-index Parquet
 
-- [ ] **P2-4: Add reopen rate metric to pipeline**
-  - Define `reopen_rate` heuristic based on `validate_2025_sample.ipynb` findings
-    (P0-1 will determine if `LastActivity` provides a reliable signal)
-  - Add to `aggregate_tract()` in `src/balt311/metrics.py`
+- [x] **P2-4: Reopen rate metric** — DROPPED. `LastActivity` confirmed to carry no reopen signal (only 'Service Response' and NULL). No status history table exists. Reopen metric is not computable from available data; removed from `aggregate_tract()`.
+
+- [ ] **P2-4b: Add on-time rate metric** (replaces reopen rate as secondary equity metric)
+  - `is_on_time` and `due_date_gap_days` already computed in `compute_due_date_gap()` in `metrics.py`
+  - `aggregate_tract()` already includes `on_time_rate` — verify it calculates correctly once pipeline runs
+  - Exclude types with negative DueDate gap (ECC-, some proactives) — already handled via `due_date_gap_days > 0` filter
 
 - [ ] **P2-5: Tune color scale and map aesthetics**
   - Verify diverging `RdBu_r` scale looks good for closure rate (0–1) vs. days (0–N)
@@ -115,12 +123,12 @@ that depend on them can proceed.
 
 | Question | Depends on | Blocks |
 |---|---|---|
-| Does `MethodReceived` distinguish staff vs. resident? | P0-1 | P1-1 (source classification), P3-1 (ratio metric) |
-| Is there a reopen signal in `LastActivity`? | P0-1 | P2-4 (reopen rate metric) |
-| What is the `SRStatus` == "Closed" / `CloseDate` consistency? | P0-1 | P1-1 (closure rate definition) |
-| Does the 2025 file cover full year or rolling window? | P0-3 | P1-2 (whether to combine years) |
-| Are there duplicate `SRRecordID`s across years? | P0-2, P0-3 | P1-1 (deduplication logic) |
-| What percentage of records are geocodeable? | P0-1 | P1-1 (spatial join yield estimate) |
+| Does `MethodReceived` distinguish staff vs. resident? | P0-1 ✅ | **RESOLVED**: System+Internal = staff/proactive (~30%); Phone+API+Mail+Email = resident (~70%) |
+| Is there a reopen signal in `LastActivity`? | P0-1 ✅ | **RESOLVED**: No signal. LastActivity = 'Service Response' or NULL only. Reopen metric dropped. |
+| What is the `SRStatus` == "Closed" / `CloseDate` consistency? | P0-1 ✅ | **RESOLVED**: Perfect consistency, no mismatches. Closure rate = (SRStatus contains "Closed") / total. |
+| Does the 2025 file cover full year or rolling window? | P0-3 | Still pending — need full ingest to confirm date range |
+| Are there duplicate `SRRecordID`s across years? | P0-2, P0-3 | Still pending — need both years downloaded |
+| What percentage of records are geocodeable? | P0-1 ✅ | **RESOLVED**: 73% overall; ~99% for resident non-ECC types. ECC types intentionally have no address. |
 
 ---
 

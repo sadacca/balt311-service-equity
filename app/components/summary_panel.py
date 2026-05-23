@@ -6,7 +6,7 @@ DISPLAY_METRICS: list[tuple[str, str, str]] = [
     # (label, column, format_type)
     ("Median days to close", "median_days_to_close", "float1"),
     ("Closure rate", "closure_rate", "pct"),
-    ("Reopen rate", "reopen_rate", "pct"),
+    ("On-time rate", "on_time_rate", "pct"),
     ("Requests / 1k residents", "requests_per_1k", "float1"),
     ("Total requests", "total_requests", "int"),
 ]
