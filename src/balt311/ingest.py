@@ -6,6 +6,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ArcGIS FeatureServer endpoints by year
 ENDPOINTS: dict[int, str] = {
+    2023: (
+        "https://services1.arcgis.com/UWYHeuuJISiGmgXx/arcgis/rest/services"
+        "/311_Customer_Service_Requests_2023/FeatureServer/0"
+    ),
     2024: (
         "https://services1.arcgis.com/UWYHeuuJISiGmgXx/arcgis/rest/services"
         "/311_Customer_Service_Requests_2024/FeatureServer/0"

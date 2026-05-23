@@ -146,7 +146,6 @@ def _fetch_baltimore_population(dest: Path) -> bool:
     df[["geoid", "population"]].to_csv(dest, index=False)
     log(f"  {len(df)} tracts → {dest.name}")
     return True
-    log(f"  {len(df)} tracts → {dest.name}")
 
 
 def _fetch_csa_crosswalk(dest: Path) -> None:
@@ -193,6 +192,8 @@ def stage_ingest(year: int) -> None:
 
     raw_path = RAW_DIR / f"requests_{year}.parquet"
     records = fetch_year(year)
+    if not records:
+        log(f"WARNING: 0 records returned for {year} — endpoint may be empty or unavailable.")
     df_raw = pd.DataFrame(records)
     df_raw.to_parquet(raw_path, index=False)
     log(f"Saved {len(df_raw):,} rows → {raw_path.name}  ({time.time()-t0:.0f}s elapsed)")
@@ -228,6 +229,10 @@ def stage_process(year: int, is_live: bool) -> None:
         )
     df_raw = pd.read_parquet(raw_path)
     log(f"Loaded {len(df_raw):,} rows from {raw_path.name}")
+
+    if df_raw.empty:
+        log(f"No records to process for {year} — skipping. Re-run ingest when data is available.")
+        return
 
     tracts_path = RAW_DIR / "baltimore_tracts.geojson"
     if not tracts_path.exists():
