@@ -3,23 +3,25 @@ import pandas as pd
 
 
 def overlap_score(a: pd.Series, b: pd.Series) -> float:
-    """IQR overlap fraction between two series (0 = no overlap, 1 = complete overlap).
+    """Distribution overlap fraction between two series (0 = no overlap, 1 = complete overlap).
 
-    Computes the fraction of the combined IQR span that the two IQR bands share.
+    Computes the fraction of the combined 10th–90th percentile span that the two
+    bands share. Wider than IQR (80% of data vs 50%) to avoid over-penalising
+    modest median separation when distributions are otherwise similar.
     Returns NaN if either group has fewer than 3 non-null values.
     """
     a, b = a.dropna(), b.dropna()
     if len(a) < 3 or len(b) < 3:
         return float("nan")
-    q25_a, q75_a = np.percentile(a, [25, 75])
-    q25_b, q75_b = np.percentile(b, [25, 75])
-    overlap = max(0.0, min(q75_a, q75_b) - max(q25_a, q25_b))
-    span = max(q75_a, q75_b) - min(q25_a, q25_b)
+    q10_a, q90_a = np.percentile(a, [10, 90])
+    q10_b, q90_b = np.percentile(b, [10, 90])
+    overlap = max(0.0, min(q90_a, q90_b) - max(q10_a, q10_b))
+    span = max(q90_a, q90_b) - min(q10_a, q10_b)
     return overlap / span if span > 0 else 1.0
 
 
 def score_label(score: float) -> tuple[str, str]:
-    """Return (text label, CSS color) for an IQR overlap score."""
+    """Return (text label, CSS color) for a distribution overlap score."""
     if np.isnan(score):
         return "insufficient data", "gray"
     if score > 0.6:
