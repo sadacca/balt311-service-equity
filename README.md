@@ -1,12 +1,14 @@
 # Baltimore 311 Service Equity
 
-An interactive dashboard exploring whether Baltimore City's 311 service request resolution varies by neighborhood. Resident-initiated requests are mapped and aggregated at the census tract and Community Statistical Area (CSA) level, with metrics designed to surface disparities in responsiveness across the city.
+Baltimore's 311 system receives hundreds of thousands of resident service requests each year — potholes, bulk trash, water leaks, rodent control — but whether those requests get resolved at the same speed regardless of neighborhood is an open question. This dashboard makes that question answerable. It maps resolution metrics at the census tract and community level and tests directly whether outcomes differ between majority-Black and majority-White neighborhoods, and between lower- and higher-income areas.
 
 **[Live dashboard → balt311equity.streamlit.app](https://balt311equity.streamlit.app/)**
 
 ---
 
 ## What it shows
+
+### Map
 
 Four equity metrics, switchable from the sidebar:
 
@@ -17,9 +19,30 @@ Four equity metrics, switchable from the sidebar:
 | On-time rate | Share of closed requests resolved by their SRType due date |
 | Requests per 1,000 residents | Normalized demand; highlights under- and over-served areas |
 
-Clicking any tract or CSA opens a summary panel. The color scale is centered on the citywide median so above/below average areas read immediately.
+Clicking any tract or CSA opens a summary panel. The color scale is centered on the citywide median so above/below-average areas read immediately.
 
 **Scope**: resident-initiated requests only (MethodReceived ∈ Phone, API, Mail, Email). ECC information calls, city-proactive inspections, and staff-logged requests are excluded — they don't reflect resident-experienced service delivery.
+
+### Equity by Demographics
+
+Below the map, two side-by-side distribution panels compare each metric across demographic groups for the selected year and geography level:
+
+- **Race**: majority-Black geographies (>50% Black population) vs. majority-White (>50% White population)
+- **Income**: geographies below vs. above the citywide median household income
+
+Each panel shows a box-and-strip chart — individual tracts or CSAs as points, with the interquartile range (25th–75th percentile) and median marked. An **IQR overlap score** summarizes how similar the two distributions are:
+
+| Score | Label | Meaning |
+|---|---|---|
+| > 60% | not bad | The two groups' middle ranges largely overlap |
+| 30–60% | could be better | Meaningful separation; warrants monitoring |
+| < 30% | needs review | Substantial disparity between groups |
+
+The score and charts update automatically when the metric selector changes.
+
+### Equity Trend
+
+A year-over-year line chart tracks the IQR overlap score for each metric from 2023 onward, separately for race-based and income-based comparisons. Rising scores indicate narrowing disparity; falling scores indicate widening disparity.
 
 ---
 
@@ -27,10 +50,10 @@ Clicking any tract or CSA opens a summary panel. The color scale is centered on 
 
 | Source | What | How accessed |
 |---|---|---|
-| [Baltimore Open Data](https://data.baltimorecity.gov) | 311 service requests 2024–2025 | ArcGIS FeatureServer REST API |
+| [Baltimore Open Data](https://data.baltimorecity.gov) | 311 service requests 2023–2025 | ArcGIS FeatureServer REST API |
 | [Census Bureau GENZ2023](https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.html) | Census tract boundaries (2020 definitions) | Cartographic boundary shapefile ZIP |
 | [BNIA VitalSigns](https://github.com/BNIA/VitalSigns) | Tract → CSA crosswalk | GitHub raw CSV |
-| [Census ACS 2023 5-Year](https://www.census.gov/data/developers/data-sets/acs-5year.html) | Tract population (B01003) | Census Data API |
+| [Census ACS 2023 5-Year](https://www.census.gov/data/developers/data-sets/acs-5year.html) | Tract population (B01003), race (B02001), median household income (B19013) | Census Data API |
 
 ---
 
@@ -50,6 +73,7 @@ GitHub Actions (manual trigger)
 │ Job 2 — Process                                         │
 │  Clean → spatial join (tracts) → aggregate              │
 │  + ACS population → requests_per_1k                     │
+│  + ACS race + income → tract/csa_demographics.csv       │
 │  + BNIA crosswalk → CSA rollup                          │
 │  Commits data/processed/ to main                        │
 └─────────────────────────────────────────────────────────┘
@@ -59,7 +83,7 @@ GitHub Actions (manual trigger)
          reads data/processed/ from main
 ```
 
-The two-job design lets the process stage be re-run independently (Actions → Re-run failed jobs) without re-fetching the full dataset.
+The two-job design lets the process stage be re-run independently (Actions → Re-run failed jobs) without re-fetching the full dataset. Demographic reference files (`tract_demographics.csv`, `csa_demographics.csv`) are generated once and committed — the pipeline skips regeneration on subsequent runs.
 
 ---
 
@@ -72,6 +96,9 @@ app/
   components/
     map_view.py             # Plotly choropleth_mapbox builder
     summary_panel.py        # Click-to-select detail panel
+    equity_distributions.py # Race + income distribution comparison charts
+    equity_trend.py         # Year-over-year overlap score trend chart
+    utils.py                # Shared: overlap_score, score_label, format_metric
 
 data/
   processed/                # Committed — read by the app
@@ -79,6 +106,8 @@ data/
     csa_metrics_{year}.parquet
     tract_boundaries.geojson
     csa_boundaries.geojson
+    tract_demographics.csv  # ACS race + income by tract (year-independent)
+    csa_demographics.csv    # CSA rollup of tract demographics
   raw/                      # Gitignored — rebuilt by pipeline
   interim/                  # Gitignored — rebuilt by pipeline
 
@@ -87,7 +116,7 @@ scripts/
 
 src/balt311/
   ingest.py                 # ArcGIS FeatureServer pagination
-  metrics.py                # Cleaning, aggregation, CSA rollup
+  metrics.py                # Cleaning, aggregation, CSA rollup, demographics rollup
 
 notebooks/
   01_ingest.ipynb
@@ -106,11 +135,13 @@ Trigger the workflow manually from **Actions → Update 311 processed data → R
 
 For a live current year, enable **"Live current-year file"** — this applies 30-day right-censoring to exclude recently-created requests that haven't had time to close, which would otherwise deflate closure rates.
 
+The demographic reference files (`tract_demographics.csv`, `csa_demographics.csv`) are generated automatically on the first process run and do not need to be regenerated annually — they are committed to the repo and reused across all years.
+
 Required repository secrets:
 
 | Secret | Purpose |
 |---|---|
-| `CENSUS_API_KEY` | Census Data API key for ACS population download — free at [api.census.gov/data/key_signup.html](https://api.census.gov/data/key_signup.html) |
+| `CENSUS_API_KEY` | Census Data API key for ACS population, race, and income download — free at [api.census.gov/data/key_signup.html](https://api.census.gov/data/key_signup.html) |
 
 ---
 
@@ -149,3 +180,7 @@ python scripts/pipeline.py --year 2026 --live   # current-year with right-censor
 **On-time rate**: closed requests with CloseDate ≤ DueDate, as a share of all closed requests where DueDate > CreatedDate. SRTypes where DueDate < CreatedDate are excluded (known data artifact). Open requests are not counted as late.
 
 **Requests per 1,000 residents**: total equity-subset requests / ACS 2023 5-year tract population × 1,000.
+
+**IQR overlap score**: for any two demographic groups, the fraction of the combined interquartile range that the two IQR bands share. 0% = no overlap (complete separation); 100% = identical distributions. Computed separately for race-based and income-based comparisons, for each equity metric.
+
+**Demographic classification**: race groups require >50% of tract/CSA population identifying as a single race (mixed tracts excluded from race comparison). Income groups split at the citywide median of the tract/CSA distribution for the selected year and geography level.
