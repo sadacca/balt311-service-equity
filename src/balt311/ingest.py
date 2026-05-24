@@ -4,16 +4,21 @@ import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# ArcGIS FeatureServer endpoints by year
+# ArcGIS FeatureServer endpoints by year.
+# 2016–2022: historical Yearly service (layer id = year - 2016).
+# 2023+: annual per-year services.
+_YEARLY_BASE = (
+    "https://services1.arcgis.com/UWYHeuuJISiGmgXx/ArcGIS/rest/services"
+    "/311_Customer_Service_Requests_Yearly/FeatureServer"
+)
 ENDPOINTS: dict[int, str] = {
-    2021: (
-        "https://services1.arcgis.com/UWYHeuuJISiGmgXx/arcgis/rest/services"
-        "/311_Customer_Service_Requests_2021/FeatureServer/0"
-    ),
-    2022: (
-        "https://services1.arcgis.com/UWYHeuuJISiGmgXx/arcgis/rest/services"
-        "/311_Customer_Service_Requests_2022/FeatureServer/0"
-    ),
+    2016: f"{_YEARLY_BASE}/0",
+    2017: f"{_YEARLY_BASE}/1",
+    2018: f"{_YEARLY_BASE}/2",
+    2019: f"{_YEARLY_BASE}/3",
+    2020: f"{_YEARLY_BASE}/4",
+    2021: f"{_YEARLY_BASE}/5",
+    2022: f"{_YEARLY_BASE}/6",
     2023: (
         "https://services1.arcgis.com/UWYHeuuJISiGmgXx/arcgis/rest/services"
         "/311_Customer_Service_Requests_2023/FeatureServer/0"

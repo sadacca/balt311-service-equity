@@ -88,7 +88,7 @@ def _trend_fig(trend_df: pd.DataFrame, dimension: str) -> go.Figure:
         height=280,
         margin={"t": 8, "b": 8, "l": 55, "r": 8},
         yaxis=dict(
-            title="IQR overlap",
+            title="10–90% overlap",
             range=[0, 1],
             tickformat=".0%",
             gridcolor="#eeeeee",
@@ -115,7 +115,7 @@ def render_equity_trend(
 
     st.subheader("Equity Trend — Year over Year")
     st.caption(
-        "IQR overlap score per metric across years. "
+        "10–90% overlap score per metric across years. "
         "Higher = more similar outcomes between groups (less disparity). "
         "Bands: green >60% · amber 30–60% · red <30%."
     )

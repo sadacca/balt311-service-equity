@@ -299,6 +299,11 @@ def stage_process(year: int, is_live: bool) -> None:
     df_raw = pd.read_parquet(raw_path)
     log(f"Loaded {len(df_raw):,} rows from {raw_path.name}")
 
+    # Historical Yearly service stores Lat/Lon as strings; coerce to numeric.
+    for _col in ("Latitude", "Longitude"):
+        if _col in df_raw.columns and df_raw[_col].dtype == object:
+            df_raw[_col] = pd.to_numeric(df_raw[_col], errors="coerce")
+
     if df_raw.empty:
         log(f"No records to process for {year} — skipping. Re-run ingest when data is available.")
         return
