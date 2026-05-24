@@ -64,9 +64,9 @@ def _trend_fig(trend_df: pd.DataFrame, dimension: str) -> go.Figure:
     fig = go.Figure()
 
     # Threshold bands (drawn first, below the lines)
-    fig.add_hrect(y0=0.85, y1=1.0, fillcolor="green",  opacity=0.06, line_width=0)
-    fig.add_hrect(y0=0.65, y1=0.85, fillcolor="orange", opacity=0.06, line_width=0)
-    fig.add_hrect(y0=0.0,  y1=0.65, fillcolor="red",    opacity=0.06, line_width=0)
+    fig.add_hrect(y0=0.7, y1=1.0, fillcolor="green",  opacity=0.06, line_width=0)
+    fig.add_hrect(y0=0.4, y1=0.7, fillcolor="orange", opacity=0.06, line_width=0)
+    fig.add_hrect(y0=0.0, y1=0.4, fillcolor="red",    opacity=0.06, line_width=0)
 
     dim_df = trend_df[trend_df["dimension"] == dimension]
     for label in METRIC_OPTIONS:
@@ -88,7 +88,7 @@ def _trend_fig(trend_df: pd.DataFrame, dimension: str) -> go.Figure:
         height=280,
         margin={"t": 8, "b": 8, "l": 55, "r": 8},
         yaxis=dict(
-            title="Median ratio",
+            title="Equity score",
             range=[0, 1],
             tickformat=".0%",
             gridcolor="#eeeeee",
@@ -115,9 +115,9 @@ def render_equity_trend(
 
     st.subheader("Equity Trend — Year over Year")
     st.caption(
-        "Median ratio per metric across years: worse-off group median ÷ better-off group median. "
-        "Higher = smaller gap between groups. "
-        "Bands: green >85% · amber 65–85% · red <65%."
+        "Equity score per metric across years: how often outcomes interleave between groups. "
+        "Higher = more equal. "
+        "Bands: green >70% · amber 40–70% · red <40%."
     )
 
     trend_df = _compute_trend(data_dir, demographics, geo_key)
