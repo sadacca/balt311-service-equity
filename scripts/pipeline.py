@@ -402,6 +402,82 @@ def stage_process(year: int, is_live: bool) -> None:
     log(f"Process stages complete — total elapsed: {time.time()-t0:.0f}s")
 
 
+def stage_srtype(year: int) -> None:
+    """Stage srtype: per-SRType aggregate metrics across ALL requests for a given year.
+
+    Reads data/interim/requests_{year}_clean.parquet (produced by stage_process).
+    Does NOT filter to the equity subset — uses every row regardless of source or
+    geocoding status so the counts reflect true service-type volume.
+    """
+    for d in (RAW_DIR, INTERIM, PROC):
+        d.mkdir(parents=True, exist_ok=True)
+
+    log(f"=== Stage srtype: SRType aggregate {year} ===")
+
+    interim_path = INTERIM / f"requests_{year}_clean.parquet"
+    if not interim_path.exists():
+        raise FileNotFoundError(
+            f"{interim_path} not found. Run --stage process first."
+        )
+    df = pd.read_parquet(interim_path)
+    log(f"Loaded {len(df):,} rows from {interim_path.name}")
+
+    # ── closed mask (case-insensitive, whitespace-tolerant) ─────────────────
+    closed_mask = df["SRStatus"].str.strip().str.lower() == "closed"
+
+    agg = (
+        df.groupby("SRType")
+        .agg(
+            total_requests=("SRRecordID", "count"),
+            closed_requests=("SRStatus", lambda s: (s.str.strip().str.lower() == "closed").sum()),
+        )
+        .reset_index()
+    )
+    agg["closure_rate"] = agg["closed_requests"] / agg["total_requests"].replace(0, float("nan"))
+
+    # ── median_days_to_close (drop NaN before aggregating) ──────────────────
+    if "days_to_close" in df.columns:
+        dtc = (
+            df.dropna(subset=["days_to_close"])
+            .groupby("SRType")["days_to_close"]
+            .median()
+            .reset_index(name="median_days_to_close")
+        )
+        agg = agg.merge(dtc, on="SRType", how="left")
+    else:
+        log("  WARNING: days_to_close column absent — median_days_to_close will be omitted")
+        agg["median_days_to_close"] = float("nan")
+
+    # ── on_time_rate (drop NaN before aggregating) ───────────────────────────
+    if "is_on_time" in df.columns:
+        otr = (
+            df.dropna(subset=["is_on_time"])
+            .groupby("SRType")["is_on_time"]
+            .mean()
+            .reset_index(name="on_time_rate")
+        )
+        agg = agg.merge(otr, on="SRType", how="left")
+    else:
+        log("  WARNING: is_on_time column absent — on_time_rate will be omitted")
+        agg["on_time_rate"] = float("nan")
+
+    # ── pct_resident_initiated ───────────────────────────────────────────────
+    if "is_resident" in df.columns:
+        res = (
+            df.groupby("SRType")["is_resident"]
+            .mean()
+            .reset_index(name="pct_resident_initiated")
+        )
+        agg = agg.merge(res, on="SRType", how="left")
+    else:
+        log("  WARNING: is_resident column absent — pct_resident_initiated will be omitted")
+        agg["pct_resident_initiated"] = float("nan")
+
+    out_path = PROC / f"srtype_metrics_{year}.parquet"
+    agg.to_parquet(out_path, index=False)
+    log(f"Saved SRType metrics ({len(agg)} types) → {out_path.name}")
+
+
 def stage_demographics() -> None:
     """Fetch ACS race and income demographics and commit-ready CSVs to data/processed/.
 
@@ -441,11 +517,12 @@ if __name__ == "__main__":
     parser.add_argument("--year", type=int, help="Year to process (not required for --stage demographics)")
     parser.add_argument(
         "--stage",
-        choices=["ingest", "process", "demographics", "all"],
+        choices=["ingest", "process", "demographics", "srtype", "all"],
         default="all",
         help=(
             "ingest=Stage 1 only; process=Stages 2+3 only; "
             "demographics=fetch ACS race+income CSVs (year-independent); "
+            "srtype=per-SRType aggregate metrics (requires process output); "
             "all=full pipeline (default)"
         ),
     )
@@ -460,11 +537,13 @@ if __name__ == "__main__":
         stage_demographics()
     else:
         if not args.year:
-            parser.error("--year is required for stages: ingest, process, all")
+            parser.error("--year is required for stages: ingest, process, srtype, all")
         if args.stage == "ingest":
             stage_ingest(args.year)
         elif args.stage == "process":
             stage_process(args.year, args.live)
+        elif args.stage == "srtype":
+            stage_srtype(args.year)
         else:
             stage_ingest(args.year)
             stage_process(args.year, args.live)
