@@ -167,6 +167,7 @@ def _fetch_tract_demographics(dest: Path) -> bool:
     if not api_key:
         log("  NOTE: CENSUS_API_KEY not set — demographics request may be rate-limited")
     log("Downloading ACS 2023 5-year race and income data (Baltimore City tracts) ...")
+    raw = ""
     for attempt in range(1, 5):
         try:
             req = urllib.request.Request(url, headers={"Accept": "application/json"})
@@ -183,11 +184,10 @@ def _fetch_tract_demographics(dest: Path) -> bool:
             if attempt < 4:
                 time.sleep(2 ** attempt)
                 continue
-            log("  WARNING: demographics download failed — equity charts will be unavailable")
             return False
         except Exception as exc:
             if attempt == 4:
-                log(f"  WARNING: demographics download failed ({exc}) — equity charts will be unavailable")
+                log(f"  Demographics download failed after {attempt} attempts: {exc}")
                 return False
             wait = 2 ** attempt
             log(f"  Attempt {attempt} failed ({exc}); retrying in {wait}s")
@@ -394,33 +394,55 @@ def stage_process(year: int, is_live: bool) -> None:
     shutil.copy(csa_geo, PROC / "csa_boundaries.geojson")
     log("Copied CSA boundaries → processed/csa_boundaries.geojson")
 
-    # ── Demographic reference files (year-independent; only generated once) ───
-    tract_demo_path = PROC / "tract_demographics.csv"
-    csa_demo_path   = PROC / "csa_demographics.csv"
-    if not tract_demo_path.exists():
-        ok = _fetch_tract_demographics(tract_demo_path)
-        if ok and not csa_demo_path.exists():
-            tract_demo = pd.read_csv(tract_demo_path, dtype={"geoid": str})
-            csa_demo = rollup_demographics_to_csa(tract_demo, xwalk)
-            csa_demo.to_csv(csa_demo_path, index=False)
-            log(f"  CSA demographics: {len(csa_demo)} CSAs → {csa_demo_path.name}")
-    elif not csa_demo_path.exists():
-        tract_demo = pd.read_csv(tract_demo_path, dtype={"geoid": str})
-        csa_demo = rollup_demographics_to_csa(tract_demo, xwalk)
-        csa_demo.to_csv(csa_demo_path, index=False)
-        log(f"  CSA demographics: {len(csa_demo)} CSAs → {csa_demo_path.name}")
-
     log(f"Process stages complete — total elapsed: {time.time()-t0:.0f}s")
+
+
+def stage_demographics() -> None:
+    """Fetch ACS race and income demographics and commit-ready CSVs to data/processed/.
+
+    Year-independent: only needs to be run once. Files are reused across all
+    pipeline years. Fails loudly if the Census API is unavailable — check that
+    CENSUS_API_KEY is set in the environment.
+    """
+    for d in (RAW_DIR, INTERIM, PROC):
+        d.mkdir(parents=True, exist_ok=True)
+
+    from balt311.metrics import rollup_demographics_to_csa
+
+    log("=== Stage: Demographics ===")
+
+    crosswalk_path = RAW_DIR / "tract_to_csa.csv"
+    if not crosswalk_path.exists():
+        _fetch_csa_crosswalk(crosswalk_path)
+
+    tract_demo_path = PROC / "tract_demographics.csv"
+    ok = _fetch_tract_demographics(tract_demo_path)
+    if not ok:
+        raise RuntimeError(
+            "Demographics download failed — check CENSUS_API_KEY and Census API availability."
+        )
+
+    xwalk = pd.read_csv(crosswalk_path, dtype=str)
+    tract_demo = pd.read_csv(tract_demo_path, dtype={"geoid": str})
+    csa_demo = rollup_demographics_to_csa(tract_demo, xwalk)
+    csa_demo_path = PROC / "csa_demographics.csv"
+    csa_demo.to_csv(csa_demo_path, index=False)
+    log(f"  CSA demographics: {len(csa_demo)} CSAs → {csa_demo_path.name}")
+    log("Demographics stage complete.")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Baltimore 311 equity pipeline")
-    parser.add_argument("--year", type=int, required=True, help="Year to process")
+    parser.add_argument("--year", type=int, help="Year to process (not required for --stage demographics)")
     parser.add_argument(
         "--stage",
-        choices=["ingest", "process", "all"],
+        choices=["ingest", "process", "demographics", "all"],
         default="all",
-        help="ingest=Stage 1 only; process=Stages 2+3 only; all=full pipeline (default)",
+        help=(
+            "ingest=Stage 1 only; process=Stages 2+3 only; "
+            "demographics=fetch ACS race+income CSVs (year-independent); "
+            "all=full pipeline (default)"
+        ),
     )
     parser.add_argument(
         "--live",
@@ -429,10 +451,15 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    if args.stage == "ingest":
-        stage_ingest(args.year)
-    elif args.stage == "process":
-        stage_process(args.year, args.live)
+    if args.stage == "demographics":
+        stage_demographics()
     else:
-        stage_ingest(args.year)
-        stage_process(args.year, args.live)
+        if not args.year:
+            parser.error("--year is required for stages: ingest, process, all")
+        if args.stage == "ingest":
+            stage_ingest(args.year)
+        elif args.stage == "process":
+            stage_process(args.year, args.live)
+        else:
+            stage_ingest(args.year)
+            stage_process(args.year, args.live)
