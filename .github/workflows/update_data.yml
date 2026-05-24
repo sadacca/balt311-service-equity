@@ -9,9 +9,11 @@ on:
         default: "2025"
         type: choice
         options:
-          - "2023"
-          - "2024"
           - "2025"
+          - "2024"
+          - "2023"
+          - "2022"
+          - "2021"
           - "2026"
       is_live_year:
         description: "Live current-year file? (applies 30-day right-censoring)"
