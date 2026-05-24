@@ -137,6 +137,56 @@ def aggregate_tract(df: pd.DataFrame, geo_col: str = "tract_geoid") -> pd.DataFr
     return out.rename(columns={geo_col: "geoid"})
 
 
+def rollup_demographics_to_csa(
+    tract_demo_df: pd.DataFrame,
+    xwalk_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Aggregate tract-level ACS race and income demographics to CSA level.
+
+    Race percentages are recomputed from raw population counts (accurate).
+    Median income is a population-weighted mean of tract medians (approximation).
+    Output columns: geoid (csa_name), pct_black, pct_white, median_income.
+    """
+    merged = tract_demo_df.merge(
+        xwalk_df[["geoid", "csa_name"]], on="geoid", how="left"
+    )
+    merged = merged[merged["csa_name"].notna()].copy()
+
+    # Race: sum raw counts then recompute percentages for accuracy
+    race_sums = (
+        merged.groupby("csa_name")
+        .agg(
+            total_race_pop=("total_race_pop", "sum"),
+            black_pop=("black_pop", "sum"),
+            white_pop=("white_pop", "sum"),
+        )
+        .reset_index()
+    )
+    denom = race_sums["total_race_pop"].replace(0, float("nan"))
+    race_sums["pct_black"] = race_sums["black_pop"] / denom
+    race_sums["pct_white"] = race_sums["white_pop"] / denom
+
+    # Income: population-weighted mean of tract medians
+    inc_valid = merged.dropna(subset=["median_income", "total_race_pop"])
+    if not inc_valid.empty:
+        income_wtd = (
+            inc_valid.groupby("csa_name")
+            .apply(
+                lambda g: np.average(g["median_income"], weights=g["total_race_pop"]),
+                include_groups=False,
+            )
+            .reset_index(name="median_income")
+        )
+        result = race_sums.merge(income_wtd, on="csa_name", how="left")
+    else:
+        result = race_sums
+        result["median_income"] = float("nan")
+
+    return result[["csa_name", "pct_black", "pct_white", "median_income"]].rename(
+        columns={"csa_name": "geoid"}
+    )
+
+
 def rollup_to_csa(
     tract_df: pd.DataFrame,
     tract_to_csa: pd.DataFrame,
