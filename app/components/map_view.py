@@ -45,9 +45,18 @@ def build_choropleth(
         hover_data={geo_id_col: True, metric_col: ":.1f"},
     )
     fig.update_layout(
-        margin={"r": 0, "t": 0, "l": 0, "b": 0},
+        margin={"r": 0, "t": 0, "l": 0, "b": 55},
         height=580,
-        coloraxis_colorbar=dict(title=metric_label, thickness=14),
+        coloraxis_colorbar=dict(
+            orientation="h",
+            x=0.5,
+            xanchor="center",
+            y=-0.04,
+            yanchor="top",
+            thickness=12,
+            len=0.85,
+            title=dict(text=metric_label, side="top"),
+        ),
         mapbox_accesstoken=mapbox_token,
     )
     return fig
