@@ -60,7 +60,7 @@ def _compute_trend(
     return pd.DataFrame(records)
 
 
-def _trend_fig(trend_df: pd.DataFrame, dimension: str) -> go.Figure:
+def _trend_fig(trend_df: pd.DataFrame, dimension: str, metric_label: str) -> go.Figure:
     fig = go.Figure()
 
     # Threshold bands (drawn first, below the lines)
@@ -68,25 +68,27 @@ def _trend_fig(trend_df: pd.DataFrame, dimension: str) -> go.Figure:
     fig.add_hrect(y0=0.4, y1=0.7, fillcolor="orange", opacity=0.06, line_width=0)
     fig.add_hrect(y0=0.0, y1=0.4, fillcolor="red",    opacity=0.06, line_width=0)
 
-    dim_df = trend_df[trend_df["dimension"] == dimension]
-    for label in METRIC_OPTIONS:
-        sub = dim_df[dim_df["metric"] == label].dropna(subset=["score"]).sort_values("year")
-        if sub.empty:
-            continue
-        color = _METRIC_COLORS.get(label, "#666666")
+    sub = (
+        trend_df[(trend_df["dimension"] == dimension) & (trend_df["metric"] == metric_label)]
+        .dropna(subset=["score"])
+        .sort_values("year")
+    )
+    if not sub.empty:
+        color = _METRIC_COLORS.get(metric_label, "#666666")
         fig.add_trace(go.Scatter(
             x=sub["year"],
             y=sub["score"],
             mode="lines+markers",
-            name=label,
+            name=metric_label,
             line=dict(color=color, width=2),
             marker=dict(size=8, color=color),
-            hovertemplate="%{x}: %{y:.0%}<extra>" + label + "</extra>",
+            hovertemplate="%{x}: %{y:.0%}<extra>" + metric_label + "</extra>",
         ))
 
     fig.update_layout(
-        height=280,
+        height=260,
         margin={"t": 8, "b": 8, "l": 55, "r": 8},
+        showlegend=False,
         yaxis=dict(
             title="Equity score",
             range=[0, 1],
@@ -94,10 +96,6 @@ def _trend_fig(trend_df: pd.DataFrame, dimension: str) -> go.Figure:
             gridcolor="#eeeeee",
         ),
         xaxis=dict(title="Year", dtick=1),
-        legend=dict(
-            orientation="h", yanchor="bottom", y=1.01,
-            xanchor="right", x=1, font_size=11,
-        ),
         plot_bgcolor="white",
         paper_bgcolor="white",
     )
@@ -108,6 +106,7 @@ def render_equity_trend(
     data_dir: Path,
     demographics: pd.DataFrame,
     geo_key: str,
+    metric_label: str,
 ) -> None:
     year_files = list(data_dir.glob(f"{geo_key}_metrics_*.parquet"))
     if len(year_files) < 2:
@@ -115,7 +114,7 @@ def render_equity_trend(
 
     st.subheader("Equity Trend — Year over Year")
     st.caption(
-        "Equity score per metric across years: how often outcomes interleave between groups. "
+        f"**{metric_label}** equity score across years: how often outcomes interleave between groups. "
         "Higher = more equal. "
         "Bands: green >70% · amber 40–70% · red <40%."
     )
@@ -128,7 +127,7 @@ def render_equity_trend(
     col_race, col_income = st.columns(2)
     with col_race:
         st.markdown("**Race-based disparity**")
-        st.plotly_chart(_trend_fig(trend_df, "Race"), use_container_width=True, key="trend_race")
+        st.plotly_chart(_trend_fig(trend_df, "Race", metric_label), use_container_width=True, key="trend_race")
     with col_income:
         st.markdown("**Income-based disparity**")
-        st.plotly_chart(_trend_fig(trend_df, "Income"), use_container_width=True, key="trend_income")
+        st.plotly_chart(_trend_fig(trend_df, "Income", metric_label), use_container_width=True, key="trend_income")
