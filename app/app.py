@@ -8,6 +8,8 @@ import streamlit as st
 # Make src/ importable when running from repo root
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from components.equity_distributions import render_equity_distributions
+from components.equity_trend import render_equity_trend
 from components.map_view import METRIC_OPTIONS, build_choropleth
 from components.summary_panel import render as render_summary
 
@@ -63,11 +65,20 @@ def load_geojson(path: Path) -> dict:
         return json.load(f)
 
 
+@st.cache_data
+def load_demographics(path: Path) -> pd.DataFrame | None:
+    if not path.exists():
+        return None
+    return pd.read_csv(path, dtype={"geoid": str})
+
+
 if data_ready:
     df = load_metrics(parquet_path)
     geojson = load_geojson(geojson_path)
 else:
     df, geojson = None, None
+
+demographics = load_demographics(DATA_DIR / f"{geo_key}_demographics.csv")
 
 # SRType filter (only when data is loaded)
 if data_ready and "top_sr_type" in df.columns:
@@ -160,3 +171,17 @@ if "closure_rate" in df.columns:
     c3.metric("Citywide closure rate", f"{df['closure_rate'].mean():.1%}")
 if "total_requests" in df.columns:
     c4.metric("Total requests", f"{df['total_requests'].sum():,.0f}")
+
+# ── Demographic equity summaries ──────────────────────────────────────────────
+if demographics is not None:
+    st.divider()
+    render_equity_distributions(df, demographics, metric_col, metric_label)
+    st.divider()
+    render_equity_trend(DATA_DIR, demographics, geo_key)
+else:
+    st.divider()
+    st.caption(
+        "Demographic equity charts unavailable — "
+        f"`{geo_key}_demographics.csv` not found in `data/processed/`. "
+        "Re-run the pipeline to generate it."
+    )

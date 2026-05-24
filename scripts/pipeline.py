@@ -52,6 +52,14 @@ ACS_POPULATION_URL = (
     "?get=B01003_001E&for=tract:*&in=state:24%20county:510"
 )
 
+# ACS 2023 5-year race (B02001) and median household income (B19013) — same geography.
+# B02001_001E: total, B02001_002E: White alone, B02001_003E: Black or African American alone.
+# B19013_001E: median household income (-666666666 = no data sentinel).
+ACS_DEMOGRAPHICS_URL = (
+    "https://api.census.gov/data/2023/acs/acs5"
+    "?get=B02001_001E,B02001_002E,B02001_003E,B19013_001E&for=tract:*&in=state:24%20county:510"
+)
+
 # BNIA VitalSigns 2020 census-tract → CSA crosswalk.
 # Columns: TRACT20, GEOID20 (11-digit), CSA2020.
 # Rows with empty GEOID20 are summary totals — filtered on load.
@@ -148,6 +156,66 @@ def _fetch_baltimore_population(dest: Path) -> bool:
     return True
 
 
+def _fetch_tract_demographics(dest: Path) -> bool:
+    """Download ACS 2023 5-year race and median income for Baltimore City census tracts.
+
+    Saves geoid, pct_black, pct_white, median_income, and raw population counts needed
+    for accurate CSA-level rollup. Returns True on success, False on soft failure.
+    """
+    api_key = os.environ.get("CENSUS_API_KEY", "").strip()
+    url = ACS_DEMOGRAPHICS_URL + (f"&key={api_key}" if api_key else "")
+    if not api_key:
+        log("  NOTE: CENSUS_API_KEY not set — demographics request may be rate-limited")
+    log("Downloading ACS 2023 5-year race and income data (Baltimore City tracts) ...")
+    for attempt in range(1, 5):
+        try:
+            req = urllib.request.Request(url, headers={"Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                if resp.status != 200:
+                    raise ValueError(f"HTTP {resp.status}")
+                raw = resp.read().decode("utf-8").strip()
+            if not raw:
+                raise ValueError("Empty response body")
+            rows = json.loads(raw)
+            break
+        except json.JSONDecodeError:
+            log(f"  Census API returned non-JSON (first 200 chars): {raw[:200]!r}")
+            if attempt < 4:
+                time.sleep(2 ** attempt)
+                continue
+            log("  WARNING: demographics download failed — equity charts will be unavailable")
+            return False
+        except Exception as exc:
+            if attempt == 4:
+                log(f"  WARNING: demographics download failed ({exc}) — equity charts will be unavailable")
+                return False
+            wait = 2 ** attempt
+            log(f"  Attempt {attempt} failed ({exc}); retrying in {wait}s")
+            time.sleep(wait)
+
+    headers, data = rows[0], rows[1:]
+    df = pd.DataFrame(data, columns=headers)
+    df["geoid"] = df["state"] + df["county"] + df["tract"]
+    for col in ["B02001_001E", "B02001_002E", "B02001_003E", "B19013_001E"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    # ACS uses -666666666 as the null sentinel for suppressed income estimates
+    df.loc[df["B19013_001E"] < 0, "B19013_001E"] = float("nan")
+
+    total = df["B02001_001E"].replace(0, float("nan"))
+    df["pct_black"] = df["B02001_003E"] / total
+    df["pct_white"] = df["B02001_002E"] / total
+    df["median_income"] = df["B19013_001E"]
+    df["total_race_pop"] = df["B02001_001E"]
+    df["black_pop"] = df["B02001_003E"]
+    df["white_pop"] = df["B02001_002E"]
+
+    out_cols = ["geoid", "pct_black", "pct_white", "median_income",
+                "total_race_pop", "black_pop", "white_pop"]
+    df[out_cols].to_csv(dest, index=False)
+    log(f"  {len(df)} tracts → {dest.name}")
+    return True
+
+
 def _fetch_csa_crosswalk(dest: Path) -> None:
     """Download BNIA 2020 tract→CSA crosswalk and save as geoid,csa_name CSV."""
     log("Downloading BNIA VitalSigns 2020 tract→CSA crosswalk ...")
@@ -210,6 +278,7 @@ def stage_process(year: int, is_live: bool) -> None:
         filter_equity_subset,
         flag_request_source,
         parse_timestamps,
+        rollup_demographics_to_csa,
         rollup_to_csa,
     )
 
@@ -324,6 +393,22 @@ def stage_process(year: int, is_live: bool) -> None:
 
     shutil.copy(csa_geo, PROC / "csa_boundaries.geojson")
     log("Copied CSA boundaries → processed/csa_boundaries.geojson")
+
+    # ── Demographic reference files (year-independent; only generated once) ───
+    tract_demo_path = PROC / "tract_demographics.csv"
+    csa_demo_path   = PROC / "csa_demographics.csv"
+    if not tract_demo_path.exists():
+        ok = _fetch_tract_demographics(tract_demo_path)
+        if ok and not csa_demo_path.exists():
+            tract_demo = pd.read_csv(tract_demo_path, dtype={"geoid": str})
+            csa_demo = rollup_demographics_to_csa(tract_demo, xwalk)
+            csa_demo.to_csv(csa_demo_path, index=False)
+            log(f"  CSA demographics: {len(csa_demo)} CSAs → {csa_demo_path.name}")
+    elif not csa_demo_path.exists():
+        tract_demo = pd.read_csv(tract_demo_path, dtype={"geoid": str})
+        csa_demo = rollup_demographics_to_csa(tract_demo, xwalk)
+        csa_demo.to_csv(csa_demo_path, index=False)
+        log(f"  CSA demographics: {len(csa_demo)} CSAs → {csa_demo_path.name}")
 
     log(f"Process stages complete — total elapsed: {time.time()-t0:.0f}s")
 

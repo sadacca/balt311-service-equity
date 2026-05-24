@@ -35,7 +35,7 @@ Ordered by dependency. Complete data investigation tasks before building on thei
 
 - [x] **P1-4: Commit `data/processed/`** — 2024 and 2025 tract/CSA metrics + boundaries committed. Total size within GitHub limits.
 
-- [ ] **P1-5: Ingest and process 2023** — endpoint now fixed; trigger workflow for year=2023 to generate `tract_metrics_2023.parquet` and `csa_metrics_2023.parquet`.
+- [x] **P1-5: Ingest and process 2023** — endpoint fixed; 2023 data confirmed processed and available.
 
 - [ ] **P1-6: Re-run 2025 pipeline with Census API key** — 2025 was processed before Census API key was configured; `requests_per_1k` likely missing. Trigger fresh workflow run for year=2025.
 
@@ -57,9 +57,9 @@ Ordered by dependency. Complete data investigation tasks before building on thei
 
 ---
 
-## Phase 2b — Demographic Equity Summaries *(next up)*
+## Phase 2b — Demographic Equity Summaries + Multi-Year Foundation *(in progress)*
 
-Goal: add race and income context below the map — distribution comparisons for the selected metric across demographic groups, with an overlap score and plain-language label.
+Goal: add race and income context below the map — distribution comparisons for the selected metric across demographic groups, with an overlap score and plain-language label. Multi-year data (2023–2025) enables the year-over-year overlap trend chart, moved here from Phase 3 because the data is now ready.
 
 ### Data pipeline
 
@@ -118,16 +118,23 @@ Goal: add race and income context below the map — distribution comparisons for
   - Pass current `metric_col` and `metric_label` — section updates automatically on metric filter change
   - Show both race and income charts side by side (two columns)
 
+- [ ] **P2b-6: Equity trend chart — year-over-year overlap scores** *(moved from P3-1; 2023/2024/2025 data ready)*
+  - New component `app/components/equity_trend.py`
+  - Shared `overlap_score()` utility in `app/components/utils.py` (used by both P2b-4 and P2b-6)
+  - Line chart: x=year, y=overlap score, one line per equity metric; one chart for race, one for income
+  - Reference bands: green >0.6, amber 0.3–0.6, red <0.3
+  - Shows whether disparity is improving, stable, or worsening year over year
+
 ---
 
-## Phase 3 — Equity Trend and Detail Views *(next phase priorities)*
+## Phase 3 — Detail Views and Analysis *(next phase priorities)*
 
-- [ ] **P3-1: Time series of overlap scores**
-  - Requires demographic CSVs and processed metrics for ≥ 2 years (2024 + 2025 available; 2023 pending P1-5)
-  - New component `app/components/equity_trend.py`
-  - Line chart: x=year, y=overlap score, one line per equity metric; one chart for race, one for income
-  - Shows whether disparity is improving, stable, or worsening year over year
-  - Prerequisite: P2b-4 overlap score logic extracted into a shared utility function so trend and distribution components share the same calculation
+- [ ] **P3-1: Detail scatter toggle** *(formerly P3-2)*
+  - Below the IQR summary charts: toggle button "Show individual geographies"
+  - Scatter: x = race % (pct_black) or median income, y = selected equity metric
+  - Color = same diverging scale as map; hover shows geography name + both axis values
+  - Regression line (OLS) with 95% CI band overlaid
+  - Separate scatter for race and income (two charts, matching the IQR layout)
 
 - [ ] **P3-2: Detail scatter toggle**
   - Below (or replacing) the IQR summary charts: toggle button "Show individual geographies"
