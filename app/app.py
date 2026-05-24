@@ -177,7 +177,7 @@ if demographics is not None:
     st.divider()
     render_equity_distributions(df, demographics, metric_col, metric_label)
     st.divider()
-    render_equity_trend(DATA_DIR, demographics, geo_key)
+    render_equity_trend(DATA_DIR, demographics, geo_key, metric_label)
 else:
     st.divider()
     st.caption(
