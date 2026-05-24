@@ -127,40 +127,51 @@ Goal: add race and income context below the map — distribution comparisons for
 
 ---
 
-## Phase 3 — Overall Service Delivery Assessment *(Release N+1, after dates + validation)*
+## Phase 3 — Operations Tab *(next release)*
 
-**Goal**: answer "how is Baltimore doing overall?" before asking "is it equitable?". This sets up two future capabilities: year-over-year performance tracking and eventual cross-metro comparison. All metrics must be normalized so they are interpretable in isolation and portable across cities and time.
+**Goal**: answer "how is Baltimore 311 doing overall?" before asking "is it equitable?". Restructures the app around two tabs — Operations (default) and Equity (existing content) — sharing the sidebar year/geo/metric selectors. Sets up year-over-year performance tracking and eventual cross-metro comparison.
 
-### Conceptual framing
-Raw metrics (e.g. median 8 days to close) are hard to interpret without context. This phase introduces a **performance scorecard** — normalized scores that express Baltimore's metrics relative to its own baseline (historical average) and, eventually, peer cities. A score of 0 = at baseline, positive = better than baseline, negative = worse.
+### Architecture
+
+- [ ] **P3-0: Tab restructure**
+  - Replace single-page layout with `st.tabs(["Operations", "Equity"])` in `app.py`
+  - Sidebar filters (year, geo level, metric, SRType) remain shared across both tabs
+  - All existing map + equity content moves into the Equity tab unchanged
+  - Operations tab is the default (first) tab
 
 ### Pipeline additions
 
 - [ ] **P3-1: Per-SRType aggregate table**
   - New pipeline output: `data/processed/srtype_metrics_{year}.parquet`
-  - One row per `(sr_type, year)`: total_requests, closed_requests, closure_rate, median_days_to_close, on_time_rate, pct_resident_initiated
+  - One row per `SRType`: total_requests, closed_requests, closure_rate, median_days_to_close, on_time_rate, pct_resident_initiated
   - Covers ALL requests (not filtered to equity subset) — this is the full service delivery picture
-  - `pct_resident_initiated`: fraction of requests that are Phone/API/Mail/Email for each type — characterizes each type's nature (high % = demand-driven; low % = proactive/staff-driven)
+  - `pct_resident_initiated`: fraction of requests that are Phone/API/Mail/Email — characterizes type nature (high % = demand-driven; low % = proactive/staff-driven)
   - Add `--stage srtype` to pipeline CLI; add step to Actions workflow
-
-- [ ] **P3-2: Normalized performance scores**
-  - For each metric, compute a z-score relative to the city's own multi-year baseline: `(value - mean_across_years) / std_across_years`
-  - Stored as additional columns in `srtype_metrics` and in `tract_metrics` / `csa_metrics`
-  - Design for portability: the normalization schema should be the same whether comparing 2023 vs. 2025 Baltimore or Baltimore vs. another city
-  - Document the normalization approach in a `docs/scoring_methodology.md` so it can be reproduced externally
 
 ### App additions
 
-- [ ] **P3-3: Service delivery overview panel**
-  - New page or collapsible section: "City Overview"
-  - **Request volume breakdown**: horizontal bar chart of total requests by SRType, sorted by volume, colored by `pct_resident_initiated` (distinguishes demand-driven vs. proactive service types)
-  - **Performance table**: sortable table of all SRTypes with columns: volume, closure rate, median days to close, on-time rate — gives analysts the full assembly in one view
-  - **City-level scorecard**: 4 headline KPIs (total requests, citywide closure rate, citywide median days to close, citywide on-time rate) with year-over-year delta vs. prior year
-  - All views filterable by year from the existing sidebar year selector
+- [ ] **P3-2: Headline KPI bar**
+  - 4 metrics: total requests · citywide closure rate · citywide median days to close · citywide on-time rate
+  - Each shows current year value + YoY delta badge (↑/↓ vs. prior year) when prior year parquet exists
+  - Derived by aggregating the existing `{geo_key}_metrics_{year}.parquet` — no new pipeline output needed
 
-- [ ] **P3-4: Detail scatter toggle** *(carried from prior plan)*
-  - Below IQR summary charts: toggle "Show individual geographies"
-  - Scatter: x = race % or median income, y = selected equity metric; regression line with 95% CI
+- [ ] **P3-3: City-level time series**
+  - Line chart below the KPI bar: x = year (all available years), y = citywide value of the **selected metric**
+  - Reacts to the sidebar metric selector — same metric shown in map and equity tab
+  - Citywide value per year: median of tract/CSA medians (consistent with how headline KPIs are computed)
+  - Plotted as a single line with markers; year range auto-expands as more historical data is added
+
+- [ ] **P3-4: SRType volume chart**
+  - Horizontal bar chart of total requests by SRType, sorted descending by volume
+  - Bars colored by `pct_resident_initiated` (continuous scale: gray = proactive/staff-driven → blue = fully resident-initiated)
+  - Contextualizes which types dominate volume and whether they are demand-driven or operational
+  - Data source: `srtype_metrics_{year}.parquet`
+
+- [ ] **P3-5: SRType performance table**
+  - Sortable `st.dataframe` of all SRTypes with columns: SRType · requests · closure rate · median days to close · on-time rate · % resident-initiated
+  - Default sort: total requests descending
+  - Formatted: rates as %, days as decimal; color-coded cells for closure rate and on-time rate (green/amber/red relative to citywide values)
+  - Data source: `srtype_metrics_{year}.parquet`
 
 ---
 
@@ -233,20 +244,16 @@ Two equity questions at different levels:
 |---|---|
 | Duplicate `SRRecordID`s across years? | Still pending — need cross-year dedup check |
 | 2025 `requests_per_1k` missing (Census API key not set at run time) | Fix via P1-6 re-run |
-| 2023 data in progress | Running via Actions |
-| 2022 ArcGIS endpoint returns 0 records | Annual FeatureServer naming appears to start at 2023; pre-2023 data likely on Socrata or a consolidated ArcGIS historical layer — see P4-5 |
+| 2016–2022 historical data | Fixed — switched to `311_Customer_Service_Requests_Yearly` FeatureServer (layer per year); runs validated |
 
 ---
 
 ## To-Do — Investigation Required
 
-- [ ] **TD-1: Locate pre-2023 historical 311 data**
-  - 2022 ArcGIS endpoint (`311_Customer_Service_Requests_2022/FeatureServer/0`) returns 0 records; annual FeatureServer naming likely started with 2023
-  - Two candidates to check on data.baltimorecity.gov:
-    1. **Socrata dataset** — city ran on Socrata before ArcGIS migration; search "311" for a multi-year table covering 2016+; note the 4x4 dataset ID (e.g. `9agw-sxsr`) and date range
-    2. **Consolidated ArcGIS historical layer** — may exist as `311_Customer_Service_Requests_Historical` or similar in the same ArcGIS organization (`UWYHeuuJISiGmgXx`)
-  - Once source is confirmed, add `fetch_year_socrata()` (or equivalent) to `src/balt311/ingest.py` routed by year; same downstream pipeline applies
-  - Target coverage: 2016–2022 (7 additional years substantially strengthens the trend chart)
+- [x] **TD-1: Locate pre-2023 historical 311 data**
+  - Resolved: `311_Customer_Service_Requests_Yearly/FeatureServer/{layer}` service confirmed, layer 0=2016 through 6=2022
+  - Schema compatible with annual service; Lat/Lon coercion added for string fields in historical layers
+  - 2016–2022 endpoints live in `ENDPOINTS` dict; workflow year choices updated to include all years
 
 - [ ] **TD-2: Manual validation of IQR overlap scores and demographic calculations**
   - Spot-check `overlap_score()` against hand-calculated values for at least two metric × year × geo-level combinations
