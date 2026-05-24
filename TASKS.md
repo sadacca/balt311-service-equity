@@ -4,132 +4,186 @@ Ordered by dependency. Complete data investigation tasks before building on thei
 
 ---
 
-## Phase 0 — Data Investigation (run locally, network required)
+## Phase 0 — Data Investigation
 
-- [x] **P0-1: Run `validate_2025_sample.ipynb`** — executed against `data/sample/sample_311_2025.json` (2000 records, 2025-12-31)
-  - **MethodReceived**: Phone 53%, System 27%, API 16%, Internal 3%, Mail 1%, Email <1%. Staff/proactive = System+Internal. Resident = Phone+API+Mail+Email. **Distinction is viable.**
-  - **Coordinate coverage**: 73% overall. After excluding ECC- prefix types: ~99%. Missing coords are intentional — ECC info/lookup requests have no physical address.
-  - **LastActivity reopen signal**: NONE. Only values are 'Service Response' (69%) and NULL (30%). **Reopen rate metric is not computable; dropped from spec.**
-  - **days_to_close**: Negatives are sub-second precision artifacts in same-day same-millisecond closures; floor to 0. No values > 365 days in sample. p50=0 driven by proactive types; p90=14d, p99=91d.
+- [x] **P0-1: Validate 2025 sample** — executed `validate_2025_sample.ipynb` against `data/sample/sample_311_2025.json`
+  - **MethodReceived**: Phone 53%, System 27%, API 16%, Internal 3%, Mail 1%, Email <1%. Resident = Phone+API+Mail+Email (~70%). Staff/proactive = System+Internal (~30%). **Distinction is viable.**
+  - **Coordinate coverage**: 73% overall; ~99% after excluding ECC- prefix types. ECC types intentionally have no address.
+  - **LastActivity reopen signal**: NONE — only 'Service Response' (69%) and NULL (30%). **Reopen metric not computable; dropped from spec.**
+  - **days_to_close**: Sub-second negatives are timestamp precision artifacts in same-day closures; floor to 0. p50=0 (driven by proactive types), p90=14d, p99=91d.
   - **SRStatus / CloseDate consistency**: Perfect — zero mismatches.
-  - **DueDate**: 100% populated. Standardized per SRType (pothole=1d, water leak=2d, vacant building=15d, SW cleaning=42d). ECC and proactive types have DueDate < CreatedDate (artifact) — exclude from on-time calculation.
-  - **On-time rate**: 53.2% overall; varies dramatically by type. Valid equity metric once ECC/proactive artifact types are excluded.
-  - **Agency**: Trailing whitespace in values — strip in pipeline.
-  - **Outcome**: Non-breaking space (U+00A0) in 'Work could not be\xa0completed' — normalize.
-  - **ECC types**: 27.6% of volume in sample (info requests, vehicle lookup, permit support). No coordinates, not service delivery — exclude from equity analysis subset.
-  - **Sample coverage note**: All 2000 records are from 2025-12-31 (DESC sort). Year-end may oversample proactive types. Distribution shapes confirmed; year-round representative sample not required for pipeline design.
+  - **DueDate**: 100% populated. Standardized per SRType. ECC and proactive types have DueDate < CreatedDate (artifact) — exclude from on-time calculation.
+  - **On-time rate**: 53.2% overall; varies dramatically by type. Valid equity metric after ECC/proactive exclusion.
+  - **Agency**: Trailing whitespace — strip in pipeline. **Outcome**: Non-breaking space U+00A0 — normalize.
+  - **ECC types**: 27.6% of volume. No coordinates, not service delivery — exclude from equity subset.
 
-- [ ] **P0-2: Run `01_ingest.ipynb` for 2024** — download full 2024 dataset to `data/raw/`
-  - Record total record count
-  - Confirm all fields from the validation notebook are present
+- [x] **P0-2 / P0-3: Ingest 2024 and 2025 data** — full datasets fetched via parallel ArcGIS FeatureServer pipeline. 2023 endpoint added (May 2026); 2026 endpoint confirmed present. All four years in `ENDPOINTS` dict.
 
-- [ ] **P0-3: Run `01_ingest.ipynb` for 2025** — download full 2025 dataset to `data/raw/`
-  - Note: 2025 FeatureServer may be the "current year / rolling" endpoint
+- [x] **P0-4: Census tract boundaries** — `baltimore_tracts.geojson` downloaded from Census GENZ2023 ZIP+SHP, filtered to FIPS 510 (Baltimore City). Committed to `data/processed/`.
 
-- [ ] **P0-4: Download census tract boundaries** — TIGER/Line for Baltimore City (FIPS 24510)
-  - Save to `data/raw/baltimore_tracts.geojson`
-  - One-time command in `02_clean.ipynb` → markdown cell 3
+- [x] **P0-5: CSA boundaries** — built by dissolving tract polygons by CSA name using BNIA VitalSigns crosswalk. `baltimore_csas.geojson` committed to `data/processed/`.
 
-- [ ] **P0-5: Download CSA boundaries** — from BNIA or Open Baltimore
-  - Save to `data/raw/baltimore_csas.geojson`
-  - See `geo_reference.md` for source URLs
-
-- [ ] **P0-6: Build tract→CSA crosswalk** — columns: `geoid, csa_name, population`
-  - Save to `data/raw/tract_to_csa.csv`
-  - BNIA provides the canonical mapping; ACS B01003 supplies tract populations
-  - See `geo_reference.md` for construction method
+- [x] **P0-6: Tract → CSA crosswalk** — `tract_to_csa.csv` downloaded from BNIA VitalSigns GitHub raw. Columns: geoid, csa_name. Committed to `data/processed/`.
 
 ---
 
-## Phase 1 — Pipeline (run locally after P0)
+## Phase 1 — Pipeline
 
-- [ ] **P1-1: Run `02_clean.ipynb` for 2024**
-  - Verify spatial join yield (expect ≥ 95% of geocoded records matched to a tract)
-  - Check `days_to_close` negatives and outliers
-  - Output: `data/interim/requests_2024_clean.parquet`
+- [x] **P1-1 / P1-2: Run clean + aggregate for 2024 and 2025** — headless pipeline `scripts/pipeline.py` built and working. GitHub Actions two-job workflow (ingest → process) committed.
 
-- [ ] **P1-2: Run `03_aggregate.ipynb` for 2024**
-  - Enable ACS merge (uncomment Census API cells; obtain free key)
-  - Verify `requests_per_1k` is computable for all tracts
-  - Output: `data/processed/tract_metrics_2024.parquet`, `csa_metrics_2024.parquet`
+- [x] **P1-3: Boundary GeoJSONs to `data/processed/`** — copied automatically by pipeline stage_process.
 
-- [ ] **P1-3: Copy boundary GeoJSONs to `data/processed/`**
-  - `data/processed/tract_boundaries.geojson`
-  - `data/processed/csa_boundaries.geojson`
-  - (Done automatically by last cell of `03_aggregate.ipynb`)
+- [x] **P1-4: Commit `data/processed/`** — 2024 and 2025 tract/CSA metrics + boundaries committed. Total size within GitHub limits.
 
-- [ ] **P1-4: Commit `data/processed/` files to the repo**
-  - These are the only data files checked in; raw and interim remain gitignored
-  - Verify files are under 50 MB total (GitHub limit per push is 100 MB)
+- [ ] **P1-5: Ingest and process 2023** — endpoint now fixed; trigger workflow for year=2023 to generate `tract_metrics_2023.parquet` and `csa_metrics_2023.parquet`.
+
+- [ ] **P1-6: Re-run 2025 pipeline with Census API key** — 2025 was processed before Census API key was configured; `requests_per_1k` likely missing. Trigger fresh workflow run for year=2025.
 
 ---
 
-## Phase 2 — App Development
+## Phase 2 — App MVP
 
-- [ ] **P2-1: Obtain Mapbox free-tier token**
-  - Create account at mapbox.com → Tokens page → copy default public token
-  - Create `.streamlit/secrets.toml` locally (gitignored) using the `.example` template
+- [x] **P2-1: Mapbox token** — obtained, stored in Streamlit Cloud Secrets. `.streamlit/secrets.toml.example` committed; actual token never in repo.
 
-- [ ] **P2-2: Install dependencies and run app locally**
-  - `pip install -r requirements.txt`
-  - `streamlit run app/app.py`
-  - Verify map renders with tract data, click-to-select works, filters update the map
+- [x] **P2-2: App deployed** — live at https://balt311equity.streamlit.app/. Year, geo level, SRType, metric selectors all working.
 
-- [ ] **P2-3: Validate SRType filter behavior**
-  - The current SRType filter uses `top_sr_type` (top type per tract) as a proxy
-  - Decide: filter on top type per tract, OR aggregate separately per (tract, SRType) pair
-  - If per-type aggregation is needed, add a `sr_type` column to the aggregate and
-    produce separate Parquet files per type, or a multi-index Parquet
+- [x] **P2-3: SRType filter** — current filter uses `top_sr_type` as a proxy. Behavior documented; per-type stratification moved to Phase 4 (P4-1).
 
-- [x] **P2-4: Reopen rate metric** — DROPPED. `LastActivity` confirmed to carry no reopen signal (only 'Service Response' and NULL). No status history table exists. Reopen metric is not computable from available data; removed from `aggregate_tract()`.
+- [x] **P2-4: On-time rate metric** — `is_on_time`, `due_date_gap_days` computed in `metrics.py`; `on_time_rate` in `aggregate_tract()` and `rollup_to_csa()`.
 
-- [ ] **P2-4b: Add on-time rate metric** (replaces reopen rate as secondary equity metric)
-  - `is_on_time` and `due_date_gap_days` already computed in `compute_due_date_gap()` in `metrics.py`
-  - `aggregate_tract()` already includes `on_time_rate` — verify it calculates correctly once pipeline runs
-  - Exclude types with negative DueDate gap (ECC-, some proactives) — already handled via `due_date_gap_days > 0` filter
+- [x] **P2-5: Color scale** — diverging RdBu_r centered on citywide median implemented in `map_view.py`.
 
-- [ ] **P2-5: Tune color scale and map aesthetics**
-  - Verify diverging `RdBu_r` scale looks good for closure rate (0–1) vs. days (0–N)
-  - Consider separate scales: percentage metrics use 0–1 midpoint; time metrics use citywide median
-
-- [ ] **P2-6: Deploy to Streamlit Community Cloud**
-  - Connect GitHub repo at share.streamlit.io
-  - Set `mapbox.token` in the app's Secrets manager
-  - Verify public URL loads correctly
+- [x] **P2-6: Streamlit Community Cloud deployment** — auto-redeploys on push to main.
 
 ---
 
-## Phase 3 — Analysis and Outputs
+## Phase 2b — Demographic Equity Summaries *(next up)*
 
-- [ ] **P3-1: Run equity analysis (from `requirements.md` Section 3.3)**
-  - Spearman correlation: `median_days_to_close` vs. CSA median household income
-  - Stratified by top 5 SRTypes
-  - Quartile comparison (ANOVA / Kruskal-Wallis on closure rate)
+Goal: add race and income context below the map — distribution comparisons for the selected metric across demographic groups, with an overlap score and plain-language label.
 
-- [ ] **P3-2: Regression (optional, medium effort)**
-  - OLS: `log(days_to_close)` ~ income + renter rate + SRType FE + month FE
-  - Add results summary to a notebook or Markdown doc
+### Data pipeline
 
-- [ ] **P3-3: Write executive summary**
-  - 1-page, key findings with inline map thumbnails
+- [ ] **P2b-1: Fetch tract-level race and income from ACS**
+  - New function `_fetch_tract_demographics(dest: Path)` in `scripts/pipeline.py`
+  - ACS 2023 5-year variables (same API call pattern as population, county=510):
+    - `B02001_001E` — total race population
+    - `B02001_002E` — White alone
+    - `B02001_003E` — Black or African American alone
+    - `B19013_001E` — median household income
+  - Compute `pct_black = B02001_003E / B02001_001E`, `pct_white = B02001_002E / B02001_001E`
+  - Output: `data/processed/tract_demographics.csv` — columns: geoid, pct_black, pct_white, median_income
+  - Soft-fail (log warning) if Census API unavailable; app handles missing file gracefully
+
+- [ ] **P2b-2: Roll up demographics to CSA level**
+  - New function `rollup_demographics_to_csa(tract_demo_df, xwalk_df, pop_df)` in `src/balt311/metrics.py`
+  - Race: population-weighted mean of tract pct_black / pct_white across tracts in each CSA
+  - Income: population-weighted mean of tract median_income as CSA approximation
+    (Note: BNIA Vital Signs publishes authoritative CSA income — integrate in Phase 4 if weighted mean proves insufficient)
+  - Output: `data/processed/csa_demographics.csv` — same columns as tract file
+  - Call from `stage_process()` in pipeline; commit both CSVs to repo
+
+- [ ] **P2b-3: Re-run pipeline to generate demographic files**
+  - Run for 2024 and 2025 (or run standalone `_fetch_tract_demographics` + `rollup_demographics_to_csa` once)
+  - Commit `tract_demographics.csv` and `csa_demographics.csv` to `data/processed/`
+
+### App component
+
+- [ ] **P2b-4: Create `app/components/equity_distributions.py`**
+
+  **Classification logic:**
+  - Race groups: Black-predominant (pct_black > 50%) vs. White-predominant (pct_white > 50%); drop mixed (neither >50%) from the race comparison
+  - Income groups: above-median vs. below-median of the tract/CSA income distribution
+
+  **Visualization** (Plotly, two side-by-side charts — race | income):
+  - For each group pair: shaded IQR band (25th–75th percentile) + horizontal median line + individual dot per geography (strip chart style)
+  - Color: consistent with map palette (red/blue); dots semi-transparent
+  - Axis: metric value (left) vs. group label (bottom)
+  - Title shows group sizes (n=X vs n=Y)
+
+  **Overlap scoring** (computed per chart):
+  ```
+  overlap = max(0, min(q75_A, q75_B) - max(q25_A, q25_B))
+  span    = max(q75_A, q75_B) - min(q25_A, q25_B)
+  score   = overlap / span   (0 = no overlap, 1 = full overlap)
+  ```
+  - score > 0.6 → "not bad" (green badge)
+  - score 0.3–0.6 → "could be better" (amber badge)
+  - score < 0.3 → "needs review" (red badge)
+
+  **Display per chart:** Plotly figure + score badge + one-sentence description of which group performs better and by how much (median difference)
+
+- [ ] **P2b-5: Wire into `app/app.py`**
+  - Load `{geo_key}_demographics.csv` from `data/processed/` (cached, soft-fail if absent)
+  - Add section below map divider: "Equity by Demographics"
+  - Pass current `metric_col` and `metric_label` — section updates automatically on metric filter change
+  - Show both race and income charts side by side (two columns)
+
+---
+
+## Phase 3 — Equity Trend and Detail Views *(next phase priorities)*
+
+- [ ] **P3-1: Time series of overlap scores**
+  - Requires demographic CSVs and processed metrics for ≥ 2 years (2024 + 2025 available; 2023 pending P1-5)
+  - New component `app/components/equity_trend.py`
+  - Line chart: x=year, y=overlap score, one line per equity metric; one chart for race, one for income
+  - Shows whether disparity is improving, stable, or worsening year over year
+  - Prerequisite: P2b-4 overlap score logic extracted into a shared utility function so trend and distribution components share the same calculation
+
+- [ ] **P3-2: Detail scatter toggle**
+  - Below (or replacing) the IQR summary charts: toggle button "Show individual geographies"
+  - Scatter: x = race % (pct_black) or median income, y = selected equity metric; each point = one tract/CSA
+  - Color = same diverging scale as map (above/below citywide median)
+  - Hover shows geography name + both axis values
+  - Regression line (OLS) overlaid with 95% CI band
+  - Separate scatter for race and income (two charts, matching the IQR layout)
+
+- [ ] **P3-3: Equity analysis notebook**
+  - `notebooks/04_equity_analysis.ipynb`
+  - Spearman rank correlation: each equity metric vs. pct_black and vs. median_income, at both tract and CSA level
+  - Quartile comparison (Kruskal-Wallis) for closure rate and days-to-close across income quartiles
+  - Top-5 SRType stratification: run same correlation for each major request type
+  - Findings table exported to `data/processed/equity_findings.csv` for potential app integration
+
+- [ ] **P3-4: Executive summary**
+  - 1-page `docs/executive_summary.md` (or PDF via nbconvert)
+  - Key findings with inline map thumbnail references
   - Audience: Mayor's Office, City Council, CDO
 
 ---
 
-## Pending Data Investigation Decisions
+## Phase 4 — SRType Stratification and Subsequent Priorities
 
-These questions from `requirements.md` Section 7 must be resolved before P1 or P2 tasks
-that depend on them can proceed.
+- [ ] **P4-1: Per-SRType tract aggregation**
+  - Current SRType sidebar filter uses `top_sr_type` per tract as a proxy — does not enable per-type equity analysis
+  - Pipeline change: add `by_srtype` aggregation in `aggregate_tract()` producing `(geoid, sr_type)` rows
+  - Output: `data/processed/tract_metrics_{year}_by_srtype.parquet` (multi-index or long format)
+  - App change: when an SRType is selected, load the by_srtype file and filter to that type; fall back to all-type aggregate when no filter is active
+  - Enables: "does 'Pothole' get resolved faster in wealthier neighborhoods than 'Bulk Trash'?"
 
-| Question | Depends on | Blocks |
-|---|---|---|
-| Does `MethodReceived` distinguish staff vs. resident? | P0-1 ✅ | **RESOLVED**: System+Internal = staff/proactive (~30%); Phone+API+Mail+Email = resident (~70%) |
-| Is there a reopen signal in `LastActivity`? | P0-1 ✅ | **RESOLVED**: No signal. LastActivity = 'Service Response' or NULL only. Reopen metric dropped. |
-| What is the `SRStatus` == "Closed" / `CloseDate` consistency? | P0-1 ✅ | **RESOLVED**: Perfect consistency, no mismatches. Closure rate = (SRStatus contains "Closed") / total. |
-| Does the 2025 file cover full year or rolling window? | P0-3 | **RESOLVED**: Full calendar year Jan 1–Dec 31. Confirmed by 2026 endpoint: oldest record is 2026-01-01 00:09:36 UTC — accumulates from Jan 1, no rolling cutoff. Apply same assumption to all annual files. |
-| Are there duplicate `SRRecordID`s across years? | P0-2, P0-3 | Still pending — need both years downloaded |
-| What percentage of records are geocodeable? | P0-1 ✅ | **RESOLVED**: 73% overall; ~99% for resident non-ECC types. ECC types intentionally have no address. |
+- [ ] **P4-2: BNIA Vital Signs direct integration for CSA demographics**
+  - Replace population-weighted rollup of tract ACS data with authoritative BNIA CSA indicators
+  - BNIA Vital Signs ArcGIS Hub provides CSA-level: `pct_nhblk` (% non-Hispanic Black), `pct_nhwht`, `mhhi` (median household income) — updated with each Vital Signs edition
+  - Fetch and cache as `data/processed/csa_demographics_bnia.csv`; compare against ACS rollup to validate
+
+- [ ] **P4-3: Year-over-year comparison panel**
+  - Side-by-side map or metric delta view for a selected geography across years
+  - Requires 2023 data (P1-5) to make a three-year comparison meaningful
+
+- [ ] **P4-4: Regression panel (optional)**
+  - OLS: `log(days_to_close)` ~ pct_black + median_income + SRType FE + month FE
+  - Displays income and race coefficients with 95% CI
+  - Defensible claim about whether disparity is income-driven, race-driven, or structural
 
 ---
 
-*Update this file as tasks are completed. Mark items `[x]` when done.*
+## Pending Items
+
+| Question / Gap | Status |
+|---|---|
+| Duplicate `SRRecordID`s across years? | Still pending — need cross-year dedup check |
+| 2025 `requests_per_1k` missing (Census API key not set at run time) | Fix via P1-6 re-run |
+| 2023 data never processed | Fix via P1-5 |
+
+---
+
+*Last updated: May 2026. Mark items `[x]` when done.*
