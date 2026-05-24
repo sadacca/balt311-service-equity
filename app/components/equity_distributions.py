@@ -61,7 +61,7 @@ def _comparison_fig(
         score = overlap_score(group_a, group_b)
         label, css_color = score_label(score)
 
-        st.markdown("**10–90% overlap**")
+        st.markdown("**Median ratio**")
         if not np.isnan(score):
             st.markdown(
                 f"<span style='font-size:1.6rem;font-weight:700;color:{css_color}'>"
@@ -95,7 +95,8 @@ def render_equity_distributions(
     st.subheader("Equity by Demographics")
     st.caption(
         f"Distributions of **{metric_label}** across demographic groups. "
-        "10–90% overlap score: >60% = not bad · 30–60% = could be better · <30% = needs review."
+        "Median ratio: worse-off group median ÷ better-off group median. "
+        ">85% = not bad · 65–85% = could be better · <65% = needs review."
     )
 
     merged = df.merge(demographics, on="geoid", how="left")
