@@ -129,15 +129,8 @@ Goal: add race and income context below the map — distribution comparisons for
 
 ## Phase 3 — Detail Views and Analysis *(next phase priorities)*
 
-- [ ] **P3-1: Detail scatter toggle** *(formerly P3-2)*
+- [ ] **P3-1: Detail scatter toggle**
   - Below the IQR summary charts: toggle button "Show individual geographies"
-  - Scatter: x = race % (pct_black) or median income, y = selected equity metric
-  - Color = same diverging scale as map; hover shows geography name + both axis values
-  - Regression line (OLS) with 95% CI band overlaid
-  - Separate scatter for race and income (two charts, matching the IQR layout)
-
-- [ ] **P3-2: Detail scatter toggle**
-  - Below (or replacing) the IQR summary charts: toggle button "Show individual geographies"
   - Scatter: x = race % (pct_black) or median income, y = selected equity metric; each point = one tract/CSA
   - Color = same diverging scale as map (above/below citywide median)
   - Hover shows geography name + both axis values
@@ -176,6 +169,13 @@ Goal: add race and income context below the map — distribution comparisons for
   - Side-by-side map or metric delta view for a selected geography across years
   - Requires 2023 data (P1-5) to make a three-year comparison meaningful
 
+- [ ] **P4-5: Historical data ingest (2016–2022)** *(blocked on TD-1)*
+  - Add `fetch_year_socrata()` or equivalent to `src/balt311/ingest.py` once pre-2023 source is confirmed
+  - Route `fetch_year()` by year: ArcGIS for 2023+, Socrata (or historical ArcGIS layer) for pre-2023
+  - Validate field name consistency between sources — Socrata exports often differ in column casing/naming
+  - Run pipeline for each year 2016–2022; commit processed files
+  - Payoff: 9-year trend chart (2016–2025) gives a statistically meaningful equity trajectory
+
 - [ ] **P4-4: Regression panel (optional)**
   - OLS: `log(days_to_close)` ~ pct_black + median_income + SRType FE + month FE
   - Displays income and race coefficients with 95% CI
@@ -189,7 +189,28 @@ Goal: add race and income context below the map — distribution comparisons for
 |---|---|
 | Duplicate `SRRecordID`s across years? | Still pending — need cross-year dedup check |
 | 2025 `requests_per_1k` missing (Census API key not set at run time) | Fix via P1-6 re-run |
-| 2023 data never processed | Fix via P1-5 |
+| 2023 data in progress | Running via Actions |
+| 2022 ArcGIS endpoint returns 0 records | Annual FeatureServer naming appears to start at 2023; pre-2023 data likely on Socrata or a consolidated ArcGIS historical layer — see P4-5 |
+
+---
+
+## To-Do — Investigation Required
+
+- [ ] **TD-1: Locate pre-2023 historical 311 data**
+  - 2022 ArcGIS endpoint (`311_Customer_Service_Requests_2022/FeatureServer/0`) returns 0 records; annual FeatureServer naming likely started with 2023
+  - Two candidates to check on data.baltimorecity.gov:
+    1. **Socrata dataset** — city ran on Socrata before ArcGIS migration; search "311" for a multi-year table covering 2016+; note the 4x4 dataset ID (e.g. `9agw-sxsr`) and date range
+    2. **Consolidated ArcGIS historical layer** — may exist as `311_Customer_Service_Requests_Historical` or similar in the same ArcGIS organization (`UWYHeuuJISiGmgXx`)
+  - Once source is confirmed, add `fetch_year_socrata()` (or equivalent) to `src/balt311/ingest.py` routed by year; same downstream pipeline applies
+  - Target coverage: 2016–2022 (7 additional years substantially strengthens the trend chart)
+
+- [ ] **TD-2: Manual validation of IQR overlap scores and demographic calculations**
+  - Spot-check `overlap_score()` against hand-calculated values for at least two metric × year × geo-level combinations
+  - Verify demographic classification thresholds: confirm majority-Black (>50%) and majority-White (>50%) counts are plausible given Baltimore's demographic makeup (~63% Black citywide)
+  - Confirm `pct_black`/`pct_white` values in `tract_demographics.csv` are in expected range (0–1); check for tracts with unexpected nulls
+  - Validate CSA rollup: pick 2–3 CSAs and manually re-aggregate from tract data to confirm weighted race % and income match `csa_demographics.csv`
+  - Cross-check `median_income` values against published ACS tables for a sample of tracts (e.g. Roland Park should be high, Sandtown-Winchester low)
+  - Verify trend chart direction is interpretable: rising overlap = narrowing disparity (confirm with a manually computed year-pair comparison)
 
 ---
 
