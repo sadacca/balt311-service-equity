@@ -127,59 +127,103 @@ Goal: add race and income context below the map — distribution comparisons for
 
 ---
 
-## Phase 3 — Detail Views and Analysis *(next phase priorities)*
+## Phase 3 — Overall Service Delivery Assessment *(Release N+1, after dates + validation)*
 
-- [ ] **P3-1: Detail scatter toggle** *(formerly P3-2)*
-  - Below the IQR summary charts: toggle button "Show individual geographies"
-  - Scatter: x = race % (pct_black) or median income, y = selected equity metric
-  - Color = same diverging scale as map; hover shows geography name + both axis values
-  - Regression line (OLS) with 95% CI band overlaid
-  - Separate scatter for race and income (two charts, matching the IQR layout)
+**Goal**: answer "how is Baltimore doing overall?" before asking "is it equitable?". This sets up two future capabilities: year-over-year performance tracking and eventual cross-metro comparison. All metrics must be normalized so they are interpretable in isolation and portable across cities and time.
 
-- [ ] **P3-2: Detail scatter toggle**
-  - Below (or replacing) the IQR summary charts: toggle button "Show individual geographies"
-  - Scatter: x = race % (pct_black) or median income, y = selected equity metric; each point = one tract/CSA
-  - Color = same diverging scale as map (above/below citywide median)
-  - Hover shows geography name + both axis values
-  - Regression line (OLS) overlaid with 95% CI band
-  - Separate scatter for race and income (two charts, matching the IQR layout)
+### Conceptual framing
+Raw metrics (e.g. median 8 days to close) are hard to interpret without context. This phase introduces a **performance scorecard** — normalized scores that express Baltimore's metrics relative to its own baseline (historical average) and, eventually, peer cities. A score of 0 = at baseline, positive = better than baseline, negative = worse.
 
-- [ ] **P3-3: Equity analysis notebook**
-  - `notebooks/04_equity_analysis.ipynb`
-  - Spearman rank correlation: each equity metric vs. pct_black and vs. median_income, at both tract and CSA level
-  - Quartile comparison (Kruskal-Wallis) for closure rate and days-to-close across income quartiles
-  - Top-5 SRType stratification: run same correlation for each major request type
-  - Findings table exported to `data/processed/equity_findings.csv` for potential app integration
+### Pipeline additions
 
-- [ ] **P3-4: Executive summary**
+- [ ] **P3-1: Per-SRType aggregate table**
+  - New pipeline output: `data/processed/srtype_metrics_{year}.parquet`
+  - One row per `(sr_type, year)`: total_requests, closed_requests, closure_rate, median_days_to_close, on_time_rate, pct_resident_initiated
+  - Covers ALL requests (not filtered to equity subset) — this is the full service delivery picture
+  - `pct_resident_initiated`: fraction of requests that are Phone/API/Mail/Email for each type — characterizes each type's nature (high % = demand-driven; low % = proactive/staff-driven)
+  - Add `--stage srtype` to pipeline CLI; add step to Actions workflow
+
+- [ ] **P3-2: Normalized performance scores**
+  - For each metric, compute a z-score relative to the city's own multi-year baseline: `(value - mean_across_years) / std_across_years`
+  - Stored as additional columns in `srtype_metrics` and in `tract_metrics` / `csa_metrics`
+  - Design for portability: the normalization schema should be the same whether comparing 2023 vs. 2025 Baltimore or Baltimore vs. another city
+  - Document the normalization approach in a `docs/scoring_methodology.md` so it can be reproduced externally
+
+### App additions
+
+- [ ] **P3-3: Service delivery overview panel**
+  - New page or collapsible section: "City Overview"
+  - **Request volume breakdown**: horizontal bar chart of total requests by SRType, sorted by volume, colored by `pct_resident_initiated` (distinguishes demand-driven vs. proactive service types)
+  - **Performance table**: sortable table of all SRTypes with columns: volume, closure rate, median days to close, on-time rate — gives analysts the full assembly in one view
+  - **City-level scorecard**: 4 headline KPIs (total requests, citywide closure rate, citywide median days to close, citywide on-time rate) with year-over-year delta vs. prior year
+  - All views filterable by year from the existing sidebar year selector
+
+- [ ] **P3-4: Detail scatter toggle** *(carried from prior plan)*
+  - Below IQR summary charts: toggle "Show individual geographies"
+  - Scatter: x = race % or median income, y = selected equity metric; regression line with 95% CI
+
+---
+
+## Phase 4 — SRType-Stratified Equity Analysis *(Release N+2)*
+
+**Goal**: answer "is service delivery equitable when you account for what's being requested?". The key insight motivating this phase: aggregate equity scores can be misleading because neighborhoods differ in their mix of request types, and different types have structurally different resolution times. A neighborhood that submits many fast-closing requests will look well-served in aggregate even if slower types are handled inequitably there.
+
+### Conceptual framing
+Two equity questions at different levels:
+1. **Within-type equity**: for a given SRType (e.g. "Pothole Repair"), do majority-Black tracts wait longer than majority-White tracts? This is the cleanest equity signal — it controls for type mix differences.
+2. **Type-mix equity**: are certain high-demand types (bulk trash, rodent control) disproportionately concentrated in lower-income or majority-Black neighborhoods, and are those types systematically slower? This is a structural question about service design, not just delivery.
+
+### Pipeline additions
+
+- [ ] **P4-1: Per-(SRType, tract) aggregate table**
+  - New pipeline output: `data/processed/tract_srtype_metrics_{year}.parquet`
+  - One row per `(tract_geoid, sr_type)`: same equity metrics as `tract_metrics` but scoped to one type
+  - Only produces rows for (tract, type) combinations with ≥ 10 requests (suppress sparse cells)
+  - Equity subset filter still applies (resident-initiated, non-ECC, geocoded)
+
+- [ ] **P4-2: Within-type IQR overlap scores**
+  - For each SRType with sufficient coverage (≥ 20 majority-Black tracts AND ≥ 20 majority-White tracts with data), compute race-based and income-based IQR overlap scores
+  - Output: `data/processed/srtype_equity_{year}.parquet` — one row per SRType with overlap scores for each metric
+  - Ranks SRTypes from most to least equitable; surfaces which types drive aggregate disparity
+
+### App additions
+
+- [ ] **P4-3: SRType equity ranking panel**
+  - Table or dot-plot of all SRTypes ranked by within-type IQR overlap score for the selected metric and demographic dimension (race or income)
+  - Color-coded by score band (green/amber/red)
+  - Click a row to see the full distribution comparison for that type (same box+strip chart as the aggregate equity panel)
+  - Answers: "which services are delivered most inequitably?"
+
+- [ ] **P4-4: Adjusted city equity score**
+  - A single composite equity score for the city that controls for service type mix
+  - Computed as the volume-weighted mean of within-type overlap scores across all covered SRTypes
+  - More defensible than the aggregate score for policy and press use
+  - Show alongside the aggregate overlap score so both are visible; explain the difference in a tooltip
+
+- [ ] **P4-5: Historical data ingest (2016–2022)** *(blocked on TD-1)*
+  - Add `fetch_year_socrata()` or equivalent once pre-2023 source is confirmed
+  - Route `fetch_year()` by year: ArcGIS for 2023+, Socrata for pre-2023
+  - Validate field name consistency; run pipeline for each historical year
+  - Payoff: 9-year trend chart gives a statistically meaningful equity trajectory
+
+- [ ] **P4-6: BNIA Vital Signs direct integration for CSA demographics**
+  - Replace population-weighted rollup of ACS tract data with authoritative BNIA CSA indicators
+  - Fetch `pct_nhblk`, `pct_nhwht`, `mhhi` from BNIA Vital Signs ArcGIS Hub
+  - Compare against ACS rollup to validate; use as primary for CSA-level analysis
+
+- [ ] **P4-7: Regression panel**
+  - OLS: `log(days_to_close)` ~ pct_black + median_income + SRType FE + month FE
+  - Displays race and income coefficients with 95% CI
+  - Defensible claim about whether disparity is income-driven, race-driven, or structural
+
+---
   - 1-page `docs/executive_summary.md` (or PDF via nbconvert)
   - Key findings with inline map thumbnail references
   - Audience: Mayor's Office, City Council, CDO
 
 ---
 
-## Phase 4 — SRType Stratification and Subsequent Priorities
 
-- [ ] **P4-1: Per-SRType tract aggregation**
-  - Current SRType sidebar filter uses `top_sr_type` per tract as a proxy — does not enable per-type equity analysis
-  - Pipeline change: add `by_srtype` aggregation in `aggregate_tract()` producing `(geoid, sr_type)` rows
-  - Output: `data/processed/tract_metrics_{year}_by_srtype.parquet` (multi-index or long format)
-  - App change: when an SRType is selected, load the by_srtype file and filter to that type; fall back to all-type aggregate when no filter is active
-  - Enables: "does 'Pothole' get resolved faster in wealthier neighborhoods than 'Bulk Trash'?"
-
-- [ ] **P4-2: BNIA Vital Signs direct integration for CSA demographics**
-  - Replace population-weighted rollup of tract ACS data with authoritative BNIA CSA indicators
-  - BNIA Vital Signs ArcGIS Hub provides CSA-level: `pct_nhblk` (% non-Hispanic Black), `pct_nhwht`, `mhhi` (median household income) — updated with each Vital Signs edition
-  - Fetch and cache as `data/processed/csa_demographics_bnia.csv`; compare against ACS rollup to validate
-
-- [ ] **P4-3: Year-over-year comparison panel**
-  - Side-by-side map or metric delta view for a selected geography across years
-  - Requires 2023 data (P1-5) to make a three-year comparison meaningful
-
-- [ ] **P4-4: Regression panel (optional)**
-  - OLS: `log(days_to_close)` ~ pct_black + median_income + SRType FE + month FE
-  - Displays income and race coefficients with 95% CI
-  - Defensible claim about whether disparity is income-driven, race-driven, or structural
 
 ---
 
@@ -189,7 +233,28 @@ Goal: add race and income context below the map — distribution comparisons for
 |---|---|
 | Duplicate `SRRecordID`s across years? | Still pending — need cross-year dedup check |
 | 2025 `requests_per_1k` missing (Census API key not set at run time) | Fix via P1-6 re-run |
-| 2023 data never processed | Fix via P1-5 |
+| 2023 data in progress | Running via Actions |
+| 2022 ArcGIS endpoint returns 0 records | Annual FeatureServer naming appears to start at 2023; pre-2023 data likely on Socrata or a consolidated ArcGIS historical layer — see P4-5 |
+
+---
+
+## To-Do — Investigation Required
+
+- [ ] **TD-1: Locate pre-2023 historical 311 data**
+  - 2022 ArcGIS endpoint (`311_Customer_Service_Requests_2022/FeatureServer/0`) returns 0 records; annual FeatureServer naming likely started with 2023
+  - Two candidates to check on data.baltimorecity.gov:
+    1. **Socrata dataset** — city ran on Socrata before ArcGIS migration; search "311" for a multi-year table covering 2016+; note the 4x4 dataset ID (e.g. `9agw-sxsr`) and date range
+    2. **Consolidated ArcGIS historical layer** — may exist as `311_Customer_Service_Requests_Historical` or similar in the same ArcGIS organization (`UWYHeuuJISiGmgXx`)
+  - Once source is confirmed, add `fetch_year_socrata()` (or equivalent) to `src/balt311/ingest.py` routed by year; same downstream pipeline applies
+  - Target coverage: 2016–2022 (7 additional years substantially strengthens the trend chart)
+
+- [ ] **TD-2: Manual validation of IQR overlap scores and demographic calculations**
+  - Spot-check `overlap_score()` against hand-calculated values for at least two metric × year × geo-level combinations
+  - Verify demographic classification thresholds: confirm majority-Black (>50%) and majority-White (>50%) counts are plausible given Baltimore's demographic makeup (~63% Black citywide)
+  - Confirm `pct_black`/`pct_white` values in `tract_demographics.csv` are in expected range (0–1); check for tracts with unexpected nulls
+  - Validate CSA rollup: pick 2–3 CSAs and manually re-aggregate from tract data to confirm weighted race % and income match `csa_demographics.csv`
+  - Cross-check `median_income` values against published ACS tables for a sample of tracts (e.g. Roland Park should be high, Sandtown-Winchester low)
+  - Verify trend chart direction is interpretable: rising overlap = narrowing disparity (confirm with a manually computed year-pair comparison)
 
 ---
 
