@@ -195,15 +195,16 @@ def _load_srtype_history(data_dir: Path) -> pd.DataFrame:
     return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
 
-def _srtype_charts(data_dir: Path, year: int) -> str | None:
-    """Render category pills + performance table + year-over-year detail. Returns selected SRType or None."""
+def _srtype_charts(data_dir: Path, year: int) -> tuple[str | None, str | None]:
+    """Render category pills + performance table + year-over-year detail.
+    Returns (selected_type, selected_cat) — either may be None."""
     srtype_path = data_dir / f"srtype_metrics_{year}.parquet"
     if not srtype_path.exists():
         st.caption(
             "SRType breakdown unavailable — run `pipeline.py --stage srtype --year <year>` "
             "to generate it."
         )
-        return None
+        return None, None
 
     sr_all = (
         pd.read_parquet(srtype_path)
@@ -214,22 +215,25 @@ def _srtype_charts(data_dir: Path, year: int) -> str | None:
 
     # ── Category pills ────────────────────────────────────────────────────────
     categories = _extract_categories(sr_all)
+    selected_cat = None
     if categories:
-        selected_cat = st.pills(
+        cat_sel = st.pills(
             "Category", ["All"] + categories,
             default="All",
             key="srtype_cat",
         )
+        selected_cat = cat_sel if (cat_sel and cat_sel != "All") else None
         sr = (
             sr_all[sr_all["SRType"].str.startswith(f"{selected_cat}-")]
-            if selected_cat and selected_cat != "All"
+            if selected_cat
             else sr_all
         ).reset_index(drop=True)
     else:
         sr = sr_all
 
     # ── Selectable performance table ──────────────────────────────────────────
-    st.markdown("**Performance by type** — click any row to see year-over-year trends")
+    scope_label = f"**{selected_cat}** types" if selected_cat else "all types"
+    st.markdown(f"**Performance by type** ({scope_label}) — click any row to drill into year-over-year trends")
     display_cols = ["SRType", "total_requests", "closure_rate", "median_days_to_close", "on_time_rate"]
     if pct_col:
         display_cols.append(pct_col)
@@ -257,22 +261,9 @@ def _srtype_charts(data_dir: Path, year: int) -> str | None:
         key="srtype_table",
     )
 
-    # ── Year-over-year detail for selected type ───────────────────────────────
-    selected_rows = event.selection.rows
-    if not selected_rows:
-        st.caption("Click a row above to see year-over-year volume and time-to-close trends.")
-        return None
-
-    selected_type = sr.iloc[selected_rows[0]]["SRType"]
+    # ── Year-over-year detail ─────────────────────────────────────────────────
     history = _load_srtype_history(data_dir)
-    type_hist = history[history["SRType"] == selected_type].sort_values("year")
-
-    if type_hist.empty:
-        st.caption(f"No historical data found for **{selected_type}**.")
-        return None
-
-    st.markdown(f"**{selected_type}** — year over year · selected year in red")
-    bar_colors = ["#d73027" if y == year else "#1F4E8C" for y in type_hist["year"]]
+    selected_rows = event.selection.rows
     chart_layout = dict(
         height=260,
         margin={"t": 8, "b": 8, "l": 60, "r": 8},
@@ -281,36 +272,67 @@ def _srtype_charts(data_dir: Path, year: int) -> str | None:
         paper_bgcolor="white",
     )
 
+    if selected_rows and not history.empty:
+        selected_type = sr.iloc[selected_rows[0]]["SRType"]
+        type_hist = history[history["SRType"] == selected_type].sort_values("year")
+        if type_hist.empty:
+            st.caption(f"No historical data found for **{selected_type}**.")
+            return selected_type, selected_cat
+        chart_title = f"**{selected_type}** — year over year · selected year in red"
+        vol_hist = type_hist
+        days_hist = type_hist.dropna(subset=["median_days_to_close"])
+    else:
+        selected_type = None
+        # Aggregate to year level for the current table scope
+        scope = (
+            history[history["SRType"].str.startswith(f"{selected_cat}-")]
+            if selected_cat else history
+        )
+        vol_hist = scope.groupby("year")["total_requests"].sum().reset_index().sort_values("year")
+        days_sub = scope.dropna(subset=["median_days_to_close", "total_requests"])
+        if not days_sub.empty:
+            days_sub = days_sub.copy()
+            days_sub["_wtd"] = days_sub["median_days_to_close"] * days_sub["total_requests"]
+            days_hist = (
+                (days_sub.groupby("year")["_wtd"].sum() / days_sub.groupby("year")["total_requests"].sum())
+                .reset_index(name="median_days_to_close")
+                .sort_values("year")
+            )
+        else:
+            days_hist = pd.DataFrame(columns=["year", "median_days_to_close"])
+        scope_str = f"**{selected_cat} category**" if selected_cat else "**All request types**"
+        chart_title = f"{scope_str} — year over year · selected year in red"
+
+    bar_colors_vol = ["#d73027" if y == year else "#1F4E8C" for y in vol_hist["year"]]
+    bar_colors_days = ["#d73027" if y == year else "#1F4E8C" for y in days_hist["year"]]
+
+    st.markdown(chart_title)
     col_vol, col_days = st.columns(2)
     with col_vol:
         st.caption("Total requests")
         fig_vol = go.Figure(go.Bar(
-            x=type_hist["year"],
-            y=type_hist["total_requests"],
-            marker_color=bar_colors,
+            x=vol_hist["year"],
+            y=vol_hist["total_requests"],
+            marker_color=bar_colors_vol,
             hovertemplate="%{x}: %{y:,}<extra></extra>",
         ))
-        fig_vol.update_layout(**chart_layout,
-                              yaxis=dict(title="Requests", gridcolor="#eeeeee"))
+        fig_vol.update_layout(**chart_layout, yaxis=dict(title="Requests", gridcolor="#eeeeee"))
         st.plotly_chart(fig_vol, use_container_width=True, key="srtype_vol",
                         config={"displayModeBar": False})
 
     with col_days:
         st.caption("Median days to close")
-        days_hist = type_hist.dropna(subset=["median_days_to_close"])
-        days_colors = ["#d73027" if y == year else "#1F4E8C" for y in days_hist["year"]]
         fig_days = go.Figure(go.Bar(
             x=days_hist["year"],
             y=days_hist["median_days_to_close"],
-            marker_color=days_colors,
+            marker_color=bar_colors_days,
             hovertemplate="%{x}: %{y:.1f} days<extra></extra>",
         ))
-        fig_days.update_layout(**chart_layout,
-                               yaxis=dict(title="Days", gridcolor="#eeeeee"))
+        fig_days.update_layout(**chart_layout, yaxis=dict(title="Days", gridcolor="#eeeeee"))
         st.plotly_chart(fig_days, use_container_width=True, key="srtype_days",
                         config={"displayModeBar": False})
 
-    return selected_type
+    return selected_type, selected_cat
 
 
 def render_operations(
@@ -348,7 +370,7 @@ def render_operations(
 
     st.divider()
     st.subheader("Breakdown by Request Type")
-    selected_type = _srtype_charts(data_dir, year)
+    selected_type, selected_cat = _srtype_charts(data_dir, year)
 
     # ── Geographic distribution map ───────────────────────────────────────────
     st.divider()
@@ -367,10 +389,19 @@ def render_operations(
         map_caption = f"**{selected_type}** request count by geography"
     elif selected_type:
         map_df = df[["geoid", "total_requests"]] if "total_requests" in df.columns else None
-        map_caption = f"Overall request volume shown (re-run pipeline to get per-type geographic counts)"
+        map_caption = "Overall request volume shown (re-run pipeline to get per-type geographic counts)"
+    elif selected_cat and not totals.empty:
+        cat_totals = (
+            totals[totals["SRType"].str.startswith(f"{selected_cat}-")]
+            .groupby("geoid")["total_requests"].sum()
+            .reset_index()
+        )
+        map_df = df[["geoid"]].merge(cat_totals, on="geoid", how="left")
+        map_df["total_requests"] = map_df["total_requests"].fillna(0).astype(int)
+        map_caption = f"**{selected_cat}** category request count by geography"
     else:
         map_df = df[["geoid", "total_requests"]] if "total_requests" in df.columns else None
-        map_caption = "Total requests by geography · click a table row above to filter by type"
+        map_caption = "Total requests by geography · select a category or row above to filter"
 
     if map_df is not None and "total_requests" in map_df.columns and not map_df.empty:
         st.caption(map_caption)
