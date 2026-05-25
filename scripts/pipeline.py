@@ -477,6 +477,21 @@ def stage_srtype(year: int) -> None:
     agg.to_parquet(out_path, index=False)
     log(f"Saved SRType metrics ({len(agg)} types) → {out_path.name}")
 
+    # ── tract-level per-type counts (enables geographic map filtering) ────────
+    if "tract_geoid" in df.columns:
+        tract_counts = (
+            df.dropna(subset=["tract_geoid"])
+            .groupby(["tract_geoid", "SRType"])
+            .agg(total_requests=("SRRecordID", "count"))
+            .reset_index()
+            .rename(columns={"tract_geoid": "geoid"})
+        )
+        out_tract = PROC / f"tract_srtype_totals_{year}.parquet"
+        tract_counts.to_parquet(out_tract, index=False)
+        log(f"Saved tract SRType totals ({len(tract_counts)} rows, {tract_counts['SRType'].nunique()} types) → {out_tract.name}")
+    else:
+        log("  WARNING: tract_geoid absent — tract_srtype_totals skipped")
+
 
 def stage_demographics() -> None:
     """Fetch ACS race and income demographics and commit-ready CSVs to data/processed/.
