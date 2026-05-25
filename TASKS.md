@@ -228,6 +228,16 @@ Two equity questions at different levels:
   - Defensible claim about whether disparity is income-driven, race-driven, or structural
 
 ---
+
+## Phase 5 — Seasonality Tab *(Long-term)*
+
+**Goal**: answer "when do requests spike, and does seasonal surge affect equitable delivery?"
+
+- [ ] **P5-1: Monthly pipeline aggregation** — new pipeline output `{geo_key}_srtype_monthly_{year}.parquet`: geo × SRType × month with total_requests, closure_rate, median_days_to_close. Larger files — implement only when a seasonality view is planned.
+- [ ] **P5-2: Seasonality tab** — new tab showing citywide and per-type monthly volume trends; highlight seasonal peaks (bulk trash in spring, pothole in winter). Year-over-year overlay to distinguish seasonal pattern from year-level trend.
+- [ ] **P5-3: Seasonal equity check** — does closure time worsen during peak months, and does the worsening fall disproportionately on lower-income neighborhoods?
+
+---
   - 1-page `docs/executive_summary.md` (or PDF via nbconvert)
   - Key findings with inline map thumbnail references
   - Audience: Mayor's Office, City Council, CDO

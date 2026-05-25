@@ -6,6 +6,9 @@ import streamlit as st
 
 from components.map_view import METRIC_OPTIONS, build_choropleth
 
+# Minimum requests in a geo×SRType cell to display (suppresses noise; adjustable without rerunning pipeline)
+_MIN_GEO_SRTYPE_N = 5
+
 # How to aggregate each metric to a single citywide value
 _METRIC_AGG = {
     "median_days_to_close": "median",
@@ -162,7 +165,7 @@ def _timeseries_fig(ts: pd.DataFrame, metric_col: str, metric_label: str, year: 
 
 
 @st.cache_data
-def _load_tract_srtype_totals(path: Path) -> pd.DataFrame:
+def _load_geo_srtype_metrics(path: Path) -> pd.DataFrame:
     if not path.exists():
         return pd.DataFrame()
     return pd.read_parquet(path)
@@ -351,7 +354,11 @@ def render_operations(
     st.divider()
     st.subheader("Geographic Distribution")
 
-    totals = _load_tract_srtype_totals(data_dir / f"tract_srtype_totals_{year}.parquet")
+    geo_srtype = _load_geo_srtype_metrics(data_dir / f"{geo_key}_srtype_metrics_{year}.parquet")
+    totals = (
+        geo_srtype[geo_srtype["total_requests"] >= _MIN_GEO_SRTYPE_N]
+        if not geo_srtype.empty else geo_srtype
+    )
 
     if selected_type and not totals.empty:
         type_totals = totals[totals["SRType"] == selected_type][["geoid", "total_requests"]]
