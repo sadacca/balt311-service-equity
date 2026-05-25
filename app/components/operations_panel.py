@@ -54,7 +54,35 @@ def _delta_str(current: float, prior: float, is_pct: bool) -> str:
     return f"{diff:+.1f}"
 
 
-def _kpi_bar(ts: pd.DataFrame, year: int) -> None:
+def _scope_banner(data_dir: Path, year: int, equity_total: float) -> None:
+    srtype_path = data_dir / f"srtype_metrics_{year}.parquet"
+
+    all_total = None
+    if srtype_path.exists():
+        sr = pd.read_parquet(srtype_path)
+        if "total_requests" in sr.columns:
+            all_total = int(sr["total_requests"].sum())
+
+    if all_total is not None and not pd.isna(equity_total):
+        excluded = all_total - int(equity_total)
+        pct_in = equity_total / all_total if all_total > 0 else float("nan")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("All requests received", f"{all_total:,}")
+        c2.metric("Equity analysis subset", f"{int(equity_total):,}",
+                  delta=f"{pct_in:.0%} of total", delta_color="off")
+        c3.metric("Excluded from analysis", f"{excluded:,}",
+                  delta=f"{1 - pct_in:.0%} of total", delta_color="off")
+    elif not pd.isna(equity_total):
+        st.metric("Equity analysis subset", f"{int(equity_total):,}")
+
+    st.caption(
+        "**Equity subset** = resident-initiated requests (Phone / API / Mail / Email) "
+        "that are geocoded and not ECC-prefix service types. "
+        "Performance metrics below apply to this subset only."
+    )
+
+
+
     row = ts[ts["year"] == year]
     if row.empty:
         return
@@ -72,7 +100,7 @@ def _kpi_bar(ts: pd.DataFrame, year: int) -> None:
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric(
-        "Total requests",
+        "Requests analyzed",
         f"{row['total_requests']:,.0f}" if not pd.isna(row.get("total_requests", float("nan"))) else "—",
         delta=_delta_str(row.get("total_requests"), prior_row.get("total_requests") if prior_row is not None else float("nan"), False),
     )
@@ -207,6 +235,9 @@ def render_operations(
     ts = _build_timeseries(data_dir, geo_key)
 
     st.subheader("City-wide Performance")
+    equity_total = ts.loc[ts["year"] == year, "total_requests"].squeeze() if not ts.empty else float("nan")
+    _scope_banner(data_dir, year, equity_total)
+    st.divider()
     _kpi_bar(ts, year)
 
     st.markdown(f"**{metric_label} — all available years**")
