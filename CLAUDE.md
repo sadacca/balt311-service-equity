@@ -1,0 +1,164 @@
+# Baltimore 311 Service Equity — Developer Context
+
+## Mission
+
+This dashboard provides operational visibility into Baltimore's 311 service request system for two audiences:
+
+- **Citizens and advocates** — what requests are coming in, from where, and how does service delivery compare year over year and across neighborhood types
+- **Internal stakeholders** — department managers (what is my service type doing, where, how fast) and citywide leadership (are we improving, are we equitable, how do we compare to peer cities)
+
+Four comparison axes drive every design decision:
+1. **Historical** — how does this year compare to prior years (2016–2025)
+2. **Geographic** — which neighborhoods get faster / slower service, and why
+3. **Cross-municipal** — how does Baltimore compare to peer cities on the same metrics *(Phase 5, not yet built)*
+4. **Equity** — does service quality differ systematically by race or income of the requesting neighborhood
+
+The equity lens is not the only lens — operations clarity for managers is equally important and is the first tab.
+
+---
+
+## Active Branch
+
+All current development is on `claude/review-requirements-AlGBm`. Push only to this branch unless told otherwise. The production app auto-deploys from `main` on Streamlit Community Cloud.
+
+---
+
+## App Structure
+
+Two-tab Streamlit app at `app/app.py`. Sidebar filters (geo level, metric, SRType) are shared across tabs. Year selector is inline above the tabs as a horizontal radio.
+
+### Operations tab (`app/components/operations_panel.py`)
+- **Scope banner** — All requests received / Equity subset / Excluded; makes the filter explicit
+- **KPI bar** — 4 headline metrics with year-over-year deltas (neutral color — direction is ambiguous)
+- **Time series** — selected metric across all available years; clicking a point navigates to that year
+- **SRType breakdown** — category pills (hyphen-prefix, e.g. SW-, HCD-) filter a selectable performance table; clicking a row shows two year-over-year bar charts (volume + median days to close) for that type
+- **Geographic map** — request volume choropleth, filtered to selected SRType when a table row is active
+
+### Equity tab (`app/app.py` → component calls)
+- Choropleth map colored by selected metric; click a tract/CSA to see its summary panel
+- Equity distributions — box-and-strip charts comparing majority-Black vs. majority-White geographies and above- vs. below-median income geographies for the selected metric
+- Equity trend — year-over-year Mann-Whitney overlap scores for each metric and demographic dimension
+
+---
+
+## Data Pipeline
+
+Headless pipeline at `scripts/pipeline.py`. Four stages, each independently runnable:
+
+```bash
+python scripts/pipeline.py --year 2024 --stage ingest        # ArcGIS → data/raw/
+python scripts/pipeline.py --year 2024 --stage process       # clean + spatial join + aggregate
+python scripts/pipeline.py --year 2024 --stage srtype        # SRType + geo×SRType metrics
+python scripts/pipeline.py --stage demographics              # ACS race + income (run once)
+python scripts/pipeline.py --year 2024                       # all stages in sequence
+python scripts/pipeline.py --year 2026 --live                # current-year with 30-day right-censoring
+```
+
+GitHub Actions workflows:
+- `update_data.yml` — single year, manual trigger
+- `backfill.yml` — multiple years, sequential, 180s pause between years (configurable), skips year on ingest failure, commits after each year
+
+### Data endpoints
+- 2023–present: `311_Customer_Service_Requests_{YEAR}/FeatureServer/0`
+- 2016–2022: `311_Customer_Service_Requests_Yearly/FeatureServer/{layer}` where layer = year − 2016
+- Historical layers return Latitude/Longitude as strings — pipeline coerces to float
+
+### Equity subset definition
+Requests are included in the equity analysis subset if they are:
+- **Resident-initiated**: MethodReceived ∈ {Phone, API, Mail, Email}
+- **Geocoded**: valid Latitude/Longitude
+- **Non-ECC**: SRType does not begin with "ECC-" (information calls, no service delivery)
+- **Not right-censored**: CreatedDate more than 30 days before run date (live-year mode only)
+
+Everything else (System/Internal source, ECC types, ungeocoded) is excluded from equity metrics but counted in the "All requests received" scope banner.
+
+---
+
+## Processed File Inventory (`data/processed/`)
+
+| File | Grain | Contents |
+|------|-------|----------|
+| `tract_metrics_{year}.parquet` | tract × year | total_requests, closure_rate, median_days_to_close, on_time_rate, requests_per_1k, top_sr_type |
+| `csa_metrics_{year}.parquet` | CSA × year | same as tract |
+| `srtype_metrics_{year}.parquet` | SRType × year | total_requests, closed_requests, closure_rate, median_days_to_close, on_time_rate, pct_resident_initiated |
+| `tract_srtype_metrics_{year}.parquet` | tract × SRType × year | total_requests, closed_requests, closure_rate, median_days_to_close |
+| `csa_srtype_metrics_{year}.parquet` | CSA × SRType × year | same as tract_srtype |
+| `tract_boundaries.geojson` | — | Census 2020 tract boundaries for Baltimore City (FIPS 510) |
+| `csa_boundaries.geojson` | — | CSA boundaries dissolved from tract polygons via BNIA crosswalk |
+| `tract_demographics.csv` | tract | pct_black, pct_white, median_income (ACS 2023 5-year; year-independent) |
+| `csa_demographics.csv` | CSA | population-weighted rollup of tract demographics |
+
+`data/raw/` and `data/interim/` are gitignored and rebuilt by the pipeline.
+
+Geo ID conventions: tract files use 11-digit GEOID strings in a `geoid` column. CSA files use the CSA name string in a `geoid` column (matching `properties.csa_name` in the GeoJSON).
+
+---
+
+## Key Decisions and Conventions
+
+**Overlap score**: Mann-Whitney probability of superiority, `1 − 2 × |P(A > B) − 0.5|`. Ranges 0–1; 1 = fully interleaved distributions, 0 = complete separation. Implemented in `app/components/utils.py:overlap_score()`. Thresholds: >0.7 "not bad", >0.4 "could be better", ≤0.4 "needs review". Requires ≥3 non-null values per group; returns NaN otherwise.
+
+**Delta colors**: all year-over-year deltas in the Operations tab use `delta_color="off"` (neutral). A decrease in days-to-close is good; a decrease in requests could be good or bad. Direction is left for the reader to interpret.
+
+**Sparse cell suppression**: `_MIN_GEO_SRTYPE_N = 5` in `operations_panel.py`. Geo × SRType cells with fewer than 5 requests are filtered out in the UI before map rendering. Threshold is a UI constant — change it without rerunning the pipeline.
+
+**CSA rollup**: at CSA level, metric values are population-weighted means of tract values (not re-aggregated from raw records). This matches BNIA Vital Signs methodology.
+
+**Streamlit version**: must be ≥1.39.0 for `st.pills()` and `st.dataframe(on_select="rerun", selection_mode="single-row")`.
+
+**Secrets**: Mapbox token in Streamlit Cloud Secrets (`mapbox.token`), never in repo. Census API key as GitHub Actions secret `CENSUS_API_KEY`, never in repo.
+
+---
+
+## Roadmap Summary
+
+See `TASKS.md` for full detail. Current phase status:
+
+| Phase | What | Status |
+|-------|------|--------|
+| 0–3 | Data investigation, pipeline, MVP app, Operations tab | Complete |
+| 4 | SRType-stratified equity (ranking panel, adjusted score) | Next — pipeline files ready |
+| 4b | Area Analysis tab — peer comparison for managers | Candidate next release |
+| 5 | Cross-municipality benchmarking | Medium-term |
+| 6 | Seasonality tab | Long-term |
+
+Key open investigations before heavy Phase 4 / 5 work:
+- **TD-2**: Manually validate Mann-Whitney scores and demographic calculations
+- **TD-3**: Personas and use-case review — validates whether regression panel and reference city deep dive are worth building for the actual audience
+- **TD-4**: Cross-year duplicate SRRecordID check
+
+---
+
+## Repository Layout
+
+```
+app/
+  app.py                          # Entrypoint — tabs, year selector, sidebar, data loading
+  requirements.txt                # streamlit≥1.39, pandas, plotly, pyarrow
+  components/
+    map_view.py                   # build_choropleth() — shared by both tabs
+    summary_panel.py              # Click-to-select detail card (Equity tab)
+    equity_distributions.py       # Race + income distribution comparison
+    equity_trend.py               # Year-over-year overlap score trend
+    operations_panel.py           # Full Operations tab
+    utils.py                      # overlap_score, score_label, format_metric, hex_to_rgba
+
+scripts/
+  pipeline.py                     # Headless pipeline — all stages
+
+src/balt311/
+  ingest.py                       # ArcGIS FeatureServer pagination
+  metrics.py                      # Cleaning, aggregation, CSA rollup, demographics rollup
+
+.github/workflows/
+  update_data.yml                 # Single-year workflow
+  backfill.yml                    # Multi-year sequential backfill
+
+data/processed/                   # Committed — app reads only from here
+data/raw/                         # Gitignored
+data/interim/                     # Gitignored
+
+TASKS.md                          # Full task list and roadmap
+requirements.md                   # Original requirements spec (living document)
+README.md                         # Public-facing documentation
+```
