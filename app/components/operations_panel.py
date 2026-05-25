@@ -137,6 +137,8 @@ def _kpi_bar(ts: pd.DataFrame, year: int) -> None:
         delta=delta("on_time_rate", is_pct=True),
         delta_color="off",
     )
+    if prior_row is not None:
+        st.caption(f"Δ vs. {int(prior_years.max())}")
 
 
 def _timeseries_fig(ts: pd.DataFrame, metric_col: str, metric_label: str, year: int) -> go.Figure:
@@ -367,8 +369,6 @@ def render_operations(
     ts = _build_timeseries(data_dir)
 
     st.subheader("City-wide Performance")
-    _scope_banner(data_dir, year)
-    st.divider()
     _kpi_bar(ts, year)
 
     st.markdown(f"**{metric_label} — all available years** · click a point to change year")
