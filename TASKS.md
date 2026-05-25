@@ -132,6 +132,28 @@ Two equity questions at different levels:
 
 ---
 
+## Phase 4c — Request Source Analysis Tab *(medium-term)*
+
+**Goal**: a dedicated tab sitting between Operations and Equity that answers "what is actually coming in through 311, and from whom?" before asking how well it's being handled. Currently the Operations tab shows the equity-filtered subset (resident-initiated, non-ECC, geocoded) and the SRType table covers all requests — this incongruity is intentional but not explained. A separate tab makes the split explicit and gives it analytical depth.
+
+**Value for ops managers and citywide officials**: understanding the composition of 311 demand — how much is resident-driven vs. city-proactive, which service types skew one way, whether that mix is changing year over year — is prerequisite context for interpreting performance metrics.
+
+### App additions
+
+- [ ] **P4c-1: Request source volume split** — stacked bar or area chart by year showing citizen-initiated (Phone/API/Mail/Email) vs. system/proactive (System/Internal) vs. excluded (ECC-prefix) volumes. Makes the scope-banner math explicit in a visual and historical context.
+
+- [ ] **P4c-2: Source mix by SRType** — horizontal bar chart of `pct_resident_initiated` by SRType, sorted. Answers: which service types are purely reactive (resident demand) vs. proactive (staff-driven inspections)? Contextualises why some types have systematically shorter close times.
+
+- [ ] **P4c-3: Source mix by geography** — choropleth of `pct_resident_initiated` by tract/CSA. Are certain neighborhoods driving more proactive city activity vs. resident-reported issues?
+
+- [ ] **P4c-4: Year-over-year source trend** — for each major source category, how has volume trended across 2016–2025? Are residents using 311 more or less over time? Is proactive activity growing?
+
+### Pipeline additions
+
+- None required — `srtype_metrics_{year}.parquet` already includes `pct_resident_initiated`; `tract_srtype_metrics` can support geographic source mix if `is_resident` is passed through (currently not in the geo-level aggregation — minor pipeline addition needed).
+
+---
+
 ## Phase 4b — Area Analysis Tab *(candidate for next release)*
 
 **Goal**: a "middle view" between Operations (city-wide) and Equity (demographic disparity) aimed at area managers and district supervisors. The core question: are there geographies that look similar — in demographics, request mix, or both — but produce meaningfully different service outcomes? Gives managers a peer-comparison lens to self-check their area without needing to interpret equity scores.

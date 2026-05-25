@@ -37,6 +37,7 @@ The equity lens is not the only lens — operational clarity for managers is equ
 3. Does median time-to-close differ significantly across neighborhoods, and does it correlate with race or income?
 4. Are certain request types resolved faster or more reliably in wealthier neighborhoods?
 5. How does Baltimore's overall performance compare to peer municipalities?
+6. What is the composition of 311 demand — how much is resident-driven vs. city-proactive, and does that mix vary by type, geography, or year? *(Phase 4c — Request Source Analysis tab)*
 
 ---
 
