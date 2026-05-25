@@ -159,6 +159,7 @@ data/raw/                         # Gitignored
 data/interim/                     # Gitignored
 
 TASKS.md                          # Full task list and roadmap
+personas.md                       # User personas and roadmap priority matrix
 requirements.md                   # Original requirements spec (living document)
 README.md                         # Public-facing documentation
 ```

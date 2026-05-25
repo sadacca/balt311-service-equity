@@ -211,11 +211,11 @@ Two geographies are "peers" if they share similar inputs (demographic profile, S
   - Schema compatible with annual service; Lat/Lon coercion added for string fields in historical layers
   - 2016–2022 endpoints live in `ENDPOINTS` dict; all years processed via backfill workflow
 
-- [ ] **TD-3: Personas and use-case review**
-  - Define 3–4 realistic user personas (e.g. CDO/policy staff, agency operations manager, community advocate/press, data analyst)
-  - For each: primary question they arrive with, what they need to leave with, which tab answers it
-  - Identify gaps in current dashboard (missing context, jargon, missing features) per persona
-  - Use findings to validate or revise Phase 4b and Phase 5 scope before building — particularly whether P4-6 (regression) and P5-6 (reference city equity) are worth the effort for the actual audience
+- [x] **TD-3: Personas and use-case review** — see `personas.md`
+  - Five personas defined: Interested Citizen, Citizen Journalist, Citywide Official, Local Official (council), Department Ops Manager
+  - Summary matrix maps each phase to persona value
+  - Key finding: Phase 4b (Area Analysis) is highest-value next step for council and ops personas; Phase 5 (cross-municipal) unlocks journalist and citywide official use cases; citizen persona is underserved and needs a dedicated accessibility pass before public launch
+  - Revisit after actual stakeholder interviews
 
 - [ ] **TD-4: Cross-year duplicate SRRecordID check**
   - Load all processed interim parquets and check for SRRecordIDs appearing in multiple years
