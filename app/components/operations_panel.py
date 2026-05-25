@@ -185,11 +185,15 @@ def _srtype_charts(data_dir: Path, year: int) -> None:
         )
         return
 
-    sr = pd.read_parquet(srtype_path).sort_values("total_requests", ascending=False)
+    sr = (
+        pd.read_parquet(srtype_path)
+        .sort_values("total_requests", ascending=False)
+        .reset_index(drop=True)
+    )
     pct_col = "pct_resident_initiated" if "pct_resident_initiated" in sr.columns else None
 
-    # ── Performance table (first) ─────────────────────────────────────────────
-    st.markdown("**Performance by type**")
+    # ── Selectable performance table ──────────────────────────────────────────
+    st.markdown("**Performance by type** — click a row to see year-over-year trends")
     display_cols = ["SRType", "total_requests", "closure_rate", "median_days_to_close", "on_time_rate"]
     if pct_col:
         display_cols.append(pct_col)
@@ -207,77 +211,67 @@ def _srtype_charts(data_dir: Path, year: int) -> None:
         "on_time_rate": "On-time rate", "pct_resident_initiated": "% Resident",
     }
     display = sr[display_cols].rename(columns=rename)
-    st.dataframe(
+    event = st.dataframe(
         display.style.format({rename.get(k, k): v for k, v in fmt.items()}, na_rep="—"),
         use_container_width=True,
         hide_index=True,
         height=400,
+        on_select="rerun",
+        selection_mode="single-row",
+        key="srtype_table",
     )
 
-    # ── Volume chart with overview / detail toggle ────────────────────────────
-    st.markdown("**Request volume**")
-    mode = st.radio("View", ["Overview", "Type detail"], horizontal=True, key="srtype_mode")
+    # ── Year-over-year detail for selected type ───────────────────────────────
+    selected_rows = event.selection.rows
+    if not selected_rows:
+        st.caption("Click a row above to see year-over-year volume and time-to-close trends.")
+        return
 
-    if mode == "Overview":
-        top = sr.head(15)
-        colors = (
-            [f"rgba(31,78,140,{0.3 + 0.7 * v})" for v in top[pct_col].fillna(0)]
-            if pct_col else "#1F4E8C"
-        )
-        st.caption("Top 15 types by volume · Color = % resident-initiated (gray → blue)")
-        fig = go.Figure(go.Bar(
-            y=top["SRType"],
-            x=top["total_requests"],
-            orientation="h",
-            marker_color=colors,
-            hovertemplate="<b>%{y}</b><br>%{x:,} requests<extra></extra>",
-        ))
-        fig.update_layout(
-            height=max(300, 22 * len(top)),
-            margin={"t": 8, "b": 8, "l": 220, "r": 8},
-            xaxis=dict(title="Total requests", gridcolor="#eeeeee"),
-            yaxis=dict(autorange="reversed"),
-            plot_bgcolor="white",
-            paper_bgcolor="white",
-        )
-        st.plotly_chart(fig, use_container_width=True, key="srtype_overview",
-                        config={"displayModeBar": False})
+    selected_type = sr.iloc[selected_rows[0]]["SRType"]
+    history = _load_srtype_history(data_dir)
+    type_hist = history[history["SRType"] == selected_type].sort_values("year")
 
-    else:
-        history = _load_srtype_history(data_dir)
-        if history.empty:
-            st.caption("No multi-year data available yet.")
-            return
+    if type_hist.empty:
+        st.caption(f"No historical data found for **{selected_type}**.")
+        return
 
-        sr_types = sr["SRType"].tolist()
-        selected = st.selectbox("Service type", sr_types, key="srtype_detail_select")
+    st.markdown(f"**{selected_type}** — year over year · selected year in red")
+    bar_colors = ["#d73027" if y == year else "#1F4E8C" for y in type_hist["year"]]
+    chart_layout = dict(
+        height=260,
+        margin={"t": 8, "b": 8, "l": 60, "r": 8},
+        xaxis=dict(title="Year", dtick=1),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+    )
 
-        type_hist = (
-            history[history["SRType"] == selected]
-            .sort_values("year")
-        )
-
-        if type_hist.empty:
-            st.caption(f"No historical data found for {selected}.")
-            return
-
-        bar_colors = ["#d73027" if y == year else "#1F4E8C" for y in type_hist["year"]]
-        fig = go.Figure(go.Bar(
+    col_vol, col_days = st.columns(2)
+    with col_vol:
+        st.caption("Total requests")
+        fig_vol = go.Figure(go.Bar(
             x=type_hist["year"],
             y=type_hist["total_requests"],
             marker_color=bar_colors,
-            hovertemplate="%{x}: %{y:,} requests<extra></extra>",
+            hovertemplate="%{x}: %{y:,}<extra></extra>",
         ))
-        fig.update_layout(
-            height=280,
-            margin={"t": 8, "b": 8, "l": 60, "r": 8},
-            xaxis=dict(title="Year", dtick=1),
-            yaxis=dict(title="Total requests", gridcolor="#eeeeee"),
-            plot_bgcolor="white",
-            paper_bgcolor="white",
-        )
-        st.caption(f"Year-over-year request volume for **{selected}** · Selected year in red")
-        st.plotly_chart(fig, use_container_width=True, key="srtype_detail",
+        fig_vol.update_layout(**chart_layout,
+                              yaxis=dict(title="Requests", gridcolor="#eeeeee"))
+        st.plotly_chart(fig_vol, use_container_width=True, key="srtype_vol",
+                        config={"displayModeBar": False})
+
+    with col_days:
+        st.caption("Median days to close")
+        days_hist = type_hist.dropna(subset=["median_days_to_close"])
+        days_colors = ["#d73027" if y == year else "#1F4E8C" for y in days_hist["year"]]
+        fig_days = go.Figure(go.Bar(
+            x=days_hist["year"],
+            y=days_hist["median_days_to_close"],
+            marker_color=days_colors,
+            hovertemplate="%{x}: %{y:.1f} days<extra></extra>",
+        ))
+        fig_days.update_layout(**chart_layout,
+                               yaxis=dict(title="Days", gridcolor="#eeeeee"))
+        st.plotly_chart(fig_days, use_container_width=True, key="srtype_days",
                         config={"displayModeBar": False})
 
 
