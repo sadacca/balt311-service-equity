@@ -6,6 +6,9 @@ import streamlit as st
 
 from components.map_view import METRIC_OPTIONS, build_choropleth
 
+# Minimum requests in a geo×SRType cell to display (suppresses noise; adjustable without rerunning pipeline)
+_MIN_GEO_SRTYPE_N = 5
+
 # How to aggregate each metric to a single citywide value
 _METRIC_AGG = {
     "median_days_to_close": "median",
@@ -162,6 +165,22 @@ def _timeseries_fig(ts: pd.DataFrame, metric_col: str, metric_label: str, year: 
 
 
 @st.cache_data
+def _load_geo_srtype_metrics(path: Path) -> pd.DataFrame:
+    if not path.exists():
+        return pd.DataFrame()
+    return pd.read_parquet(path)
+
+
+def _extract_categories(sr: pd.DataFrame) -> list[str]:
+    """Return sorted unique hyphen-prefixes from SRType names (e.g. 'SW', 'HCD', 'TRS')."""
+    return sorted({
+        name.split("-")[0].strip()
+        for name in sr["SRType"]
+        if isinstance(name, str) and "-" in name and name.split("-")[0].strip()
+    })
+
+
+@st.cache_data
 def _load_srtype_history(data_dir: Path) -> pd.DataFrame:
     """All available srtype_metrics years combined into one DataFrame."""
     dfs = []
@@ -177,7 +196,7 @@ def _load_srtype_history(data_dir: Path) -> pd.DataFrame:
 
 
 def _srtype_charts(data_dir: Path, year: int) -> str | None:
-    """Render performance table + year-over-year detail. Returns selected SRType or None."""
+    """Render category pills + performance table + year-over-year detail. Returns selected SRType or None."""
     srtype_path = data_dir / f"srtype_metrics_{year}.parquet"
     if not srtype_path.exists():
         st.caption(
@@ -186,15 +205,31 @@ def _srtype_charts(data_dir: Path, year: int) -> str | None:
         )
         return None
 
-    sr = (
+    sr_all = (
         pd.read_parquet(srtype_path)
         .sort_values("total_requests", ascending=False)
         .reset_index(drop=True)
     )
-    pct_col = "pct_resident_initiated" if "pct_resident_initiated" in sr.columns else None
+    pct_col = "pct_resident_initiated" if "pct_resident_initiated" in sr_all.columns else None
+
+    # ── Category pills ────────────────────────────────────────────────────────
+    categories = _extract_categories(sr_all)
+    if categories:
+        selected_cat = st.pills(
+            "Category", ["All"] + categories,
+            default="All",
+            key="srtype_cat",
+        )
+        sr = (
+            sr_all[sr_all["SRType"].str.startswith(f"{selected_cat}-")]
+            if selected_cat and selected_cat != "All"
+            else sr_all
+        ).reset_index(drop=True)
+    else:
+        sr = sr_all
 
     # ── Selectable performance table ──────────────────────────────────────────
-    st.markdown("**Performance by type** — click a row to see year-over-year trends")
+    st.markdown("**Performance by type** — click any row to see year-over-year trends")
     display_cols = ["SRType", "total_requests", "closure_rate", "median_days_to_close", "on_time_rate"]
     if pct_col:
         display_cols.append(pct_col)
@@ -216,7 +251,7 @@ def _srtype_charts(data_dir: Path, year: int) -> str | None:
         display.style.format({rename.get(k, k): v for k, v in fmt.items()}, na_rep="—"),
         use_container_width=True,
         hide_index=True,
-        height=400,
+        height=min(400, max(150, 35 * len(sr) + 38)),
         on_select="rerun",
         selection_mode="single-row",
         key="srtype_table",
@@ -319,18 +354,26 @@ def render_operations(
     st.divider()
     st.subheader("Geographic Distribution")
 
-    map_df = df.copy()
-    if selected_type and "top_sr_type" in df.columns:
-        filtered = df[df["top_sr_type"] == selected_type]
-        if not filtered.empty:
-            map_df = filtered
-            st.caption(f"Tracts where **{selected_type}** is the top request type · total requests")
-        else:
-            st.caption(f"No tracts have **{selected_type}** as top type — showing all · total requests")
-    else:
-        st.caption("Total requests by geography · click a table row above to filter by type")
+    geo_srtype = _load_geo_srtype_metrics(data_dir / f"{geo_key}_srtype_metrics_{year}.parquet")
+    totals = (
+        geo_srtype[geo_srtype["total_requests"] >= _MIN_GEO_SRTYPE_N]
+        if not geo_srtype.empty else geo_srtype
+    )
 
-    if "total_requests" in map_df.columns and not map_df.empty:
+    if selected_type and not totals.empty:
+        type_totals = totals[totals["SRType"] == selected_type][["geoid", "total_requests"]]
+        map_df = df[["geoid"]].merge(type_totals, on="geoid", how="left")
+        map_df["total_requests"] = map_df["total_requests"].fillna(0).astype(int)
+        map_caption = f"**{selected_type}** request count by geography"
+    elif selected_type:
+        map_df = df[["geoid", "total_requests"]] if "total_requests" in df.columns else None
+        map_caption = f"Overall request volume shown (re-run pipeline to get per-type geographic counts)"
+    else:
+        map_df = df[["geoid", "total_requests"]] if "total_requests" in df.columns else None
+        map_caption = "Total requests by geography · click a table row above to filter by type"
+
+    if map_df is not None and "total_requests" in map_df.columns and not map_df.empty:
+        st.caption(map_caption)
         fig_map = build_choropleth(
             df=map_df,
             geojson=geojson,

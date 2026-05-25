@@ -402,6 +402,32 @@ def stage_process(year: int, is_live: bool) -> None:
     log(f"Process stages complete — total elapsed: {time.time()-t0:.0f}s")
 
 
+def _geo_srtype_agg(df: pd.DataFrame, geo_col: str) -> pd.DataFrame:
+    """Aggregate total_requests, closed_requests, closure_rate, and median_days_to_close
+    by (geo_col, SRType). Caller is responsible for pre-filtering df as needed."""
+    base = df.dropna(subset=[geo_col])
+    agg = (
+        base.groupby([geo_col, "SRType"])
+        .agg(
+            total_requests=("SRRecordID", "count"),
+            closed_requests=("SRStatus", lambda s: (s.str.strip().str.lower() == "closed").sum()),
+        )
+        .reset_index()
+    )
+    agg["closure_rate"] = agg["closed_requests"] / agg["total_requests"].replace(0, float("nan"))
+    if "days_to_close" in base.columns:
+        dtc = (
+            base.dropna(subset=["days_to_close"])
+            .groupby([geo_col, "SRType"])["days_to_close"]
+            .median()
+            .reset_index(name="median_days_to_close")
+        )
+        agg = agg.merge(dtc, on=[geo_col, "SRType"], how="left")
+    else:
+        agg["median_days_to_close"] = float("nan")
+    return agg
+
+
 def stage_srtype(year: int) -> None:
     """Stage srtype: per-SRType aggregate metrics across ALL requests for a given year.
 
@@ -476,6 +502,30 @@ def stage_srtype(year: int) -> None:
     out_path = PROC / f"srtype_metrics_{year}.parquet"
     agg.to_parquet(out_path, index=False)
     log(f"Saved SRType metrics ({len(agg)} types) → {out_path.name}")
+
+    # ── tract-level per-type metrics (enables geographic map filtering) ─────────
+    if "tract_geoid" in df.columns:
+        tract_metrics = _geo_srtype_agg(df, "tract_geoid").rename(columns={"tract_geoid": "geoid"})
+        out_tract = PROC / f"tract_srtype_metrics_{year}.parquet"
+        tract_metrics.to_parquet(out_tract, index=False)
+        log(f"Saved tract SRType metrics ({len(tract_metrics)} rows, {tract_metrics['SRType'].nunique()} types) → {out_tract.name}")
+    else:
+        log("  WARNING: tract_geoid absent — tract_srtype_metrics skipped")
+
+    # ── CSA-level per-type metrics ────────────────────────────────────────────
+    crosswalk_path = RAW_DIR / "tract_to_csa.csv"
+    if "tract_geoid" in df.columns and crosswalk_path.exists():
+        xwalk = pd.read_csv(crosswalk_path, dtype={"geoid": str})
+        df_csa = df.merge(xwalk.rename(columns={"geoid": "tract_geoid"}), on="tract_geoid", how="left")
+        csa_metrics = (
+            _geo_srtype_agg(df_csa.dropna(subset=["csa_name"]), "csa_name")
+            .rename(columns={"csa_name": "geoid"})
+        )
+        out_csa = PROC / f"csa_srtype_metrics_{year}.parquet"
+        csa_metrics.to_parquet(out_csa, index=False)
+        log(f"Saved CSA SRType metrics ({len(csa_metrics)} rows, {csa_metrics['SRType'].nunique()} types) → {out_csa.name}")
+    else:
+        log("  WARNING: crosswalk absent or tract_geoid missing — csa_srtype_metrics skipped")
 
 
 def stage_demographics() -> None:
