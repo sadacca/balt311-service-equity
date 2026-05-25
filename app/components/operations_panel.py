@@ -317,8 +317,8 @@ def _srtype_charts(data_dir: Path, year: int) -> tuple[str | None, str | None]:
             hovertemplate="%{x}: %{y:,}<extra></extra>",
         ))
         fig_vol.update_layout(**chart_layout, yaxis=dict(title="Requests", gridcolor="#eeeeee"))
-        st.plotly_chart(fig_vol, use_container_width=True, key="srtype_vol",
-                        config={"displayModeBar": False})
+        vol_ev = st.plotly_chart(fig_vol, use_container_width=True, key="srtype_vol",
+                        on_select="rerun", config={"displayModeBar": False})
 
     with col_days:
         st.caption("Median days to close")
@@ -329,8 +329,14 @@ def _srtype_charts(data_dir: Path, year: int) -> tuple[str | None, str | None]:
             hovertemplate="%{x}: %{y:.1f} days<extra></extra>",
         ))
         fig_days.update_layout(**chart_layout, yaxis=dict(title="Days", gridcolor="#eeeeee"))
-        st.plotly_chart(fig_days, use_container_width=True, key="srtype_days",
-                        config={"displayModeBar": False})
+        days_ev = st.plotly_chart(fig_days, use_container_width=True, key="srtype_days",
+                        on_select="rerun", config={"displayModeBar": False})
+
+    # Bar click → navigate year (same mechanism as the time series chart above)
+    for ev in [vol_ev, days_ev]:
+        if ev and ev.selection and ev.selection.points:
+            st.session_state["ops_year_clicked"] = int(ev.selection.points[0]["x"])
+            st.rerun()
 
     return selected_type, selected_cat
 
@@ -350,9 +356,6 @@ def render_operations(
     ts = _build_timeseries(data_dir, geo_key)
 
     st.subheader("City-wide Performance")
-    equity_total = ts.loc[ts["year"] == year, "total_requests"].squeeze() if not ts.empty else float("nan")
-    _scope_banner(data_dir, year, equity_total)
-    st.divider()
     _kpi_bar(ts, year)
 
     st.markdown(f"**{metric_label} — all available years** · click a point to change year")
