@@ -82,7 +82,7 @@ def _scope_banner(data_dir: Path, year: int, equity_total: float) -> None:
     )
 
 
-
+def _kpi_bar(ts: pd.DataFrame, year: int) -> None:
     row = ts[ts["year"] == year]
     if row.empty:
         return
