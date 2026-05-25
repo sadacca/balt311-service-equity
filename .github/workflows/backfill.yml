@@ -65,7 +65,7 @@ jobs:
             python scripts/pipeline.py --year $year --stage srtype
 
             # Commit processed outputs for this year before moving on
-            git pull --rebase origin main
+            git pull --rebase --autostash origin main
             git add data/processed/
             if git diff --staged --quiet; then
               echo "No processed-data changes for $year"
