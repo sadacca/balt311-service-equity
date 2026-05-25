@@ -161,18 +161,46 @@ def _timeseries_fig(ts: pd.DataFrame, metric_col: str, metric_label: str, year: 
     return fig
 
 
-def _srtype_charts(srtype_path: Path) -> None:
+def _srtype_historical_avg(data_dir: Path, year: int) -> pd.DataFrame:
+    """Mean total_requests per SRType across all years except the selected one."""
+    dfs = []
+    for p in data_dir.glob("srtype_metrics_*.parquet"):
+        try:
+            y = int(p.stem.split("_")[-1])
+        except ValueError:
+            continue
+        if y != year:
+            dfs.append(pd.read_parquet(p)[["SRType", "total_requests"]])
+    if not dfs:
+        return pd.DataFrame(columns=["SRType", "avg_requests"])
+    avg = (
+        pd.concat(dfs)
+        .groupby("SRType")["total_requests"]
+        .mean()
+        .reset_index()
+        .rename(columns={"total_requests": "avg_requests"})
+    )
+    return avg
+
+
+def _srtype_charts(data_dir: Path, year: int) -> None:
+    srtype_path = data_dir / f"srtype_metrics_{year}.parquet"
     if not srtype_path.exists():
         st.caption(
-            f"SRType breakdown unavailable — run `pipeline.py --stage srtype --year <year>` "
+            "SRType breakdown unavailable — run `pipeline.py --stage srtype --year <year>` "
             "to generate it."
         )
         return
 
     sr = pd.read_parquet(srtype_path).sort_values("total_requests", ascending=False)
+    hist_avg = _srtype_historical_avg(data_dir, year)
+    sr = sr.merge(hist_avg, on="SRType", how="left")
 
     st.markdown("**Requests by type**")
-    st.caption("Bar width = volume · Color = % resident-initiated (gray → blue)")
+    st.caption(
+        "Bar = selected year volume · Color = % resident-initiated (gray → blue) · "
+        "**|** = average across all other available years"
+    )
 
     pct_col = "pct_resident_initiated" if "pct_resident_initiated" in sr.columns else None
     colors = (
@@ -180,18 +208,39 @@ def _srtype_charts(srtype_path: Path) -> None:
         if pct_col else "#1F4E8C"
     )
 
-    fig = go.Figure(go.Bar(
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
         y=sr["SRType"],
         x=sr["total_requests"],
         orientation="h",
         marker_color=colors,
-        hovertemplate="<b>%{y}</b><br>Requests: %{x:,}<extra></extra>",
+        hovertemplate="<b>%{y}</b><br>%{x:,} requests<extra></extra>",
+        name=str(year),
     ))
+
+    ref = sr.dropna(subset=["avg_requests"])
+    if not ref.empty:
+        fig.add_trace(go.Scatter(
+            y=ref["SRType"],
+            x=ref["avg_requests"],
+            mode="markers",
+            name="Avg (other years)",
+            marker=dict(
+                symbol="line-ns",
+                size=14,
+                color="#444",
+                line=dict(width=2, color="#444"),
+            ),
+            hovertemplate="<b>%{y}</b><br>Avg other years: %{x:,.0f}<extra></extra>",
+        ))
+
     fig.update_layout(
-        height=max(300, 20 * len(sr)),
+        height=max(300, 22 * len(sr)),
         margin={"t": 8, "b": 8, "l": 220, "r": 8},
         xaxis=dict(title="Total requests", gridcolor="#eeeeee"),
         yaxis=dict(autorange="reversed"),
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1, font_size=11),
         plot_bgcolor="white",
         paper_bgcolor="white",
     )
@@ -253,4 +302,4 @@ def render_operations(
 
     st.divider()
     st.subheader("Breakdown by Request Type")
-    _srtype_charts(data_dir / f"srtype_metrics_{year}.parquet")
+    _srtype_charts(data_dir, year)
