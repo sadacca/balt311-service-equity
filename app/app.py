@@ -5,7 +5,6 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-# Make src/ importable when running from repo root
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from components.equity_distributions import render_equity_distributions
@@ -22,14 +21,13 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Mapbox token (set via .streamlit/secrets.toml or Streamlit Cloud secrets) ─
 try:
     MAPBOX_TOKEN = st.secrets["mapbox"]["token"]
 except (KeyError, FileNotFoundError):
     MAPBOX_TOKEN = ""
 
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
+# ── Sidebar — filters that don't depend on year ───────────────────────────────
 st.sidebar.header("Filters")
 
 geo_level = st.sidebar.radio(
@@ -48,8 +46,13 @@ def available_years(gk: str) -> list[int]:
 
 
 years = available_years(geo_key)
-year = st.sidebar.selectbox("Year", years)
 
+# ── Header + year navigation ──────────────────────────────────────────────────
+st.title("Baltimore 311 Service Equity")
+year = st.radio("Year", years, horizontal=True, index=0)
+st.caption(f"{geo_level}s · Demographics from ACS 2023 5-Year Estimates")
+
+# ── Data loading (depends on year) ────────────────────────────────────────────
 parquet_path = DATA_DIR / f"{geo_key}_metrics_{year}.parquet"
 geojson_path = DATA_DIR / f"{geo_key}_boundaries.geojson"
 data_ready = parquet_path.exists() and geojson_path.exists()
@@ -81,7 +84,7 @@ else:
 
 demographics = load_demographics(DATA_DIR / f"{geo_key}_demographics.csv")
 
-# SRType filter (only when data is loaded)
+# ── Sidebar — filters that depend on loaded data ──────────────────────────────
 df = df_full
 if data_ready and "top_sr_type" in df_full.columns:
     all_types = sorted(df_full["top_sr_type"].dropna().unique().tolist())
@@ -97,13 +100,7 @@ if data_ready and "top_sr_type" in df_full.columns:
 metric_label = st.sidebar.selectbox("Color map by", list(METRIC_OPTIONS.keys()))
 metric_col = METRIC_OPTIONS[metric_label]
 
-
-# ── Header ────────────────────────────────────────────────────────────────────
-st.title("Baltimore 311 Service Equity")
-st.caption(
-    f"311 data {year} · {geo_level}s · Demographics from ACS 2023 5-Year Estimates"
-)
-
+# ── Tabs ──────────────────────────────────────────────────────────────────────
 tab_ops, tab_eq = st.tabs(["Operations", "Equity"])
 
 # ── Operations tab ────────────────────────────────────────────────────────────
@@ -129,7 +126,6 @@ with tab_eq:
             icon="ℹ️",
         )
     else:
-        # ── Map ───────────────────────────────────────────────────────────────
         geo_id_col = "geoid"
         featureidkey = (
             "properties.GEOID" if geo_level == "Census Tract" else "properties.csa_name"
@@ -158,7 +154,6 @@ with tab_eq:
                     key="map_select",
                 )
 
-            # ── Summary panel ─────────────────────────────────────────────────
             selected_row = None
             if selection and selection.get("selection", {}).get("points"):
                 pt = selection["selection"]["points"][0]
@@ -171,7 +166,6 @@ with tab_eq:
             with col_panel:
                 render_summary(selected_row)
 
-            # ── Demographic equity summaries ───────────────────────────────────
             if demographics is not None:
                 st.divider()
                 render_equity_distributions(df, demographics, metric_col, metric_label)
