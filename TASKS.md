@@ -132,13 +132,65 @@ Two equity questions at different levels:
 
 ---
 
-## Phase 5 — Seasonality Tab *(Long-term)*
+## Phase 4b — Area Analysis Tab *(candidate for next release)*
+
+**Goal**: a "middle view" between Operations (city-wide) and Equity (demographic disparity) aimed at area managers and district supervisors. The core question: are there geographies that look similar — in demographics, request mix, or both — but produce meaningfully different service outcomes? Gives managers a peer-comparison lens to self-check their area without needing to interpret equity scores.
+
+### Concept
+
+Two geographies are "peers" if they share similar inputs (demographic profile, SRType volume mix) but may differ on outputs (closure rate, median days to close). Surfacing outliers within peer groups is more actionable than a citywide ranking, because it controls for structural differences in what's being requested and by whom.
+
+### App additions
+
+- [ ] **P4b-1: Area overview panel** — for any selected tract or CSA, a summary card showing all key metrics alongside citywide and peer-group benchmarks. Replaces the current summary panel's raw numbers with contextualised comparisons.
+
+- [ ] **P4b-2: Peer similarity index** — compute a simple distance metric across geographies using: demographic profile (pct_black, pct_white, median_income) + request mix (SRType share vector). Identify the N closest peers (N=5 default) for any selected geography. Computed in-app from existing processed files — no new pipeline output required for an initial version.
+
+- [ ] **P4b-3: Peer comparison chart** — for a selected area and its peers, show side-by-side bar or dot-plot of each outcome metric. Highlight the selected area. Helps a manager answer: "areas like mine are getting X closure rate — why am I at Y?"
+
+- [ ] **P4b-4: Outcome outlier map** — choropleth of residual between observed outcome and peer-group expected outcome. Areas that over- or under-perform relative to similar peers show as diverging colors. This is more signal-rich than a raw metric map for identifying where operational intervention is warranted.
+
+- [ ] **P4b-5: SRType mix view** — bar chart of the top request types for the selected geography vs. its peer group. Helps distinguish "we get different requests" from "we handle the same requests worse."
+
+### Dependencies
+
+- Requires demographics CSV and geo×SRType metrics files (both available).
+- Peer similarity computation is O(n²) over geographies — fine for ~200 tracts, trivial for ~55 CSAs. No pipeline changes needed for MVP.
+- Peer count N and weighting of demographic vs. request-mix dimensions should be tunable via UI sliders or sidebar controls, not hardcoded.
+
+---
+
+## Phase 5 — Cross-Municipality Comparison *(medium-term)*
+
+**Goal**: place Baltimore's 311 performance and equity in context against peer cities. Two levels of depth.
+
+### Level 1 — High-level ops benchmarking
+
+- [ ] **P5-1: Identify peer municipalities** — select 4–6 cities with publicly accessible 311 open data and comparable population/density profiles (candidates: DC, Philadelphia, Chicago, NYC, Louisville). Confirm field compatibility (request type taxonomy, open/close timestamps, geocoding).
+
+- [ ] **P5-2: Summary metrics compilation** — for each peer city, extract citywide median days to close, closure rate, and requests per 1k residents for the most recent comparable year. Initially manual/semi-manual; automate if field schemas are compatible enough. Output: `data/processed/peer_city_metrics.csv`.
+
+- [ ] **P5-3: Benchmarking panel** — new section in Operations tab (or separate tab) showing Baltimore's headline KPIs alongside peer city values. Bar chart or dot plot; Baltimore highlighted. Contextualizes whether Baltimore's performance is strong, average, or lagging relative to comparable cities.
+
+### Level 2 — Reference city deep dive
+
+- [ ] **P5-4: Select 1–2 reference cities** — prioritize cities with: (a) similar demographic composition to Baltimore, (b) well-structured open 311 data, (c) known best or worst practice in equitable service delivery. Requires research; candidates TBD after Level 1 benchmarking.
+
+- [ ] **P5-5: Reference city pipeline** — adapt `scripts/pipeline.py` to support a `--city` flag routing to each city's FeatureServer or Socrata endpoint. Field mapping layer required (each city uses different column names). Output: parallel `{city}_{geo_key}_metrics_{year}.parquet` files.
+
+- [ ] **P5-6: Side-by-side equity comparison** — for each reference city: same equity distribution charts and Mann-Whitney scores as Baltimore. Allows direct comparison of disparity magnitude, not just headline performance.
+
+---
+
+## Phase 6 — Seasonality Tab *(Long-term)*
 
 **Goal**: answer "when do requests spike, and does seasonal surge affect equitable delivery?"
 
-- [ ] **P5-1: Monthly pipeline aggregation** — new pipeline output `{geo_key}_srtype_monthly_{year}.parquet`: geo × SRType × month with total_requests, closure_rate, median_days_to_close. Larger files — implement only when a seasonality view is planned.
-- [ ] **P5-2: Seasonality tab** — citywide and per-type monthly volume trends; seasonal peaks (bulk trash in spring, pothole in winter). Year-over-year overlay to distinguish seasonal pattern from year-level trend.
-- [ ] **P5-3: Seasonal equity check** — does closure time worsen during peak months, and does the worsening fall disproportionately on lower-income neighborhoods?
+**Goal**: answer "when do requests spike, and does seasonal surge affect equitable delivery?"
+
+- [ ] **P6-1: Monthly pipeline aggregation** — new pipeline output `{geo_key}_srtype_monthly_{year}.parquet`: geo × SRType × month with total_requests, closure_rate, median_days_to_close. Larger files — implement only when a seasonality view is planned.
+- [ ] **P6-2: Seasonality tab** — citywide and per-type monthly volume trends; seasonal peaks (bulk trash in spring, pothole in winter). Year-over-year overlay to distinguish seasonal pattern from year-level trend.
+- [ ] **P6-3: Seasonal equity check** — does closure time worsen during peak months, and does the worsening fall disproportionately on lower-income neighborhoods?
 
 ---
 
@@ -158,6 +210,17 @@ Two equity questions at different levels:
   - Resolved: `311_Customer_Service_Requests_Yearly/FeatureServer/{layer}` service confirmed, layer 0=2016 through 6=2022
   - Schema compatible with annual service; Lat/Lon coercion added for string fields in historical layers
   - 2016–2022 endpoints live in `ENDPOINTS` dict; all years processed via backfill workflow
+
+- [ ] **TD-3: Personas and use-case review**
+  - Define 3–4 realistic user personas (e.g. CDO/policy staff, agency operations manager, community advocate/press, data analyst)
+  - For each: primary question they arrive with, what they need to leave with, which tab answers it
+  - Identify gaps in current dashboard (missing context, jargon, missing features) per persona
+  - Use findings to validate or revise Phase 4b and Phase 5 scope before building — particularly whether P4-6 (regression) and P5-6 (reference city equity) are worth the effort for the actual audience
+
+- [ ] **TD-4: Cross-year duplicate SRRecordID check**
+  - Load all processed interim parquets and check for SRRecordIDs appearing in multiple years
+  - Determine whether duplicates are true re-submissions, amended records, or data artifacts
+  - Decide whether cross-year deduplication is needed and at what stage
 
 - [ ] **TD-2: Manual validation of Mann-Whitney overlap scores and demographic calculations**
   - Spot-check `overlap_score()` against hand-calculated values for at least two metric × year × geo-level combinations
