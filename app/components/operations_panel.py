@@ -103,22 +103,25 @@ def _scope_banner(data_dir: Path, year: int, equity_total: float) -> None:
         "Requests analyzed",
         f"{row['total_requests']:,.0f}" if not pd.isna(row.get("total_requests", float("nan"))) else "—",
         delta=_delta_str(row.get("total_requests"), prior_row.get("total_requests") if prior_row is not None else float("nan"), False),
+        delta_color="off",
     )
     c2.metric(
         "Median days to close",
         f"{row['median_days_to_close']:.1f}" if not pd.isna(row.get("median_days_to_close", float("nan"))) else "—",
         delta=delta("median_days_to_close"),
-        delta_color="inverse",  # lower is better
+        delta_color="off",
     )
     c3.metric(
         "Closure rate",
         f"{row['closure_rate']:.1%}" if not pd.isna(row.get("closure_rate", float("nan"))) else "—",
         delta=delta("closure_rate", is_pct=True),
+        delta_color="off",
     )
     c4.metric(
         "On-time rate",
         f"{row['on_time_rate']:.1%}" if not pd.isna(row.get("on_time_rate", float("nan"))) else "—",
         delta=delta("on_time_rate", is_pct=True),
+        delta_color="off",
     )
 
 
