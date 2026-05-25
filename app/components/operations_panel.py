@@ -29,19 +29,29 @@ def _citywide_value(df: pd.DataFrame, col: str) -> float:
 
 
 @st.cache_data
-def _build_timeseries(data_dir: Path, geo_key: str) -> pd.DataFrame:
-    """Aggregate citywide metric values for every available year parquet."""
+def _build_timeseries(data_dir: Path) -> pd.DataFrame:
+    """Aggregate citywide metrics for every available year from srtype_metrics (all requests).
+
+    Uses volume-weighted means for rate metrics so each SRType contributes proportionally.
+    requests_per_1k is omitted — not available at this level of aggregation.
+    """
     records = []
-    for path in sorted(data_dir.glob(f"{geo_key}_metrics_*.parquet")):
+    for path in sorted(data_dir.glob("srtype_metrics_*.parquet")):
         try:
             year = int(path.stem.split("_")[-1])
         except ValueError:
             continue
         df = pd.read_parquet(path)
-        row: dict = {"year": year, "total_requests": df["total_requests"].sum() if "total_requests" in df.columns else float("nan")}
-        for col in METRIC_OPTIONS.values():
-            if col in df.columns:
-                row[col] = _citywide_value(df, col)
+        w = df["total_requests"].fillna(0) if "total_requests" in df.columns else None
+        row: dict = {
+            "year": year,
+            "total_requests": df["total_requests"].sum() if w is not None else float("nan"),
+            "requests_per_1k": float("nan"),
+        }
+        for col in ("closure_rate", "on_time_rate", "median_days_to_close"):
+            if col in df.columns and w is not None:
+                mask = df[col].notna() & (w > 0)
+                row[col] = (df.loc[mask, col] * w[mask]).sum() / w[mask].sum() if mask.any() else float("nan")
             else:
                 row[col] = float("nan")
         records.append(row)
@@ -354,7 +364,7 @@ def render_operations(
     featureidkey: str,
     mapbox_token: str,
 ) -> None:
-    ts = _build_timeseries(data_dir, geo_key)
+    ts = _build_timeseries(data_dir)
 
     st.subheader("City-wide Performance")
     _scope_banner(data_dir, year)
