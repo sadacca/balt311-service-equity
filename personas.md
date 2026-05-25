@@ -148,6 +148,14 @@ Five primary personas drive feature prioritization. For each: who they are, what
 
 ---
 
+## Current Audience Focus
+
+The initial target audience is **super users** — people with vocational or research interest who can tolerate jargon and navigate a data-dense interface. This covers Personas 2–5 (journalist, citywide official, council member, ops manager). Persona 1 (interested citizen) is acknowledged but explicitly deprioritized for now: accessibility improvements (plain-language labels, address search, mobile layout, narrative summaries) are not on the active roadmap. Revisit when there is intent to publicize the dashboard to a general audience.
+
+This framing should guide design decisions: depth and precision over simplicity, technical labels acceptable, statistical concepts (overlap score, closure rate) can be used without inline explanation.
+
+---
+
 ## Key Takeaways for Roadmap
 
 1. **Phase 4b (Area Analysis) is the highest-value next step for the two most operationally engaged personas** — council members and ops managers. Both need a "how does my area compare to similar areas" answer that the current dashboard can't give.
