@@ -49,7 +49,14 @@ years = available_years(geo_key)
 
 # ── Header + year navigation ──────────────────────────────────────────────────
 st.title("Baltimore 311 Service Equity")
-year = st.radio("Year", years, horizontal=True, index=0)
+
+# Allow the operations time series to drive year selection via session state
+if "ops_year_clicked" in st.session_state:
+    clicked = st.session_state.pop("ops_year_clicked")
+    if clicked in years:
+        st.session_state["year_select"] = clicked
+
+year = st.radio("Year", years, horizontal=True, key="year_select")
 st.caption(f"{geo_level}s · Demographics from ACS 2023 5-Year Estimates")
 
 # ── Data loading (depends on year) ────────────────────────────────────────────
@@ -111,7 +118,16 @@ with tab_ops:
             "Run the pipeline to generate it."
         )
     else:
-        render_operations(DATA_DIR, geo_key, year, metric_col, metric_label)
+        render_operations(
+            DATA_DIR, geo_key, year, metric_col, metric_label,
+            df=df_full,
+            geojson=geojson,
+            geo_id_col="geoid",
+            featureidkey=(
+                "properties.GEOID" if geo_level == "Census Tract" else "properties.csa_name"
+            ),
+            mapbox_token=MAPBOX_TOKEN,
+        )
 
 # ── Equity tab ────────────────────────────────────────────────────────────────
 with tab_eq:

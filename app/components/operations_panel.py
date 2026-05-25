@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from components.map_view import METRIC_OPTIONS
+from components.map_view import METRIC_OPTIONS, build_choropleth
 
 # How to aggregate each metric to a single citywide value
 _METRIC_AGG = {
@@ -176,14 +176,15 @@ def _load_srtype_history(data_dir: Path) -> pd.DataFrame:
     return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
 
-def _srtype_charts(data_dir: Path, year: int) -> None:
+def _srtype_charts(data_dir: Path, year: int) -> str | None:
+    """Render performance table + year-over-year detail. Returns selected SRType or None."""
     srtype_path = data_dir / f"srtype_metrics_{year}.parquet"
     if not srtype_path.exists():
         st.caption(
             "SRType breakdown unavailable — run `pipeline.py --stage srtype --year <year>` "
             "to generate it."
         )
-        return
+        return None
 
     sr = (
         pd.read_parquet(srtype_path)
@@ -225,7 +226,7 @@ def _srtype_charts(data_dir: Path, year: int) -> None:
     selected_rows = event.selection.rows
     if not selected_rows:
         st.caption("Click a row above to see year-over-year volume and time-to-close trends.")
-        return
+        return None
 
     selected_type = sr.iloc[selected_rows[0]]["SRType"]
     history = _load_srtype_history(data_dir)
@@ -233,7 +234,7 @@ def _srtype_charts(data_dir: Path, year: int) -> None:
 
     if type_hist.empty:
         st.caption(f"No historical data found for **{selected_type}**.")
-        return
+        return None
 
     st.markdown(f"**{selected_type}** — year over year · selected year in red")
     bar_colors = ["#d73027" if y == year else "#1F4E8C" for y in type_hist["year"]]
@@ -274,6 +275,8 @@ def _srtype_charts(data_dir: Path, year: int) -> None:
         st.plotly_chart(fig_days, use_container_width=True, key="srtype_days",
                         config={"displayModeBar": False})
 
+    return selected_type
+
 
 def render_operations(
     data_dir: Path,
@@ -281,6 +284,11 @@ def render_operations(
     year: int,
     metric_col: str,
     metric_label: str,
+    df: pd.DataFrame,
+    geojson: dict,
+    geo_id_col: str,
+    featureidkey: str,
+    mapbox_token: str,
 ) -> None:
     ts = _build_timeseries(data_dir, geo_key)
 
@@ -290,14 +298,46 @@ def render_operations(
     st.divider()
     _kpi_bar(ts, year)
 
-    st.markdown(f"**{metric_label} — all available years**")
-    st.plotly_chart(
+    st.markdown(f"**{metric_label} — all available years** · click a point to change year")
+    ts_event = st.plotly_chart(
         _timeseries_fig(ts, metric_col, metric_label, year),
         use_container_width=True,
         key="ops_timeseries",
+        on_select="rerun",
         config={"displayModeBar": False},
     )
+    if ts_event and ts_event.selection and ts_event.selection.points:
+        clicked_year = int(ts_event.selection.points[0]["x"])
+        st.session_state["ops_year_clicked"] = clicked_year
+        st.rerun()
 
     st.divider()
     st.subheader("Breakdown by Request Type")
-    _srtype_charts(data_dir, year)
+    selected_type = _srtype_charts(data_dir, year)
+
+    # ── Geographic distribution map ───────────────────────────────────────────
+    st.divider()
+    st.subheader("Geographic Distribution")
+
+    map_df = df.copy()
+    if selected_type and "top_sr_type" in df.columns:
+        filtered = df[df["top_sr_type"] == selected_type]
+        if not filtered.empty:
+            map_df = filtered
+            st.caption(f"Tracts where **{selected_type}** is the top request type · total requests")
+        else:
+            st.caption(f"No tracts have **{selected_type}** as top type — showing all · total requests")
+    else:
+        st.caption("Total requests by geography · click a table row above to filter by type")
+
+    if "total_requests" in map_df.columns and not map_df.empty:
+        fig_map = build_choropleth(
+            df=map_df,
+            geojson=geojson,
+            geo_id_col=geo_id_col,
+            featureidkey=featureidkey,
+            metric_col="total_requests",
+            metric_label="Total requests",
+            mapbox_token=mapbox_token,
+        )
+        st.plotly_chart(fig_map, use_container_width=True, key="ops_map")
