@@ -9,8 +9,8 @@
 **Architecture decisions (v1.1):**
 - **Primary output:** Interactive Streamlit dashboard deployed on Streamlit Community Cloud
 - **Primary geographic unit:** Census tracts (~200 in Baltimore City); CSA as secondary roll-up for BNIA Vital Signs comparison
-- **Tech stack:** Python · Streamlit ≥1.32 · Plotly · Mapbox (free tier, token required)
-- **Update model:** Manual for MVP — analyst re-runs pipeline notebooks annually and pushes updated `data/processed/` files
+- **Tech stack:** Python · Streamlit ≥1.39 · Plotly · Mapbox (free tier, token required)
+- **Update model:** GitHub Actions — single-year (`update_data.yml`) and multi-year backfill (`backfill.yml`) workflows; analyst triggers manually and pushes nothing directly
 - **Phase 2 scope (not MVP):** Full drill-down to individual requests, multi-tract comparison, Dash migration if interactivity demands it
 
 ---
@@ -33,8 +33,8 @@ Produce a reproducible, neighborhood-level analysis of whether Baltimore City's 
 
 | Dataset | Source | URL | Update Frequency | Format |
 |---|---|---|---|---|
-| 311 Customer Service Requests (2024) | Open Baltimore | data.baltimorecity.gov | Annual file (daily-updated 2026 file also available) | CSV / GeoJSON |
-| 311 Customer Service Requests (2026) | Open Baltimore | data.baltimorecity.gov | Daily | CSV / GeoJSON |
+| 311 Customer Service Requests (2016–2022) | Open Baltimore | data.baltimorecity.gov | Annual historical files via `311_Customer_Service_Requests_Yearly` FeatureServer | ArcGIS REST API |
+| 311 Customer Service Requests (2023–2025) | Open Baltimore | data.baltimorecity.gov | Annual files; 2026 live file accumulates from Jan 1 | ArcGIS REST API |
 | Neighborhood Statistical Areas (NSA) Boundaries | Open Baltimore | data.baltimorecity.gov | Stable | Shapefile / GeoJSON |
 | Community Statistical Areas (CSA) Boundaries | BNIA-JFI / Open Baltimore | vital-signs-bniajfi.hub.arcgis.com | Stable | Shapefile / GeoJSON |
 
@@ -169,18 +169,28 @@ These gaps limit the analysis but do not block it. They are documented here to s
 ## 8. Technical Architecture
 
 ```
-Stage 1 — Pipeline (run locally, output committed to repo)
-  notebooks/01_ingest.ipynb       → download FeatureServer → data/raw/requests_{YEAR}.parquet
-  notebooks/02_clean.ipynb        → parse timestamps, spatial join to tracts → data/interim/
-  notebooks/03_aggregate.ipynb    → tract metrics + CSA roll-up + ACS merge → data/processed/
+Stage 1 — Pipeline (GitHub Actions, output committed to repo)
+  scripts/pipeline.py --stage ingest      → ArcGIS FeatureServer → data/raw/
+  scripts/pipeline.py --stage process     → clean + spatial join + aggregate → data/processed/
+                                            (tract/CSA metrics, boundaries, demographics,
+                                             requests_per_1k via Census ACS API)
+  scripts/pipeline.py --stage srtype      → per-SRType + geo×SRType metrics → data/processed/
+  scripts/pipeline.py --stage demographics→ ACS race + income → data/processed/ (run once)
+
+  .github/workflows/update_data.yml  → single-year manual trigger
+  .github/workflows/backfill.yml     → multi-year sequential backfill, staggered for ESRI
 
 Stage 2 — App (reads only from data/processed/, no network dependencies at runtime)
-  app/app.py                      → Streamlit entrypoint
-  app/components/map_view.py      → Plotly choropleth_mapbox builder
-  app/components/summary_panel.py → selected-geography summary card
-  src/balt311/ingest.py           → FeatureServer pagination logic (used in 01_ingest)
-  src/balt311/metrics.py          → parse_timestamps, compute_days_to_close,
-                                     aggregate_tract, rollup_to_csa
+  app/app.py                           → Streamlit entrypoint, tabs, year selector
+  app/components/operations_panel.py   → Operations tab (KPI bar, time series, SRType table, map)
+  app/components/map_view.py           → Plotly choropleth_mapbox builder
+  app/components/summary_panel.py      → selected-geography summary card (Equity tab)
+  app/components/equity_distributions.py → race + income distribution comparison
+  app/components/equity_trend.py       → year-over-year overlap score trend
+  app/components/utils.py              → overlap_score (Mann-Whitney), score_label, format_metric
+  src/balt311/ingest.py                → FeatureServer pagination logic
+  src/balt311/metrics.py               → parse_timestamps, compute_days_to_close,
+                                          aggregate_tract, rollup_to_csa, rollup_demographics_to_csa
 ```
 
 **Repository layout:**

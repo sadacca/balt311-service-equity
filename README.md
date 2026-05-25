@@ -8,7 +8,25 @@ Baltimore's 311 system receives hundreds of thousands of resident service reques
 
 ## What it shows
 
-### Map
+### Operations tab
+
+The default tab answers "how is Baltimore 311 performing overall?" before asking equity questions.
+
+**City-wide Performance**
+
+A scope banner shows total requests received, the equity-analysis subset, and the number excluded — making the filter explicit. Four headline KPIs follow (total requests analyzed, median days to close, closure rate, on-time rate), each with a year-over-year delta badge. Below them, a time series chart plots the selected metric across all available years (2016–2025); clicking any point navigates to that year.
+
+**Breakdown by Request Type**
+
+Category pills (SW, HCD, TRS, etc.) filter the table by service department prefix. The performance table shows every SRType with request volume, closure rate, median days to close, on-time rate, and percent resident-initiated. Clicking any row selects that type and populates two year-over-year bar charts below: total requests by year and median days to close by year, with the selected year highlighted in red.
+
+**Geographic Distribution**
+
+A choropleth map at the bottom shows request volume by census tract or CSA. When a table row is selected the map filters to show counts for that specific SRType only (sourced from `{geo_key}_srtype_metrics_{year}.parquet`). Cells with fewer than 5 requests are suppressed to avoid displaying statistically unreliable counts.
+
+---
+
+### Equity tab — Map
 
 Four equity metrics, switchable from the sidebar:
 
@@ -30,19 +48,19 @@ Below the map, two side-by-side distribution panels compare each metric across d
 - **Race**: majority-Black geographies (>50% Black population) vs. majority-White (>50% White population)
 - **Income**: geographies below vs. above the citywide median household income
 
-Each panel shows a box-and-strip chart — individual tracts or CSAs as points, with the interquartile range (25th–75th percentile) and median marked. An **IQR overlap score** summarizes how similar the two distributions are:
+Each panel shows a box-and-strip chart — individual tracts or CSAs as points, with the interquartile range (25th–75th percentile) and median marked. A **Mann-Whitney overlap score** summarizes how similar the two distributions are across the full range of values (not just the middle):
 
 | Score | Label | Meaning |
 |---|---|---|
-| > 60% | not bad | The two groups' middle ranges largely overlap |
-| 30–60% | could be better | Meaningful separation; warrants monitoring |
-| < 30% | needs review | Substantial disparity between groups |
+| > 0.7 | not bad | Distributions substantially interleaved |
+| 0.4–0.7 | could be better | Meaningful separation; warrants monitoring |
+| < 0.4 | needs review | Substantial disparity between groups |
 
 The score and charts update automatically when the metric selector changes.
 
 ### Equity Trend
 
-A year-over-year line chart tracks the IQR overlap score for each metric from 2023 onward, separately for race-based and income-based comparisons. Rising scores indicate narrowing disparity; falling scores indicate widening disparity.
+A year-over-year line chart tracks the Mann-Whitney overlap score for each metric across all available years (2016–2025), separately for race-based and income-based comparisons. Rising scores indicate narrowing disparity; falling scores indicate widening disparity.
 
 ---
 
@@ -50,7 +68,7 @@ A year-over-year line chart tracks the IQR overlap score for each metric from 20
 
 | Source | What | How accessed |
 |---|---|---|
-| [Baltimore Open Data](https://data.baltimorecity.gov) | 311 service requests 2023–2025 | ArcGIS FeatureServer REST API |
+| [Baltimore Open Data](https://data.baltimorecity.gov) | 311 service requests 2016–2025 | ArcGIS FeatureServer REST API (annual files 2023+; `311_Customer_Service_Requests_Yearly` layers for 2016–2022) |
 | [Census Bureau GENZ2023](https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.html) | Census tract boundaries (2020 definitions) | Cartographic boundary shapefile ZIP |
 | [BNIA VitalSigns](https://github.com/BNIA/VitalSigns) | Tract → CSA crosswalk | GitHub raw CSV |
 | [Census ACS 2023 5-Year](https://www.census.gov/data/developers/data-sets/acs-5year.html) | Tract population (B01003), race (B02001), median household income (B19013) | Census Data API |
@@ -75,6 +93,7 @@ GitHub Actions (manual trigger)
 │  + ACS population → requests_per_1k                     │
 │  + ACS race + income → tract/csa_demographics.csv       │
 │  + BNIA crosswalk → CSA rollup                          │
+│  + srtype stage → srtype_metrics + geo×SRType metrics   │
 │  Commits data/processed/ to main                        │
 └─────────────────────────────────────────────────────────┘
                     │
@@ -85,25 +104,31 @@ GitHub Actions (manual trigger)
 
 The two-job design lets the process stage be re-run independently (Actions → Re-run failed jobs) without re-fetching the full dataset. Demographic reference files (`tract_demographics.csv`, `csa_demographics.csv`) are generated once and committed — the pipeline skips regeneration on subsequent runs.
 
+A separate **backfill workflow** (`backfill.yml`) processes multiple years in one dispatch: sequential loop, 180-second pause between years to limit ESRI server load, commits after each year so partial runs are preserved.
+
 ---
 
 ## Repository layout
 
 ```
 app/
-  app.py                    # Streamlit entrypoint
-  requirements.txt          # App-only deps (streamlit, pandas, plotly, pyarrow)
+  app.py                    # Streamlit entrypoint — tabs, year selector, data loading
+  requirements.txt          # App-only deps (streamlit≥1.39, pandas, plotly, pyarrow)
   components/
     map_view.py             # Plotly choropleth_mapbox builder
-    summary_panel.py        # Click-to-select detail panel
+    summary_panel.py        # Click-to-select detail panel (Equity tab)
     equity_distributions.py # Race + income distribution comparison charts
     equity_trend.py         # Year-over-year overlap score trend chart
+    operations_panel.py     # Operations tab: KPI bar, time series, SRType table, map
     utils.py                # Shared: overlap_score, score_label, format_metric
 
 data/
-  processed/                # Committed — read by the app
-    tract_metrics_{year}.parquet
-    csa_metrics_{year}.parquet
+  processed/                # Committed — read by the app at runtime
+    tract_metrics_{year}.parquet          # Tract-level equity metrics
+    csa_metrics_{year}.parquet            # CSA-level equity metrics
+    srtype_metrics_{year}.parquet         # City-wide metrics per SRType
+    tract_srtype_metrics_{year}.parquet   # Tract × SRType: requests + performance
+    csa_srtype_metrics_{year}.parquet     # CSA × SRType: requests + performance
     tract_boundaries.geojson
     csa_boundaries.geojson
     tract_demographics.csv  # ACS race + income by tract (year-independent)
@@ -112,7 +137,7 @@ data/
   interim/                  # Gitignored — rebuilt by pipeline
 
 scripts/
-  pipeline.py               # Headless pipeline (ingest / process / all)
+  pipeline.py               # Headless pipeline: --stage ingest/process/srtype/demographics
 
 src/balt311/
   ingest.py                 # ArcGIS FeatureServer pagination
@@ -124,16 +149,17 @@ notebooks/
   03_aggregate.ipynb
 
 .github/workflows/
-  update_data.yml           # Manual-trigger Actions workflow
+  update_data.yml           # Single-year manual-trigger workflow
+  backfill.yml              # Multi-year sequential backfill workflow
 ```
 
 ---
 
 ## Updating the data
 
-Trigger the workflow manually from **Actions → Update 311 processed data → Run workflow**. Select the year and whether it is a live (partial) year.
+**Single year**: Actions → Update 311 processed data → Run workflow. Select the year and whether it is a live (partial) year. For a live current year, enable **"Live current-year file"** — this applies 30-day right-censoring to exclude recently-created requests that haven't had time to close.
 
-For a live current year, enable **"Live current-year file"** — this applies 30-day right-censoring to exclude recently-created requests that haven't had time to close, which would otherwise deflate closure rates.
+**Multiple years (backfill)**: Actions → Backfill 311 data — multiple years → Run workflow. Default processes all years 2016–2025 sequentially with a 180-second pause between each to limit ESRI server load. Editable at dispatch time — trim the year list or adjust the pause as needed.
 
 The demographic reference files (`tract_demographics.csv`, `csa_demographics.csv`) are generated automatically on the first process run and do not need to be regenerated annually — they are committed to the repo and reused across all years.
 
@@ -181,6 +207,6 @@ python scripts/pipeline.py --year 2026 --live   # current-year with right-censor
 
 **Requests per 1,000 residents**: total equity-subset requests / ACS 2023 5-year tract population × 1,000.
 
-**IQR overlap score**: for any two demographic groups, the fraction of the combined interquartile range that the two IQR bands share. 0% = no overlap (complete separation); 100% = identical distributions. Computed separately for race-based and income-based comparisons, for each equity metric.
+**Mann-Whitney overlap score**: `1 - 2 × |P(A > B) - 0.5|` across all pairwise comparisons between the two demographic groups. Score of 1.0 means the groups are perfectly interleaved; 0.0 means one group is entirely above the other. More sensitive than IQR overlap to tail differences and systematic shifts when medians are close. Requires ≥ 3 non-null values per group; returns NaN otherwise. Computed separately for race-based and income-based comparisons, for each equity metric.
 
 **Demographic classification**: race groups require >50% of tract/CSA population identifying as a single race (mixed tracts excluded from race comparison). Income groups split at the citywide median of the tract/CSA distribution for the selected year and geography level.

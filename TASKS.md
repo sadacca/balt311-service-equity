@@ -37,7 +37,9 @@ Ordered by dependency. Complete data investigation tasks before building on thei
 
 - [x] **P1-5: Ingest and process 2023** — endpoint fixed; 2023 data confirmed processed and available.
 
-- [ ] **P1-6: Re-run 2025 pipeline with Census API key** — 2025 was processed before Census API key was configured; `requests_per_1k` likely missing. Trigger fresh workflow run for year=2025.
+- [x] **P1-6: Re-run pipeline with Census API key** — `requests_per_1k` now populated for all years via backfill workflow (P3-6).
+
+- [x] **P1-7: Historical data 2016–2022** — switched to `311_Customer_Service_Requests_Yearly/FeatureServer/{layer}` (layer 0=2016 through 6=2022). Lat/Lon coercion added for string fields in historical layers. All years ingested and processed via backfill workflow. See TD-1.
 
 ---
 
@@ -47,7 +49,7 @@ Ordered by dependency. Complete data investigation tasks before building on thei
 
 - [x] **P2-2: App deployed** — live at https://balt311equity.streamlit.app/. Year, geo level, SRType, metric selectors all working.
 
-- [x] **P2-3: SRType filter** — current filter uses `top_sr_type` as a proxy. Behavior documented; per-type stratification moved to Phase 4 (P4-1).
+- [x] **P2-3: SRType filter** — sidebar multiselect filters equity tab map; Operations tab uses independent SRType selection via table click.
 
 - [x] **P2-4: On-time rate metric** — `is_on_time`, `due_date_gap_days` computed in `metrics.py`; `on_time_rate` in `aggregate_tract()` and `rollup_to_csa()`.
 
@@ -57,127 +59,53 @@ Ordered by dependency. Complete data investigation tasks before building on thei
 
 ---
 
-## Phase 2b — Demographic Equity Summaries + Multi-Year Foundation *(in progress)*
+## Phase 2b — Demographic Equity Summaries + Multi-Year Foundation
 
-Goal: add race and income context below the map — distribution comparisons for the selected metric across demographic groups, with an overlap score and plain-language label. Multi-year data (2023–2025) enables the year-over-year overlap trend chart, moved here from Phase 3 because the data is now ready.
+- [x] **P2b-1: Fetch tract-level race and income from ACS** — `stage_demographics()` in `scripts/pipeline.py`. Fetches ACS 2023 5-year variables B02001 (race) and B19013 (income). Output: `tract_demographics.csv` with geoid, pct_black, pct_white, median_income.
 
-### Data pipeline
+- [x] **P2b-2: Roll up demographics to CSA level** — `rollup_demographics_to_csa()` in `src/balt311/metrics.py`. Population-weighted mean of tract values. Output: `csa_demographics.csv`.
 
-- [ ] **P2b-1: Fetch tract-level race and income from ACS**
-  - New function `_fetch_tract_demographics(dest: Path)` in `scripts/pipeline.py`
-  - ACS 2023 5-year variables (same API call pattern as population, county=510):
-    - `B02001_001E` — total race population
-    - `B02001_002E` — White alone
-    - `B02001_003E` — Black or African American alone
-    - `B19013_001E` — median household income
-  - Compute `pct_black = B02001_003E / B02001_001E`, `pct_white = B02001_002E / B02001_001E`
-  - Output: `data/processed/tract_demographics.csv` — columns: geoid, pct_black, pct_white, median_income
-  - Soft-fail (log warning) if Census API unavailable; app handles missing file gracefully
+- [x] **P2b-3: Demographic files committed** — both CSVs in `data/processed/`. Pipeline skips regeneration if both files already exist.
 
-- [ ] **P2b-2: Roll up demographics to CSA level**
-  - New function `rollup_demographics_to_csa(tract_demo_df, xwalk_df, pop_df)` in `src/balt311/metrics.py`
-  - Race: population-weighted mean of tract pct_black / pct_white across tracts in each CSA
-  - Income: population-weighted mean of tract median_income as CSA approximation
-    (Note: BNIA Vital Signs publishes authoritative CSA income — integrate in Phase 4 if weighted mean proves insufficient)
-  - Output: `data/processed/csa_demographics.csv` — same columns as tract file
-  - Call from `stage_process()` in pipeline; commit both CSVs to repo
+- [x] **P2b-4: `app/components/equity_distributions.py`** — box-and-strip charts for race and income group comparisons. Uses Mann-Whitney probability-of-superiority overlap score (see note). Score thresholds: >0.7 → "not bad", >0.4 → "could be better", <0.4 → "needs review".
 
-- [ ] **P2b-3: Re-run pipeline to generate demographic files**
-  - Run for 2024 and 2025 (or run standalone `_fetch_tract_demographics` + `rollup_demographics_to_csa` once)
-  - Commit `tract_demographics.csv` and `csa_demographics.csv` to `data/processed/`
+- [x] **P2b-5: Wire into `app/app.py`** — demographics loaded and passed to equity distributions; soft-fails with caption if CSV absent.
 
-### App component
+- [x] **P2b-6: Equity trend chart** — `app/components/equity_trend.py`. Year-over-year overlap score line chart for each metric; one chart per demographic dimension (race / income). Shared `overlap_score()` in `app/components/utils.py`.
 
-- [ ] **P2b-4: Create `app/components/equity_distributions.py`**
-
-  **Classification logic:**
-  - Race groups: Black-predominant (pct_black > 50%) vs. White-predominant (pct_white > 50%); drop mixed (neither >50%) from the race comparison
-  - Income groups: above-median vs. below-median of the tract/CSA income distribution
-
-  **Visualization** (Plotly, two side-by-side charts — race | income):
-  - For each group pair: shaded IQR band (25th–75th percentile) + horizontal median line + individual dot per geography (strip chart style)
-  - Color: consistent with map palette (red/blue); dots semi-transparent
-  - Axis: metric value (left) vs. group label (bottom)
-  - Title shows group sizes (n=X vs n=Y)
-
-  **Overlap scoring** (computed per chart):
-  ```
-  overlap = max(0, min(q75_A, q75_B) - max(q25_A, q25_B))
-  span    = max(q75_A, q75_B) - min(q25_A, q25_B)
-  score   = overlap / span   (0 = no overlap, 1 = full overlap)
-  ```
-  - score > 0.6 → "not bad" (green badge)
-  - score 0.3–0.6 → "could be better" (amber badge)
-  - score < 0.3 → "needs review" (red badge)
-
-  **Display per chart:** Plotly figure + score badge + one-sentence description of which group performs better and by how much (median difference)
-
-- [ ] **P2b-5: Wire into `app/app.py`**
-  - Load `{geo_key}_demographics.csv` from `data/processed/` (cached, soft-fail if absent)
-  - Add section below map divider: "Equity by Demographics"
-  - Pass current `metric_col` and `metric_label` — section updates automatically on metric filter change
-  - Show both race and income charts side by side (two columns)
-
-- [ ] **P2b-6: Equity trend chart — year-over-year overlap scores** *(moved from P3-1; 2023/2024/2025 data ready)*
-  - New component `app/components/equity_trend.py`
-  - Shared `overlap_score()` utility in `app/components/utils.py` (used by both P2b-4 and P2b-6)
-  - Line chart: x=year, y=overlap score, one line per equity metric; one chart for race, one for income
-  - Reference bands: green >0.6, amber 0.3–0.6, red <0.3
-  - Shows whether disparity is improving, stable, or worsening year over year
+  **Note on overlap score implementation**: Final implementation uses Mann-Whitney probability of superiority (`1 - 2 * |P(A>B) - 0.5|`) rather than IQR band overlap as originally specified. More sensitive to tail differences and systematic shifts when medians are close. References in this document to "IQR overlap" should be read as "Mann-Whitney overlap score."
 
 ---
 
-## Phase 3 — Operations Tab *(next release)*
+## Phase 3 — Operations Tab
 
-**Goal**: answer "how is Baltimore 311 doing overall?" before asking "is it equitable?". Restructures the app around two tabs — Operations (default) and Equity (existing content) — sharing the sidebar year/geo/metric selectors. Sets up year-over-year performance tracking and eventual cross-metro comparison.
+- [x] **P3-0: Tab restructure** — `st.tabs(["Operations", "Equity"])` in `app.py`. Year selector inline above tabs as horizontal radio (`st.radio`). Sidebar filters shared across both tabs.
 
-### Architecture
+- [x] **P3-1: Per-SRType aggregate table** — `srtype_metrics_{year}.parquet` with total_requests, closed_requests, closure_rate, median_days_to_close, on_time_rate, pct_resident_initiated. `--stage srtype` in pipeline CLI; step added to Actions `process` job.
 
-- [ ] **P3-0: Tab restructure**
-  - Replace single-page layout with `st.tabs(["Operations", "Equity"])` in `app.py`
-  - Sidebar filters (year, geo level, metric, SRType) remain shared across both tabs
-  - All existing map + equity content moves into the Equity tab unchanged
-  - Operations tab is the default (first) tab
+- [x] **P3-2: Headline KPI bar** — 4 metrics (requests, median days to close, closure rate, on-time rate) with year-over-year delta badges. All deltas shown as neutral color (`delta_color="off"`) — direction of change is context-dependent.
 
-### Pipeline additions
+- [x] **P3-3: City-level time series** — interactive line chart; selected year highlighted red. Clicking a point updates the year selector via `st.session_state`. `displayModeBar: False` on all non-map charts.
 
-- [ ] **P3-1: Per-SRType aggregate table**
-  - New pipeline output: `data/processed/srtype_metrics_{year}.parquet`
-  - One row per `SRType`: total_requests, closed_requests, closure_rate, median_days_to_close, on_time_rate, pct_resident_initiated
-  - Covers ALL requests (not filtered to equity subset) — this is the full service delivery picture
-  - `pct_resident_initiated`: fraction of requests that are Phone/API/Mail/Email — characterizes type nature (high % = demand-driven; low % = proactive/staff-driven)
-  - Add `--stage srtype` to pipeline CLI; add step to Actions workflow
+- [x] **P3-4: SRType breakdown** — horizontal bar chart approach replaced by selectable performance table (P3-5). Category pills (`st.pills`) above the table filter by hyphen-prefix category (SW-, HCD-, TRS-, etc.). Clicking any row selects that type for detail charts and map.
 
-### App additions
+- [x] **P3-5: SRType performance table** — `st.dataframe(on_select="rerun", selection_mode="single-row")`. Columns: Type, Requests, Closure rate, Median days, On-time rate, % Resident. Row click triggers year-over-year detail charts below.
 
-- [ ] **P3-2: Headline KPI bar**
-  - 4 metrics: total requests · citywide closure rate · citywide median days to close · citywide on-time rate
-  - Each shows current year value + YoY delta badge (↑/↓ vs. prior year) when prior year parquet exists
-  - Derived by aggregating the existing `{geo_key}_metrics_{year}.parquet` — no new pipeline output needed
+- [x] **P3-6: Year-over-year SRType detail charts** — two side-by-side bar charts for selected type: total requests by year and median days to close by year. Selected year highlighted red. Driven by table row selection.
 
-- [ ] **P3-3: City-level time series**
-  - Line chart below the KPI bar: x = year (all available years), y = citywide value of the **selected metric**
-  - Reacts to the sidebar metric selector — same metric shown in map and equity tab
-  - Citywide value per year: median of tract/CSA medians (consistent with how headline KPIs are computed)
-  - Plotted as a single line with markers; year range auto-expands as more historical data is added
+- [x] **P3-7: Geographic distribution map in Operations** — choropleth of request count by geography. Filtered to selected SRType if a table row is selected. Loaded from `{geo_key}_srtype_metrics_{year}.parquet`; cells with fewer than 5 requests suppressed in UI (`_MIN_GEO_SRTYPE_N = 5`) without requiring pipeline rerun.
 
-- [ ] **P3-4: SRType volume chart**
-  - Horizontal bar chart of total requests by SRType, sorted descending by volume
-  - Bars colored by `pct_resident_initiated` (continuous scale: gray = proactive/staff-driven → blue = fully resident-initiated)
-  - Contextualizes which types dominate volume and whether they are demand-driven or operational
-  - Data source: `srtype_metrics_{year}.parquet`
+- [x] **P3-8: Scope banner** — 3-column tile row: All requests received / Equity analysis subset / Excluded from analysis. Caption explains equity subset definition. Uses `srtype_metrics_{year}.parquet` for the all-requests total.
 
-- [ ] **P3-5: SRType performance table**
-  - Sortable `st.dataframe` of all SRTypes with columns: SRType · requests · closure rate · median days to close · on-time rate · % resident-initiated
-  - Default sort: total requests descending
-  - Formatted: rates as %, days as decimal; color-coded cells for closure rate and on-time rate (green/amber/red relative to citywide values)
-  - Data source: `srtype_metrics_{year}.parquet`
+- [x] **P3-9: Backfill workflow** — `.github/workflows/backfill.yml`. Sequential loop over configurable year list; commits after each year; 180s default pause between ingests to limit ESRI server load; skips year on ingest failure rather than aborting; cleans raw/interim between years to keep runner disk use flat.
+
+- [x] **P3-10: Geo × SRType metrics aggregation** — `tract_srtype_metrics_{year}.parquet` and `csa_srtype_metrics_{year}.parquet`. Columns: geoid, SRType, total_requests, closed_requests, closure_rate, median_days_to_close. Replaces `tract_srtype_totals_{year}` (total_requests only). `_geo_srtype_agg()` helper in pipeline avoids code duplication between tract and CSA.
 
 ---
 
-## Phase 4 — SRType-Stratified Equity Analysis *(Release N+2)*
+## Phase 4 — SRType-Stratified Equity Analysis *(next release)*
 
-**Goal**: answer "is service delivery equitable when you account for what's being requested?". The key insight motivating this phase: aggregate equity scores can be misleading because neighborhoods differ in their mix of request types, and different types have structurally different resolution times. A neighborhood that submits many fast-closing requests will look well-served in aggregate even if slower types are handled inequitably there.
+**Goal**: answer "is service delivery equitable when you account for what's being requested?". The key insight: aggregate equity scores can be misleading because neighborhoods differ in their mix of request types, and different types have structurally different resolution times.
 
 ### Conceptual framing
 Two equity questions at different levels:
@@ -186,46 +114,21 @@ Two equity questions at different levels:
 
 ### Pipeline additions
 
-- [ ] **P4-1: Per-(SRType, tract) aggregate table**
-  - New pipeline output: `data/processed/tract_srtype_metrics_{year}.parquet`
-  - One row per `(tract_geoid, sr_type)`: same equity metrics as `tract_metrics` but scoped to one type
-  - Only produces rows for (tract, type) combinations with ≥ 10 requests (suppress sparse cells)
-  - Equity subset filter still applies (resident-initiated, non-ECC, geocoded)
+- [x] **P4-1a: Geo × SRType metrics pipeline** — `tract_srtype_metrics_{year}.parquet` and `csa_srtype_metrics_{year}.parquet` produced by `stage_srtype`. Contains total_requests, closed_requests, closure_rate, median_days_to_close. *(Done in P3-10; listed here because it unblocks P4-1b.)*
 
-- [ ] **P4-2: Within-type IQR overlap scores**
-  - For each SRType with sufficient coverage (≥ 20 majority-Black tracts AND ≥ 20 majority-White tracts with data), compute race-based and income-based IQR overlap scores
-  - Output: `data/processed/srtype_equity_{year}.parquet` — one row per SRType with overlap scores for each metric
-  - Ranks SRTypes from most to least equitable; surfaces which types drive aggregate disparity
+- [ ] **P4-1b: Within-type equity scoring** — for each (SRType, geo) with sufficient coverage, compute race-based and income-based Mann-Whitney overlap scores using `tract_srtype_metrics` joined to demographics. Minimum threshold: ≥5 requests per cell (UI-enforced) and ≥10 tracts per demographic group (for meaningful score). Output: `srtype_equity_{year}.parquet` — one row per SRType with overlap scores for each metric.
+
+- [ ] **P4-2: Adjusted city equity score** — volume-weighted mean of within-type overlap scores across all covered SRTypes. More defensible than aggregate score for policy use.
 
 ### App additions
 
-- [ ] **P4-3: SRType equity ranking panel**
-  - Table or dot-plot of all SRTypes ranked by within-type IQR overlap score for the selected metric and demographic dimension (race or income)
-  - Color-coded by score band (green/amber/red)
-  - Click a row to see the full distribution comparison for that type (same box+strip chart as the aggregate equity panel)
-  - Answers: "which services are delivered most inequitably?"
+- [ ] **P4-3: SRType equity ranking panel** — table or dot-plot of SRTypes ranked by within-type overlap score. Color-coded by score band. Click a row to see the full distribution comparison for that type. Answers: "which services are delivered most inequitably?"
 
-- [ ] **P4-4: Adjusted city equity score**
-  - A single composite equity score for the city that controls for service type mix
-  - Computed as the volume-weighted mean of within-type overlap scores across all covered SRTypes
-  - More defensible than the aggregate score for policy and press use
-  - Show alongside the aggregate overlap score so both are visible; explain the difference in a tooltip
+- [ ] **P4-4: Adjusted vs. aggregate equity score display** — show both scores with explanation of the difference.
 
-- [ ] **P4-5: Historical data ingest (2016–2022)** *(blocked on TD-1)*
-  - Add `fetch_year_socrata()` or equivalent once pre-2023 source is confirmed
-  - Route `fetch_year()` by year: ArcGIS for 2023+, Socrata for pre-2023
-  - Validate field name consistency; run pipeline for each historical year
-  - Payoff: 9-year trend chart gives a statistically meaningful equity trajectory
+- [ ] **P4-5: BNIA Vital Signs direct integration for CSA demographics** — replace population-weighted ACS rollup with authoritative BNIA CSA indicators (`pct_nhblk`, `pct_nhwht`, `mhhi`). Compare against ACS rollup to validate.
 
-- [ ] **P4-6: BNIA Vital Signs direct integration for CSA demographics**
-  - Replace population-weighted rollup of ACS tract data with authoritative BNIA CSA indicators
-  - Fetch `pct_nhblk`, `pct_nhwht`, `mhhi` from BNIA Vital Signs ArcGIS Hub
-  - Compare against ACS rollup to validate; use as primary for CSA-level analysis
-
-- [ ] **P4-7: Regression panel**
-  - OLS: `log(days_to_close)` ~ pct_black + median_income + SRType FE + month FE
-  - Displays race and income coefficients with 95% CI
-  - Defensible claim about whether disparity is income-driven, race-driven, or structural
+- [ ] **P4-6: Regression panel** — OLS: `log(days_to_close)` ~ pct_black + median_income + SRType FE + month FE. Displays race and income coefficients with 95% CI.
 
 ---
 
@@ -234,17 +137,8 @@ Two equity questions at different levels:
 **Goal**: answer "when do requests spike, and does seasonal surge affect equitable delivery?"
 
 - [ ] **P5-1: Monthly pipeline aggregation** — new pipeline output `{geo_key}_srtype_monthly_{year}.parquet`: geo × SRType × month with total_requests, closure_rate, median_days_to_close. Larger files — implement only when a seasonality view is planned.
-- [ ] **P5-2: Seasonality tab** — new tab showing citywide and per-type monthly volume trends; highlight seasonal peaks (bulk trash in spring, pothole in winter). Year-over-year overlay to distinguish seasonal pattern from year-level trend.
+- [ ] **P5-2: Seasonality tab** — citywide and per-type monthly volume trends; seasonal peaks (bulk trash in spring, pothole in winter). Year-over-year overlay to distinguish seasonal pattern from year-level trend.
 - [ ] **P5-3: Seasonal equity check** — does closure time worsen during peak months, and does the worsening fall disproportionately on lower-income neighborhoods?
-
----
-  - 1-page `docs/executive_summary.md` (or PDF via nbconvert)
-  - Key findings with inline map thumbnail references
-  - Audience: Mayor's Office, City Council, CDO
-
----
-
-
 
 ---
 
@@ -253,8 +147,8 @@ Two equity questions at different levels:
 | Question / Gap | Status |
 |---|---|
 | Duplicate `SRRecordID`s across years? | Still pending — need cross-year dedup check |
-| 2025 `requests_per_1k` missing (Census API key not set at run time) | Fix via P1-6 re-run |
-| 2016–2022 historical data | Fixed — switched to `311_Customer_Service_Requests_Yearly` FeatureServer (layer per year); runs validated |
+| 2025 `requests_per_1k` missing (Census API key not set at run time) | Resolved via backfill rerun |
+| 2016–2022 historical data | Resolved — see TD-1 and P1-7 |
 
 ---
 
@@ -263,9 +157,9 @@ Two equity questions at different levels:
 - [x] **TD-1: Locate pre-2023 historical 311 data**
   - Resolved: `311_Customer_Service_Requests_Yearly/FeatureServer/{layer}` service confirmed, layer 0=2016 through 6=2022
   - Schema compatible with annual service; Lat/Lon coercion added for string fields in historical layers
-  - 2016–2022 endpoints live in `ENDPOINTS` dict; workflow year choices updated to include all years
+  - 2016–2022 endpoints live in `ENDPOINTS` dict; all years processed via backfill workflow
 
-- [ ] **TD-2: Manual validation of IQR overlap scores and demographic calculations**
+- [ ] **TD-2: Manual validation of Mann-Whitney overlap scores and demographic calculations**
   - Spot-check `overlap_score()` against hand-calculated values for at least two metric × year × geo-level combinations
   - Verify demographic classification thresholds: confirm majority-Black (>50%) and majority-White (>50%) counts are plausible given Baltimore's demographic makeup (~63% Black citywide)
   - Confirm `pct_black`/`pct_white` values in `tract_demographics.csv` are in expected range (0–1); check for tracts with unexpected nulls
