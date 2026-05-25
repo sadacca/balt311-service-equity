@@ -1,0 +1,80 @@
+name: Backfill 311 data — multiple years
+
+on:
+  workflow_dispatch:
+    inputs:
+      years:
+        description: "Space-separated years to process, oldest first"
+        required: false
+        default: "2016 2017 2018 2019 2020 2021 2022 2023 2024 2025"
+        type: string
+      pause_seconds:
+        description: "Pause between years (seconds) — courtesy delay for ESRI servers"
+        required: false
+        default: "90"
+        type: string
+
+jobs:
+  backfill:
+    name: "Backfill ${{ inputs.years }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pandas pyarrow geopandas
+
+      - name: Process years sequentially
+        env:
+          CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          first=true
+          for year in ${{ inputs.years }}; do
+            # Pause before every year except the first
+            if [ "$first" = "false" ]; then
+              echo "--- Pausing ${{ inputs.pause_seconds }}s before $year ---"
+              sleep ${{ inputs.pause_seconds }}
+            fi
+            first=false
+
+            echo "=============================="
+            echo "  Year: $year"
+            echo "=============================="
+
+            # Ingest — skip year on failure so one bad endpoint doesn't abort the run
+            if ! python scripts/pipeline.py --year $year --stage ingest; then
+              echo "WARNING: ingest failed for $year — skipping"
+              continue
+            fi
+
+            python scripts/pipeline.py --year $year --stage process
+            python scripts/pipeline.py --year $year --stage srtype
+
+            # Commit processed outputs for this year before moving on
+            git pull --rebase origin main
+            git add data/processed/
+            if git diff --staged --quiet; then
+              echo "No processed-data changes for $year"
+            else
+              git commit -m "pipeline: backfill processed data for $year"
+              git push origin main
+            fi
+
+            # Clean up raw + interim to keep runner disk use flat across years
+            rm -f data/raw/requests_${year}.parquet
+            rm -f data/interim/requests_${year}_clean.parquet
+          done
