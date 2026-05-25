@@ -149,6 +149,9 @@ jobs:
           [ "${{ inputs.is_live_year }}" = "true" ] && LIVE_FLAG="--live"
           python scripts/pipeline.py --year ${{ inputs.year }} --stage process $LIVE_FLAG
 
+      - name: Generate SRType aggregate metrics
+        run: python scripts/pipeline.py --year ${{ inputs.year }} --stage srtype
+
       - name: Commit and push processed outputs
         run: |
           git config user.name "github-actions[bot]"
