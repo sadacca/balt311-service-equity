@@ -11,7 +11,7 @@ on:
       pause_seconds:
         description: "Pause between years (seconds) — courtesy delay for ESRI servers"
         required: false
-        default: "90"
+        default: "180"
         type: string
 
 jobs:
