@@ -1,6 +1,18 @@
 # Baltimore 311 Service Equity
 
-Baltimore's 311 system receives hundreds of thousands of resident service requests each year — potholes, bulk trash, water leaks, rodent control — but whether those requests get resolved at the same speed regardless of neighborhood is an open question. This dashboard makes that question answerable. It maps resolution metrics at the census tract and community level and tests directly whether outcomes differ between majority-Black and majority-White neighborhoods, and between lower- and higher-income areas.
+Baltimore's 311 system receives hundreds of thousands of resident service requests each year — potholes, bulk trash, water leaks, rodent control. This dashboard provides operational visibility into those interactions for two audiences:
+
+- **Citizens and advocates** — what requests are coming in, from where, and how does service delivery compare year over year and across neighborhood types
+- **Internal stakeholders** — department managers tracking their service types and citywide leadership asking whether performance is improving, equitable, and competitive with peer cities
+
+Four comparison axes structure the analysis:
+
+1. **Historical** — how does this year compare to prior years (2016–2025)?
+2. **Geographic** — which neighborhoods get faster or slower service, and why?
+3. **Cross-municipal** — how does Baltimore compare to peer cities on the same metrics?
+4. **Equity** — does service quality differ systematically by race or income of the requesting neighborhood?
+
+The equity lens is not the only lens — operational clarity for managers is equally important and is the first tab.
 
 **[Live dashboard → balt311equity.streamlit.app](https://balt311equity.streamlit.app/)**
 

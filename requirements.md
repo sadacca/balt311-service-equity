@@ -17,13 +17,26 @@
 
 ## 1. Goal
 
-Produce a reproducible, neighborhood-level analysis of whether Baltimore City's 311 service request resolution varies systematically by socioeconomic status of the requesting neighborhood. The output should function both as a standalone equity assessment and as a demonstration of what becomes possible when the city adds resolution time and cost-of-service fields to its daily 311 feed.
+Provide operational visibility into Baltimore's 311 service request system for two audiences:
+
+- **Citizens and advocates** — what requests are coming in, from where, and how does service delivery compare year over year and across neighborhood types
+- **Internal stakeholders** — department managers tracking their service types and citywide leadership asking whether performance is improving, equitable, and competitive with peer cities
+
+Four comparison axes structure the analysis and drive prioritization of features:
+
+1. **Historical** — how does this year compare to prior years (2016–2025)?
+2. **Geographic** — which neighborhoods get faster or slower service, and why?
+3. **Cross-municipal** — how does Baltimore compare to peer cities on the same metrics?
+4. **Equity** — does service quality differ systematically by race or income of the requesting neighborhood?
+
+The equity lens is not the only lens — operational clarity for managers is equally important and is the default landing view. The output should also function as a demonstration of what becomes possible when the city adds resolution time and cost-of-service fields to its daily 311 feed.
 
 **Primary Questions:**
-1. Does median time-to-close a 311 request differ significantly across Community Statistical Areas (CSAs)?
-2. Are certain request types resolved faster or more reliably in wealthier neighborhoods?
-3. What is the ratio of resident-initiated requests to proactive city-initiated inspections by neighborhood — and does this ratio correlate with income or race?
-4. Which request types have the highest reopen rates (reopened after initial closure), and where are they concentrated?
+1. What request types are coming in, where, and in what volume — and how does this compare to prior years?
+2. How quickly and completely are requests being resolved, by type and by geography?
+3. Does median time-to-close differ significantly across neighborhoods, and does it correlate with race or income?
+4. Are certain request types resolved faster or more reliably in wealthier neighborhoods?
+5. How does Baltimore's overall performance compare to peer municipalities?
 
 ---
 
