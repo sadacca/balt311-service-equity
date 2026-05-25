@@ -161,71 +161,124 @@ def _timeseries_fig(ts: pd.DataFrame, metric_col: str, metric_label: str, year: 
     return fig
 
 
-def _srtype_charts(srtype_path: Path) -> None:
+@st.cache_data
+def _load_srtype_history(data_dir: Path) -> pd.DataFrame:
+    """All available srtype_metrics years combined into one DataFrame."""
+    dfs = []
+    for p in sorted(data_dir.glob("srtype_metrics_*.parquet")):
+        try:
+            y = int(p.stem.split("_")[-1])
+        except ValueError:
+            continue
+        df = pd.read_parquet(p)
+        df["year"] = y
+        dfs.append(df)
+    return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+
+
+def _srtype_charts(data_dir: Path, year: int) -> None:
+    srtype_path = data_dir / f"srtype_metrics_{year}.parquet"
     if not srtype_path.exists():
         st.caption(
-            f"SRType breakdown unavailable — run `pipeline.py --stage srtype --year <year>` "
+            "SRType breakdown unavailable — run `pipeline.py --stage srtype --year <year>` "
             "to generate it."
         )
         return
 
     sr = pd.read_parquet(srtype_path).sort_values("total_requests", ascending=False)
-
-    st.markdown("**Requests by type**")
-    st.caption("Bar width = volume · Color = % resident-initiated (gray → blue)")
-
     pct_col = "pct_resident_initiated" if "pct_resident_initiated" in sr.columns else None
-    colors = (
-        [f"rgba(31,78,140,{0.3 + 0.7 * v})" for v in sr[pct_col].fillna(0)]
-        if pct_col else "#1F4E8C"
-    )
 
-    fig = go.Figure(go.Bar(
-        y=sr["SRType"],
-        x=sr["total_requests"],
-        orientation="h",
-        marker_color=colors,
-        hovertemplate="<b>%{y}</b><br>Requests: %{x:,}<extra></extra>",
-    ))
-    fig.update_layout(
-        height=max(300, 20 * len(sr)),
-        margin={"t": 8, "b": 8, "l": 220, "r": 8},
-        xaxis=dict(title="Total requests", gridcolor="#eeeeee"),
-        yaxis=dict(autorange="reversed"),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-    )
-    st.plotly_chart(fig, use_container_width=True, key="srtype_volume")
-
+    # ── Performance table (first) ─────────────────────────────────────────────
     st.markdown("**Performance by type**")
-    display = sr[["SRType", "total_requests", "closure_rate", "median_days_to_close", "on_time_rate"]
-                 + (["pct_resident_initiated"] if pct_col else [])].copy()
-
-    # Format for display
-    fmt: dict = {
+    display_cols = ["SRType", "total_requests", "closure_rate", "median_days_to_close", "on_time_rate"]
+    if pct_col:
+        display_cols.append(pct_col)
+    fmt = {
         "total_requests": "{:,.0f}",
         "closure_rate": "{:.1%}",
         "median_days_to_close": "{:.1f}",
         "on_time_rate": "{:.1%}",
     }
     if pct_col:
-        fmt["pct_resident_initiated"] = "{:.0%}"
-
+        fmt[pct_col] = "{:.0%}"
     rename = {
-        "SRType": "Type",
-        "total_requests": "Requests",
-        "closure_rate": "Closure rate",
-        "median_days_to_close": "Median days",
-        "on_time_rate": "On-time rate",
-        "pct_resident_initiated": "% Resident",
+        "SRType": "Type", "total_requests": "Requests",
+        "closure_rate": "Closure rate", "median_days_to_close": "Median days",
+        "on_time_rate": "On-time rate", "pct_resident_initiated": "% Resident",
     }
-    display = display.rename(columns=rename)
+    display = sr[display_cols].rename(columns=rename)
     st.dataframe(
         display.style.format({rename.get(k, k): v for k, v in fmt.items()}, na_rep="—"),
         use_container_width=True,
         hide_index=True,
         height=400,
     )
+
+    # ── Volume chart with overview / detail toggle ────────────────────────────
+    st.markdown("**Request volume**")
+    mode = st.radio("View", ["Overview", "Type detail"], horizontal=True, key="srtype_mode")
+
+    if mode == "Overview":
+        top = sr.head(15)
+        colors = (
+            [f"rgba(31,78,140,{0.3 + 0.7 * v})" for v in top[pct_col].fillna(0)]
+            if pct_col else "#1F4E8C"
+        )
+        st.caption("Top 15 types by volume · Color = % resident-initiated (gray → blue)")
+        fig = go.Figure(go.Bar(
+            y=top["SRType"],
+            x=top["total_requests"],
+            orientation="h",
+            marker_color=colors,
+            hovertemplate="<b>%{y}</b><br>%{x:,} requests<extra></extra>",
+        ))
+        fig.update_layout(
+            height=max(300, 22 * len(top)),
+            margin={"t": 8, "b": 8, "l": 220, "r": 8},
+            xaxis=dict(title="Total requests", gridcolor="#eeeeee"),
+            yaxis=dict(autorange="reversed"),
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+        )
+        st.plotly_chart(fig, use_container_width=True, key="srtype_overview",
+                        config={"displayModeBar": False})
+
+    else:
+        history = _load_srtype_history(data_dir)
+        if history.empty:
+            st.caption("No multi-year data available yet.")
+            return
+
+        sr_types = sr["SRType"].tolist()
+        selected = st.selectbox("Service type", sr_types, key="srtype_detail_select")
+
+        type_hist = (
+            history[history["SRType"] == selected]
+            .sort_values("year")
+        )
+
+        if type_hist.empty:
+            st.caption(f"No historical data found for {selected}.")
+            return
+
+        bar_colors = ["#d73027" if y == year else "#1F4E8C" for y in type_hist["year"]]
+        fig = go.Figure(go.Bar(
+            x=type_hist["year"],
+            y=type_hist["total_requests"],
+            marker_color=bar_colors,
+            hovertemplate="%{x}: %{y:,} requests<extra></extra>",
+        ))
+        fig.update_layout(
+            height=280,
+            margin={"t": 8, "b": 8, "l": 60, "r": 8},
+            xaxis=dict(title="Year", dtick=1),
+            yaxis=dict(title="Total requests", gridcolor="#eeeeee"),
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+        )
+        st.caption(f"Year-over-year request volume for **{selected}** · Selected year in red")
+        st.plotly_chart(fig, use_container_width=True, key="srtype_detail",
+                        config={"displayModeBar": False})
 
 
 def render_operations(
@@ -248,8 +301,9 @@ def render_operations(
         _timeseries_fig(ts, metric_col, metric_label, year),
         use_container_width=True,
         key="ops_timeseries",
+        config={"displayModeBar": False},
     )
 
     st.divider()
     st.subheader("Breakdown by Request Type")
-    _srtype_charts(data_dir / f"srtype_metrics_{year}.parquet")
+    _srtype_charts(data_dir, year)
