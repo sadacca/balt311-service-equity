@@ -127,7 +127,7 @@ def render_equity_trend(
     col_race, col_income = st.columns(2)
     with col_race:
         st.markdown("**Race-based disparity**")
-        st.plotly_chart(_trend_fig(trend_df, "Race", metric_label), use_container_width=True, key="trend_race")
+        st.plotly_chart(_trend_fig(trend_df, "Race", metric_label), use_container_width=True, key="trend_race", config={"displayModeBar": False})
     with col_income:
         st.markdown("**Income-based disparity**")
-        st.plotly_chart(_trend_fig(trend_df, "Income", metric_label), use_container_width=True, key="trend_income")
+        st.plotly_chart(_trend_fig(trend_df, "Income", metric_label), use_container_width=True, key="trend_income", config={"displayModeBar": False})

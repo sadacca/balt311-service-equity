@@ -195,7 +195,7 @@ def _srtype_charts(srtype_path: Path) -> None:
         plot_bgcolor="white",
         paper_bgcolor="white",
     )
-    st.plotly_chart(fig, use_container_width=True, key="srtype_volume")
+    st.plotly_chart(fig, use_container_width=True, key="srtype_volume", config={"displayModeBar": False})
 
     st.markdown("**Performance by type**")
     display = sr[["SRType", "total_requests", "closure_rate", "median_days_to_close", "on_time_rate"]
@@ -248,6 +248,7 @@ def render_operations(
         _timeseries_fig(ts, metric_col, metric_label, year),
         use_container_width=True,
         key="ops_timeseries",
+        config={"displayModeBar": False},
     )
 
     st.divider()

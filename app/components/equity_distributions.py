@@ -55,7 +55,7 @@ def _comparison_fig(
 
     chart_col, badge_col = st.columns([3, 1])
     with chart_col:
-        st.plotly_chart(fig, use_container_width=True, key=key)
+        st.plotly_chart(fig, use_container_width=True, key=key, config={"displayModeBar": False})
 
     with badge_col:
         score = overlap_score(group_a, group_b)
