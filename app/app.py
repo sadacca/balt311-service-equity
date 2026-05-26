@@ -27,15 +27,40 @@ except (KeyError, FileNotFoundError):
     MAPBOX_TOKEN = ""
 
 
-# ── Sidebar — filters that don't depend on year ───────────────────────────────
-st.sidebar.header("Filters")
+# ── Sidebar — dashboard overview ──────────────────────────────────────────────
+with st.sidebar:
+    st.title("Baltimore 311\nService Equity")
+    st.markdown(
+        "Operational and equity visibility into Baltimore's 311 "
+        "service request system — 2016 through 2025."
+    )
+    st.divider()
+    st.markdown(
+        "**Operations tab**\n\n"
+        "Citywide volume and performance trends. Breakdown by service type "
+        "with year-over-year comparison. Geographic distribution of requests "
+        "by census tract or CSA."
+    )
+    st.markdown(
+        "**Equity tab**\n\n"
+        "Choropleth map of service performance across neighborhoods. "
+        "Demographic comparisons (race, income) using Mann-Whitney overlap scores. "
+        "Year-over-year equity trend."
+    )
+    st.divider()
+    st.caption(
+        "Data: Baltimore Open Data (311 requests 2016–2025) · "
+        "Census ACS 2023 5-Year Estimates · BNIA Vital Signs crosswalk."
+    )
+    st.caption("*Detailed methodology and interpretation notes coming soon.*")
 
-geo_level = st.sidebar.radio(
-    "Geographic unit",
-    ["Census Tract", "CSA"],
-    help="Tracts: ~200 areas. CSAs: 55 BNIA Community Statistical Areas.",
-)
+
+# ── Geographic unit — shared session state ────────────────────────────────────
+if "geo_level" not in st.session_state:
+    st.session_state["geo_level"] = "Census Tract"
+geo_level = st.session_state["geo_level"]
 geo_key = "tract" if geo_level == "Census Tract" else "csa"
+featureidkey = "properties.GEOID" if geo_level == "Census Tract" else "properties.csa_name"
 
 
 @st.cache_data
@@ -50,16 +75,15 @@ years = available_years(geo_key)
 # ── Header + year navigation ──────────────────────────────────────────────────
 st.title("Baltimore 311 Service Equity")
 
-# Allow the operations time series to drive year selection via session state
 if "ops_year_clicked" in st.session_state:
     clicked = st.session_state.pop("ops_year_clicked")
     if clicked in years:
         st.session_state["year_select"] = clicked
 
 year = st.radio("Year", years, horizontal=True, key="year_select")
-st.caption(f"{geo_level}s · Demographics from ACS 2023 5-Year Estimates")
+st.caption("Demographics from ACS 2023 5-Year Estimates")
 
-# ── Data loading (depends on year) ────────────────────────────────────────────
+# ── Data loading ──────────────────────────────────────────────────────────────
 parquet_path = DATA_DIR / f"{geo_key}_metrics_{year}.parquet"
 geojson_path = DATA_DIR / f"{geo_key}_boundaries.geojson"
 data_ready = parquet_path.exists() and geojson_path.exists()
@@ -91,22 +115,6 @@ else:
 
 demographics = load_demographics(DATA_DIR / f"{geo_key}_demographics.csv")
 
-# ── Sidebar — filters that depend on loaded data ──────────────────────────────
-df = df_full
-if data_ready and "top_sr_type" in df_full.columns:
-    all_types = sorted(df_full["top_sr_type"].dropna().unique().tolist())
-    selected_types = st.sidebar.multiselect(
-        "Request type (SRType)",
-        all_types,
-        default=[],
-        placeholder="All types",
-    )
-    if selected_types:
-        df = df_full[df_full["top_sr_type"].isin(selected_types)]
-
-metric_label = st.sidebar.selectbox("Color map by", list(METRIC_OPTIONS.keys()))
-metric_col = METRIC_OPTIONS[metric_label]
-
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 tab_ops, tab_eq = st.tabs(["Operations", "Equity"])
 
@@ -119,13 +127,11 @@ with tab_ops:
         )
     else:
         render_operations(
-            DATA_DIR, geo_key, year, metric_col, metric_label,
+            DATA_DIR, geo_key, year,
             df=df_full,
             geojson=geojson,
             geo_id_col="geoid",
-            featureidkey=(
-                "properties.GEOID" if geo_level == "Census Tract" else "properties.csa_name"
-            ),
+            featureidkey=featureidkey,
             mapbox_token=MAPBOX_TOKEN,
         )
 
@@ -135,18 +141,51 @@ with tab_eq:
         st.info(
             f"No processed data found for **{year}** at **{geo_level}** level.\n\n"
             "Run the pipeline notebooks in order:\n"
-            "1. `notebooks/01_ingest.ipynb` — download raw data (run locally)\n"
+            "1. `notebooks/01_ingest.ipynb` — download raw data\n"
             "2. `notebooks/02_clean.ipynb` — parse and clean\n"
             "3. `notebooks/03_aggregate.ipynb` — aggregate to tract / CSA\n\n"
             f"Expected output: `data/processed/{geo_key}_metrics_{year}.parquet`",
             icon="ℹ️",
         )
     else:
-        geo_id_col = "geoid"
-        featureidkey = (
-            "properties.GEOID" if geo_level == "Census Tract" else "properties.csa_name"
-        )
+        # ── Inline controls above map ─────────────────────────────────────────
+        ctrl1, ctrl2, ctrl3 = st.columns([2, 3, 5])
 
+        with ctrl1:
+            _curr_geo_eq = st.session_state.get("geo_level", "Census Tract")
+            new_geo_eq = st.radio(
+                "Geographic unit",
+                ["Census Tract", "CSA"],
+                index=0 if _curr_geo_eq == "Census Tract" else 1,
+                horizontal=True,
+            )
+            if new_geo_eq != _curr_geo_eq:
+                st.session_state["geo_level"] = new_geo_eq
+                st.rerun()
+
+        with ctrl2:
+            metric_label = st.selectbox(
+                "Color map by",
+                list(METRIC_OPTIONS.keys()),
+                key="eq_metric",
+            )
+            metric_col = METRIC_OPTIONS[metric_label]
+
+        with ctrl3:
+            df = df_full
+            if "top_sr_type" in df_full.columns:
+                all_types = sorted(df_full["top_sr_type"].dropna().unique().tolist())
+                selected_types = st.multiselect(
+                    "Filter by top request type",
+                    all_types,
+                    default=[],
+                    placeholder="All geographies",
+                    key="eq_srtype",
+                )
+                if selected_types:
+                    df = df_full[df_full["top_sr_type"].isin(selected_types)]
+
+        # ── Choropleth map ────────────────────────────────────────────────────
         if metric_col not in df.columns:
             st.warning(f"Metric column `{metric_col}` not found in processed data.")
         else:
@@ -155,7 +194,7 @@ with tab_eq:
             fig = build_choropleth(
                 df=df,
                 geojson=geojson,
-                geo_id_col=geo_id_col,
+                geo_id_col="geoid",
                 featureidkey=featureidkey,
                 metric_col=metric_col,
                 metric_label=metric_label,
@@ -175,7 +214,7 @@ with tab_eq:
                 pt = selection["selection"]["points"][0]
                 loc_val = pt.get("location")
                 if loc_val is not None:
-                    match = df[df[geo_id_col] == loc_val]
+                    match = df[df["geoid"] == loc_val]
                     if not match.empty:
                         selected_row = match.iloc[0]
 

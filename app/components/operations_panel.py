@@ -9,6 +9,29 @@ from components.map_view import METRIC_OPTIONS, build_choropleth
 # Minimum requests in a geo×SRType cell to display (suppresses noise; adjustable without rerunning pipeline)
 _MIN_GEO_SRTYPE_N = 5
 
+# Full department names for category pill abbreviations.
+# Source: Baltimore City 311 system (balt311.baltimorecity.gov). Extend as new prefixes appear.
+_CATEGORY_NAMES: dict[str, str] = {
+    "BGE":  "BGE Street Lights",
+    "BCRP": "Recreation & Parks",
+    "CDW":  "Construction & Development",
+    "CHE":  "Environmental Services",
+    "DPW":  "Public Works",
+    "ECC":  "Emergency Communications",
+    "FF":   "Fire & Flood",
+    "GRM":  "Grounds Maintenance",
+    "HCD":  "Housing & Community Development",
+    "MONO": "Parking Authority",
+    "PC":   "Police Commissioner",
+    "SW":   "Solid Waste",
+    "TRS":  "Transportation",
+}
+
+# Ops-tab metric options — excludes requests_per_1k (NaN at all-requests level)
+_OPS_METRIC_OPTIONS: dict[str, str] = {
+    k: v for k, v in METRIC_OPTIONS.items() if v != "requests_per_1k"
+}
+
 # How to aggregate each metric to a single citywide value
 _METRIC_AGG = {
     "median_days_to_close": "median",
@@ -313,6 +336,9 @@ def _srtype_charts(data_dir: Path, year: int) -> tuple[str | None, str | None]:
             key="srtype_cat",
         )
         selected_cat = cat_sel if (cat_sel and cat_sel != "All") else None
+        known = {c: _CATEGORY_NAMES[c] for c in categories if c in _CATEGORY_NAMES}
+        if known:
+            st.caption("  ·  ".join(f"**{k}** {v}" for k, v in sorted(known.items())))
         sr = (
             sr_all[sr_all["SRType"].str.startswith(f"{selected_cat}-")]
             if selected_cat
@@ -435,8 +461,6 @@ def render_operations(
     data_dir: Path,
     geo_key: str,
     year: int,
-    metric_col: str,
-    metric_label: str,
     df: pd.DataFrame,
     geojson: dict,
     geo_id_col: str,
@@ -448,6 +472,16 @@ def render_operations(
 
     st.subheader("City-wide Performance")
     _kpi_bar(ts, year, eq_ts=eq_ts)
+
+    # Inline metric selector for time series and geo map
+    metric_label = st.radio(
+        "Metric",
+        list(_OPS_METRIC_OPTIONS.keys()),
+        horizontal=True,
+        key="ops_metric",
+        label_visibility="collapsed",
+    )
+    metric_col = _OPS_METRIC_OPTIONS[metric_label]
 
     st.markdown(f"**{metric_label} — all available years** · click a point to change year")
     ts_event = st.plotly_chart(
@@ -468,6 +502,18 @@ def render_operations(
 
     # ── Geographic distribution map ───────────────────────────────────────────
     st.divider()
+    geo_col, _ = st.columns([3, 7])
+    with geo_col:
+        _curr_geo = st.session_state.get("geo_level", "Census Tract")
+        new_geo_ops = st.radio(
+            "Geographic unit",
+            ["Census Tract", "CSA"],
+            index=0 if _curr_geo == "Census Tract" else 1,
+            horizontal=True,
+        )
+        if new_geo_ops != _curr_geo:
+            st.session_state["geo_level"] = new_geo_ops
+            st.rerun()
     st.subheader("Geographic Distribution")
 
     geo_srtype = _load_geo_srtype_metrics(data_dir / f"{geo_key}_srtype_metrics_{year}.parquet")
