@@ -29,6 +29,31 @@ def _citywide_value(df: pd.DataFrame, col: str) -> float:
 
 
 @st.cache_data
+def _build_equity_citywide_ts(data_dir: Path) -> pd.DataFrame:
+    """Aggregate citywide citizen-initiated (equity subset) metrics from tract_metrics files."""
+    records = []
+    for path in sorted(data_dir.glob("tract_metrics_*.parquet")):
+        try:
+            year = int(path.stem.split("_")[-1])
+        except ValueError:
+            continue
+        df = pd.read_parquet(path)
+        if "total_requests" not in df.columns:
+            continue
+        w = df["total_requests"].fillna(0)
+        total = w.sum()
+        row: dict = {"year": year, "total_requests": float(total)}
+        for col in ("closure_rate", "on_time_rate", "median_days_to_close"):
+            if col in df.columns:
+                mask = df[col].notna() & (w > 0)
+                row[col] = (df.loc[mask, col] * w[mask]).sum() / w[mask].sum() if mask.any() else float("nan")
+            else:
+                row[col] = float("nan")
+        records.append(row)
+    return pd.DataFrame(records).sort_values("year").reset_index(drop=True) if records else pd.DataFrame()
+
+
+@st.cache_data
 def _build_timeseries(data_dir: Path) -> pd.DataFrame:
     """Aggregate citywide metrics for every available year from srtype_metrics (all requests).
 
@@ -96,7 +121,7 @@ def _scope_banner(data_dir: Path, year: int, equity_total: float | None = None) 
         st.metric("Total 311 requests received", f"{all_total:,}")
 
 
-def _kpi_bar(ts: pd.DataFrame, year: int) -> None:
+def _kpi_bar(ts: pd.DataFrame, year: int, eq_ts: pd.DataFrame | None = None) -> None:
     row = ts[ts["year"] == year]
     if row.empty:
         return
@@ -107,14 +132,27 @@ def _kpi_bar(ts: pd.DataFrame, year: int) -> None:
     if not prior_years.empty:
         prior_row = ts[ts["year"] == prior_years.max()].iloc[0]
 
+    eq_row = None
+    if eq_ts is not None and not eq_ts.empty:
+        eq_match = eq_ts[eq_ts["year"] == year]
+        if not eq_match.empty:
+            eq_row = eq_match.iloc[0]
+
     def delta(col: str, is_pct: bool = False):
         if prior_row is None:
             return None
         return _delta_str(row.get(col, float("nan")), prior_row.get(col, float("nan")), is_pct)
 
+    def _fmt(val: float, is_pct: bool = False) -> str:
+        if pd.isna(val):
+            return "—"
+        if is_pct:
+            return f"{val:.1%}"
+        return f"{val:,.0f}" if val >= 100 else f"{val:.1f}"
+
     c1, c2, c3, c4 = st.columns(4)
     c1.metric(
-        "Requests analyzed",
+        "Requests received",
         f"{row['total_requests']:,.0f}" if not pd.isna(row.get("total_requests", float("nan"))) else "—",
         delta=_delta_str(row.get("total_requests"), prior_row.get("total_requests") if prior_row is not None else float("nan"), False),
         delta_color="off",
@@ -138,10 +176,34 @@ def _kpi_bar(ts: pd.DataFrame, year: int) -> None:
         delta_color="off",
     )
 
+    if eq_row is not None:
+        e1, e2, e3, e4 = st.columns(4)
+        e1.caption(f"citizen-initiated: {_fmt(eq_row.get('total_requests', float('nan')))}")
+        e2.caption(f"citizen-initiated: {_fmt(eq_row.get('median_days_to_close', float('nan')))} days")
+        e3.caption(f"citizen-initiated: {_fmt(eq_row.get('closure_rate', float('nan')), is_pct=True)}")
+        e4.caption(f"citizen-initiated: {_fmt(eq_row.get('on_time_rate', float('nan')), is_pct=True)}")
 
-def _timeseries_fig(ts: pd.DataFrame, metric_col: str, metric_label: str, year: int) -> go.Figure:
+    if prior_row is not None:
+        st.caption(f"Δ vs. {int(prior_years.max())}")
+
+
+def _timeseries_fig(
+    ts: pd.DataFrame,
+    metric_col: str,
+    metric_label: str,
+    year: int,
+    eq_ts: pd.DataFrame | None = None,
+) -> go.Figure:
     valid = ts[ts[metric_col].notna()].copy() if metric_col in ts.columns else pd.DataFrame()
     is_pct = metric_col in ("closure_rate", "on_time_rate")
+    has_eq = (
+        eq_ts is not None
+        and not eq_ts.empty
+        and metric_col in eq_ts.columns
+        and eq_ts[metric_col].notna().any()
+    )
+
+    hover_fmt = "%{x}: %{y:.1%}<extra></extra>" if is_pct else "%{x}: %{y:.1f}<extra></extra>"
 
     fig = go.Figure()
     if not valid.empty:
@@ -149,20 +211,35 @@ def _timeseries_fig(ts: pd.DataFrame, metric_col: str, metric_label: str, year: 
             x=valid["year"],
             y=valid[metric_col],
             mode="lines+markers",
+            name="All requests",
+            showlegend=has_eq,
             line=dict(color="#1F4E8C", width=2),
             marker=dict(
                 size=[12 if y == year else 7 for y in valid["year"]],
                 color=["#d73027" if y == year else "#1F4E8C" for y in valid["year"]],
             ),
-            hovertemplate=(
-                "%{x}: %{y:.1%}<extra></extra>" if is_pct
-                else "%{x}: %{y:.1f}<extra></extra>"
-            ),
+            hovertemplate=hover_fmt,
         ))
 
+    if has_eq:
+        eq_valid = eq_ts[eq_ts[metric_col].notna()].copy()
+        if not eq_valid.empty:
+            fig.add_trace(go.Scatter(
+                x=eq_valid["year"],
+                y=eq_valid[metric_col],
+                mode="lines+markers",
+                name="Citizen-initiated",
+                line=dict(color="#E07B39", width=2, dash="dash"),
+                marker=dict(
+                    size=[10 if y == year else 6 for y in eq_valid["year"]],
+                    color=["#d73027" if y == year else "#E07B39" for y in eq_valid["year"]],
+                ),
+                hovertemplate=hover_fmt,
+            ))
+
     fig.update_layout(
-        height=220,
-        margin={"t": 8, "b": 8, "l": 60, "r": 8},
+        height=250 if has_eq else 220,
+        margin={"t": 30 if has_eq else 8, "b": 8, "l": 60, "r": 8},
         yaxis=dict(
             title=metric_label,
             tickformat=".0%" if is_pct else None,
@@ -171,6 +248,8 @@ def _timeseries_fig(ts: pd.DataFrame, metric_col: str, metric_label: str, year: 
         xaxis=dict(title="Year", dtick=1),
         plot_bgcolor="white",
         paper_bgcolor="white",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        showlegend=has_eq,
     )
     return fig
 
@@ -365,15 +444,14 @@ def render_operations(
     mapbox_token: str,
 ) -> None:
     ts = _build_timeseries(data_dir)
+    eq_ts = _build_equity_citywide_ts(data_dir)
 
     st.subheader("City-wide Performance")
-    _scope_banner(data_dir, year)
-    st.divider()
-    _kpi_bar(ts, year)
+    _kpi_bar(ts, year, eq_ts=eq_ts)
 
     st.markdown(f"**{metric_label} — all available years** · click a point to change year")
     ts_event = st.plotly_chart(
-        _timeseries_fig(ts, metric_col, metric_label, year),
+        _timeseries_fig(ts, metric_col, metric_label, year, eq_ts=eq_ts),
         use_container_width=True,
         key="ops_timeseries",
         on_select="rerun",
