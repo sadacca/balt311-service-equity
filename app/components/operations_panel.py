@@ -180,31 +180,35 @@ def _kpi_bar(ts: pd.DataFrame, year: int, eq_ts: pd.DataFrame | None = None) -> 
         delta=_delta_str(row.get("total_requests"), prior_row.get("total_requests") if prior_row is not None else float("nan"), False),
         delta_color="off",
     )
+    if eq_row is not None:
+        c1.caption(f"citizen-initiated: {_fmt(eq_row.get('total_requests', float('nan')))}")
+
     c2.metric(
         "Median days to close",
         f"{row['median_days_to_close']:.1f}" if not pd.isna(row.get("median_days_to_close", float("nan"))) else "—",
         delta=delta("median_days_to_close"),
         delta_color="off",
     )
+    if eq_row is not None:
+        c2.caption(f"citizen-initiated: {_fmt(eq_row.get('median_days_to_close', float('nan')))} days")
+
     c3.metric(
         "Closure rate",
         f"{row['closure_rate']:.1%}" if not pd.isna(row.get("closure_rate", float("nan"))) else "—",
         delta=delta("closure_rate", is_pct=True),
         delta_color="off",
     )
+    if eq_row is not None:
+        c3.caption(f"citizen-initiated: {_fmt(eq_row.get('closure_rate', float('nan')), is_pct=True)}")
+
     c4.metric(
         "On-time rate",
         f"{row['on_time_rate']:.1%}" if not pd.isna(row.get("on_time_rate", float("nan"))) else "—",
         delta=delta("on_time_rate", is_pct=True),
         delta_color="off",
     )
-
     if eq_row is not None:
-        e1, e2, e3, e4 = st.columns(4)
-        e1.caption(f"citizen-initiated: {_fmt(eq_row.get('total_requests', float('nan')))}")
-        e2.caption(f"citizen-initiated: {_fmt(eq_row.get('median_days_to_close', float('nan')))} days")
-        e3.caption(f"citizen-initiated: {_fmt(eq_row.get('closure_rate', float('nan')), is_pct=True)}")
-        e4.caption(f"citizen-initiated: {_fmt(eq_row.get('on_time_rate', float('nan')), is_pct=True)}")
+        c4.caption(f"citizen-initiated: {_fmt(eq_row.get('on_time_rate', float('nan')), is_pct=True)}")
 
     if prior_row is not None:
         st.caption(f"Δ vs. {int(prior_years.max())}")
@@ -284,12 +288,17 @@ def _load_geo_srtype_metrics(path: Path) -> pd.DataFrame:
     return pd.read_parquet(path)
 
 
+_EXCLUDED_CATEGORIES = {"TEST"}
+
+
 def _extract_categories(sr: pd.DataFrame) -> list[str]:
     """Return sorted unique hyphen-prefixes from SRType names (e.g. 'SW', 'HCD', 'TRS')."""
     return sorted({
         name.split("-")[0].strip()
         for name in sr["SRType"]
-        if isinstance(name, str) and "-" in name and name.split("-")[0].strip()
+        if isinstance(name, str) and "-" in name
+        and name.split("-")[0].strip()
+        and name.split("-")[0].strip() not in _EXCLUDED_CATEGORIES
     })
 
 
