@@ -26,8 +26,16 @@ def build_choropleth(
     metric_col: str,
     metric_label: str,
     mapbox_token: str,
+    sequential: bool = False,
 ) -> go.Figure:
-    citywide_median = df[metric_col].median()
+    if sequential:
+        colorscale = "Blues"
+        midpoint = None
+        range_color = [0, float(df[metric_col].max())]
+    else:
+        colorscale = "RdBu_r"
+        midpoint = df[metric_col].median()
+        range_color = None
 
     fig = px.choropleth_mapbox(
         df,
@@ -35,8 +43,9 @@ def build_choropleth(
         locations=geo_id_col,
         featureidkey=featureidkey,
         color=metric_col,
-        color_continuous_scale="RdBu_r",
-        color_continuous_midpoint=citywide_median,
+        color_continuous_scale=colorscale,
+        color_continuous_midpoint=midpoint,
+        range_color=range_color,
         mapbox_style=MAPBOX_STYLE,
         zoom=BALTIMORE_ZOOM,
         center=BALTIMORE_CENTER,

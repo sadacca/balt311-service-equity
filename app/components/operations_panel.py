@@ -562,5 +562,6 @@ def render_operations(
             metric_col="total_requests",
             metric_label="Total requests",
             mapbox_token=mapbox_token,
+            sequential=True,
         )
         st.plotly_chart(fig_map, use_container_width=True, key="ops_map")
