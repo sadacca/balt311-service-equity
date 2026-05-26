@@ -506,7 +506,7 @@ def render_operations(
     with geo_col:
         _curr_geo = st.session_state.get("geo_level", "Census Tract")
         new_geo_ops = st.radio(
-            "Geographic unit",
+            "View as",
             ["Census Tract", "CSA"],
             index=0 if _curr_geo == "Census Tract" else 1,
             horizontal=True,
