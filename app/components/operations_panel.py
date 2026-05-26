@@ -196,7 +196,7 @@ def _timeseries_fig(
 ) -> go.Figure:
     valid = ts[ts[metric_col].notna()].copy() if metric_col in ts.columns else pd.DataFrame()
     is_pct = metric_col in ("closure_rate", "on_time_rate")
-    has_eq = (
+    has_eq = bool(
         eq_ts is not None
         and not eq_ts.empty
         and metric_col in eq_ts.columns
