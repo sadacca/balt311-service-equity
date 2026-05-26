@@ -117,9 +117,10 @@ This isolates income effect from confounders and produces a defensible claim abo
 ### 4.2 Dashboard Design Principles
 
 - **Primary unit:** Census tracts. CSA view available via toggle for BNIA Vital Signs comparison.
-- All maps use a diverging color scheme centered at the citywide median (not at zero), so above/below-average performance is immediately visible.
+- **Equity maps** use a diverging color scheme centered at the citywide median so above/below-average performance is immediately visible. **Operations count maps** use a sequential colorscale from 0 to the maximum value.
 - Click-to-select geography: clicking a tract or CSA polygon shows a summary panel with all key metrics for that area.
-- Sidebar filters: year selector, SRType multiselect, metric selector (what to color by).
+- **Sidebar**: static dashboard overview (description of each tab, data sources). No interactive filters in sidebar — all controls are inline in context.
+- **Inline controls**: geo toggle (Census Tract / CSA) appears above each tab's map; metric selector appears above the time series in Operations and above the choropleth in Equity; SRType filter in Equity tab only.
 - Include a data vintage note on every visualization (e.g., "311 data 2024 · Census Tracts · Demographics from ACS 2023 5-Year Estimates").
 - Dashboard is updated annually: analyst re-runs pipeline notebooks and pushes updated `data/processed/` files; Streamlit Cloud redeploys automatically on push.
 - Mapbox free tier for basemap (light style). Token stored as Streamlit secret, never in repo.
@@ -128,13 +129,16 @@ This isolates income effect from confounders and produces a defensible claim abo
 
 | Feature | Implementation |
 |---|---|
-| Year filter | `st.selectbox` — discovers available years from `data/processed/` |
-| SRType filter | `st.multiselect` — filters aggregated data before rendering |
-| Tract / CSA toggle | `st.radio` — switches between `tract_metrics_*.parquet` and `csa_metrics_*.parquet` |
-| Metric selector | `st.selectbox` — drives choropleth color scale |
+| Year filter | `st.radio(horizontal=True)` — discovers available years from `data/processed/`; inline above tabs |
+| SRType filter | `st.multiselect` — equity tab only; filters geographies by top request type |
+| Tract / CSA toggle | `st.radio` — inline above each tab's map, not in sidebar; synced via `st.session_state["geo_level"]` |
+| Metric selector | `st.radio(horizontal=True)` in Ops (above time series); `st.selectbox` in Equity (above choropleth); independent per tab |
 | Click-to-select geography | `st.plotly_chart(on_select="rerun")` — returns clicked polygon's data |
 | Summary panel | Shows all metrics for selected geography in right column |
-| City-wide summary bar | Four headline numbers across bottom of page |
+| City-wide summary bar | Four headline numbers across top of Operations tab |
+| Dual-line time series | All-requests + citizen-initiated traces; click point to navigate year |
+| Citizen-initiated sub-stats | Caption row inside each KPI tile; citizen-initiated equivalents for all 4 metrics |
+| Category pill legend | Full department names shown as caption below category pills; TEST prefix excluded |
 
 ### 4.4 Phase 2 Scope (post-MVP)
 
@@ -155,7 +159,7 @@ These gaps limit the analysis but do not block it. They are documented here to s
 | No `time_to_close` field in raw 311 data | Must compute from `CreatedDate` / `CloseDate`; possible but requires data cleaning | Add as derived field to daily feed |
 | No reopen flag in raw 311 data | Cannot definitively identify reopened requests; must use heuristic proxies | Add `reopen_count` field to feed |
 | No cost-of-service field | Cannot compute cost equity across neighborhoods | Add estimated labor cost by request type |
-| No source channel field | Cannot distinguish resident vs. staff-initiated requests | Add `request_source` field (phone, app, staff) |
+| No source channel field | **Partially resolved**: `MethodReceived` field in raw data distinguishes Phone/API/Mail/Email (resident-initiated) from System/Internal (staff/proactive). Citizen-initiated subset computable and shown as sub-row in KPI bar and second trace in time series. Full source analysis tab (P4c) remains future work. | Add `request_source` field (phone, app, staff) |
 | No staff-to-district assignment data | Cannot normalize by inspector capacity | Publish district-level staffing counts |
 
 ---
