@@ -79,7 +79,7 @@ Ordered by dependency. Complete data investigation tasks before building on thei
 
 ## Phase 3 — Operations Tab
 
-- [x] **P3-0: Tab restructure** — `st.tabs(["Operations", "Equity"])` in `app.py`. Year selector inline above tabs as horizontal radio (`st.radio`). Sidebar filters shared across both tabs.
+- [x] **P3-0: Tab restructure** — `st.tabs(["Operations", "Equity"])` in `app.py`. Year selector inline above tabs as horizontal radio (`st.radio`). Sidebar redesigned as dashboard overview in P3-14; all filters moved inline.
 
 - [x] **P3-1: Per-SRType aggregate table** — `srtype_metrics_{year}.parquet` with total_requests, closed_requests, closure_rate, median_days_to_close, on_time_rate, pct_resident_initiated. `--stage srtype` in pipeline CLI; step added to Actions `process` job.
 
@@ -95,11 +95,25 @@ Ordered by dependency. Complete data investigation tasks before building on thei
 
 - [x] **P3-7: Geographic distribution map in Operations** — choropleth of request count by geography. Filtered to selected SRType if a table row is selected. Loaded from `{geo_key}_srtype_metrics_{year}.parquet`; cells with fewer than 5 requests suppressed in UI (`_MIN_GEO_SRTYPE_N = 5`) without requiring pipeline rerun.
 
-- [x] **P3-8: Scope banner** — 3-column tile row: All requests received / Equity analysis subset / Excluded from analysis. Caption explains equity subset definition. Uses `srtype_metrics_{year}.parquet` for the all-requests total.
+- [x] **P3-8: Scope banner** *(superseded by P3-11/P3-12)* — originally a 3-column tile row showing All/Equity subset/Excluded counts. Replaced by: (a) KPI bar sourced from all-requests data, (b) citizen-initiated sub-row inside each KPI tile. The scope-banner component remains in code for potential reuse by the equity/source-analysis tabs.
 
 - [x] **P3-9: Backfill workflow** — `.github/workflows/backfill.yml`. Sequential loop over configurable year list; commits after each year; 180s default pause between ingests to limit ESRI server load; skips year on ingest failure rather than aborting; cleans raw/interim between years to keep runner disk use flat.
 
 - [x] **P3-10: Geo × SRType metrics aggregation** — `tract_srtype_metrics_{year}.parquet` and `csa_srtype_metrics_{year}.parquet`. Columns: geoid, SRType, total_requests, closed_requests, closure_rate, median_days_to_close. Replaces `tract_srtype_totals_{year}` (total_requests only). `_geo_srtype_agg()` helper in pipeline avoids code duplication between tract and CSA.
+
+- [x] **P3-11: KPI bar all-requests data source** — ops tab KPI bar now reads from `srtype_metrics_{year}.parquet` (all requests) via `_build_timeseries()`. Previously read equity-filtered subset. Metric label updated from "Requests analyzed" → "Requests received". Scope banner removed; its information is now implicit in the KPI bar.
+
+- [x] **P3-12: Citizen-initiated sub-row in KPI bar** — each KPI tile shows a small gray caption immediately below with the citizen-initiated (equity subset) equivalent: count, days, closure rate, on-time rate. Sourced from a new `_build_equity_citywide_ts()` helper that aggregates `tract_metrics_*.parquet` files into population-weighted citywide totals. Caption is written into the same `st.columns` slot as the metric for correct mobile stacking.
+
+- [x] **P3-13: Dual-line time series** — time series chart shows two traces: solid blue "All requests" from `srtype_metrics` and dashed orange "Citizen-initiated" from `_build_equity_citywide_ts()`. Legend appears above chart when citizen-initiated data is available. Both traces support click-to-navigate year.
+
+- [x] **P3-14: Sidebar redesigned as dashboard overview** — all sidebar filter controls (geo level, SRType multiselect, metric selectbox) removed. Sidebar now contains a static description: dashboard purpose, what each tab shows, data sources, note about methodology docs. Controls moved inline (see P3-15).
+
+- [x] **P3-15: Inline controls in each tab** — geo toggle and metric selector moved out of sidebar into contextual positions. Ops tab: compact horizontal radio for metric selection above the time series; "View as: Census Tract / CSA" radio above the geographic map. Equity tab: three inline columns above the choropleth — geo toggle, metric selectbox, SRType filter (top-request-type multiselect). Geo toggles sync via `st.session_state["geo_level"]` and trigger `st.rerun()` on change.
+
+- [x] **P3-16: Category pills — full-name legend and TEST exclusion** — `_CATEGORY_NAMES` dict maps department prefix abbreviations to full names (SW = Solid Waste, HCD = Housing & Community Development, TRS = Transportation, etc.). A `st.caption` row below the pills displays the legend for all visible categories. "TEST" prefix excluded from pills via `_EXCLUDED_CATEGORIES` constant.
+
+- [x] **P3-17: Ops geographic map sequential colorscale** — ops geographic distribution map uses sequential Blues scale from 0 → max (was diverging RdBu_r centered at median). `build_choropleth()` gains `sequential: bool = False` flag. Equity tab choropleth unchanged — still diverging, centered at citywide median.
 
 ---
 

@@ -26,7 +26,9 @@ The default tab answers "how is Baltimore 311 performing overall?" before asking
 
 **City-wide Performance**
 
-A scope banner shows total requests received, the equity-analysis subset, and the number excluded — making the filter explicit. Four headline KPIs follow (total requests analyzed, median days to close, closure rate, on-time rate), each with a year-over-year delta badge. Below them, a time series chart plots the selected metric across all available years (2016–2025); clicking any point navigates to that year.
+A KPI bar shows four headline metrics — Requests received, Median days to close, Closure rate, On-time rate — each with a year-over-year delta badge (neutral color). Directly beneath each tile, a small caption shows the citizen-initiated equivalent (Phone / API / Mail / Email requests only), so both the all-requests picture and the resident-experience picture are visible at a glance. A `Δ vs. {year}` caption notes the comparison year.
+
+An inline metric selector (horizontal radio) above the time series switches between Median days to close, Closure rate, and On-time rate. Below it, a dual-trace time series shows both "All requests" (solid blue) and "Citizen-initiated" (dashed orange) for the selected metric across all available years (2016–2025). Clicking any point navigates to that year.
 
 **Breakdown by Request Type**
 
@@ -34,13 +36,13 @@ Category pills (SW, HCD, TRS, etc.) filter the table by service department prefi
 
 **Geographic Distribution**
 
-A choropleth map at the bottom shows request volume by census tract or CSA. When a table row is selected the map filters to show counts for that specific SRType only (sourced from `{geo_key}_srtype_metrics_{year}.parquet`). Cells with fewer than 5 requests are suppressed to avoid displaying statistically unreliable counts.
+A choropleth map at the bottom shows request volume by census tract or CSA. A "View as: Census Tract / CSA" toggle above the map switches the geographic unit. The map uses a sequential Blues colorscale from 0 to the maximum count (not a diverging scale). When a table row is selected the map filters to show counts for that specific SRType only (sourced from `{geo_key}_srtype_metrics_{year}.parquet`). Cells with fewer than 5 requests are suppressed to avoid displaying statistically unreliable counts.
 
 ---
 
 ### Equity tab — Map
 
-Four equity metrics, switchable from the sidebar:
+Three inline controls above the map: geographic unit toggle (Census Tract / CSA), metric selectbox (Color map by), and an optional filter by the geography's top request type. Four equity metrics are available:
 
 | Metric | Description |
 |---|---|
