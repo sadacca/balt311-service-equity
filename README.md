@@ -18,6 +18,21 @@ The equity lens is not the only lens — operational clarity for managers is equ
 
 ---
 
+## How this dashboard tells its story
+
+311 data answers very different questions depending on who's asking. A council member wants to know whether the gaps in their district are typical, or worse, than similar neighborhoods elsewhere. A department manager wants to know how their service type is performing — without wading through demographic framing that isn't theirs to interpret. A journalist or citywide official wants a defensible answer to "is service delivery equitable, and if not, which services and neighborhoods are driving that gap?" Rather than build one view that tries to answer all of these at once, the dashboard is structured as a sequence of lenses, each a complete answer for one audience that also sets up the next. Two tabs are live today; four more are planned for the next release (`Phase 4d`, see `TASKS.md`) to complete the arc:
+
+1. **Operations** *(live — first tab)* — the citywide health check: KPIs, year-over-year trends, and a request-volume map answer "how is the city doing, overall, this year vs. prior years?" The landing view for anyone — resident, manager, or official — who wants the big picture before drilling into anything else.
+2. **Service Category Explorer** *(planned)* — the operations manager's deep dive, with the equity framing deliberately stripped out: how does my service type compare to others, and how has it performed across geography and time? The tool a department head reaches for when the question is "how am I doing," not "how does this break down by race or income."
+3. **Area Embedding — service usage by geography** *(planned, aka "Service Category Usage by Geographic Area")* — the bridge from *what* to *where*, and the dashboard's answer to the most commonly requested comparison: "areas like mine." Every tract or CSA is placed in two complementary spaces — what services it requests, and who lives there — and each space is clustered into named, reusable peer groups. That turns "compare my area to the citywide average" into "compare my area to the handful of neighborhoods that actually resemble it," for council members and managers alike.
+4. **Equity** *(live)* — the citywide equity check: does service quality differ systematically by race or income, citywide, this year and over time? The headline question for journalists, advocates, and citywide leadership, answered with maps, distribution comparisons, and a multi-year trend of the Mann-Whitney overlap score.
+5. **Service Category Equity Explorer** *(planned)* — does the citywide equity picture hold up within individual service categories, or does it mask very different stories for potholes vs. bulk trash vs. rodent control? The tool a journalist reaches for when the citywide number raises more questions than it answers.
+6. **Equity Adjusted for Service Mix** *(planned)* — the most defensible version of the equity claim: are the gaps surfaced in tabs 4–5 explained by *which* services an area happens to request (a structural, type-mix effect), or by *how* the same service is delivered to different neighborhoods (the cleaner equity signal)? A stratified, volume-weighted score paired with a regression panel gives citywide officials and journalists two independent lines of evidence for the same conclusion — the kind of rigor a contested public claim needs to hold up.
+
+Read top to bottom, the six tabs trace one continuous arc: an **operational overview** anyone can use, an **operational deep-dive** built for the people who run individual services, a **peer-grouped geographic understanding** of the city that turns "my neighborhood" into "neighborhoods like mine," and then an increasingly **nuanced view of equity** — first citywide, then by service category, then adjusted for what's actually being requested. No two adjacent tabs require a conceptual leap; each answers a real, documented need (see `personas.md` for the five personas and the gaps each tab closes) and hands the reader naturally to the next question — several different lenses for several different audiences, all aimed at the same underlying question: is Baltimore delivering 311 service in a way that's fast, fair, and consistent across every neighborhood, and where it isn't, exactly where and why?
+
+---
+
 ## What it shows
 
 ### Operations tab
