@@ -164,17 +164,22 @@ Three additional analyses bridge the operational (Section 3.2) and equity (Secti
 - Regression output panel (income coefficient, confidence interval)
 - Evaluate migration to Plotly Dash if Phase 2 interactivity exceeds Streamlit's event model
 
-### 4.5 Phase 4d Scope — Bridging Tabs (Category Explorer, Area Embedding, Equity Adjusted)
+### 4.5 Phase 4d Scope — Six-Tab Narrative Arc
 
-Three new tabs operationalize §3.5's analyses, each answering one step of the journey from "how are we doing operationally" to "is it equitable, once you account for what's being requested." Detailed staged build plan lives in `TASKS.md` Phase 4d; summary of each tab's scope:
+Phase 4d adds four new tabs to the existing Operations and Equity tabs, producing a six-tab arc that walks the reader from the highest-level operational view to the most nuanced equity view with no conceptual jumps in between. Confirmed order and scope (detailed staged build plan in `TASKS.md` Phase 4d):
 
-| Tab | Core question | Key interactions |
-|---|---|---|
-| **Category Explorer** | How does performance differ *among* service categories, and *within* one category across geography and demographics? | Sortable citywide SRType ranking with category pills; selecting a type drives a within-type choropleth and a within-type race/income equity comparison (reusing the box-and-strip pattern from `equity_distributions.py`) |
-| **Area Embedding** | Do similar areas — by what they request, or by who lives there — cluster together, or is the city more of a continuum? | 2D PCA scatter, one point per tract/CSA, switchable between *service-usage space* and *demographic space* (its inverse); color-by control adapts to the active space (demographics or service saturation in usage space; predominant service / request rate / resolution speed in demographic space) |
-| **Equity Adjusted** | Are equity gaps explained by *which* services an area requests (mix-driven) or by *how* the same service is delivered (delivery-driven)? | Side-by-side raw vs. volume-weighted "adjusted" overlap scores; SRType equity ranking ranked by within-type score; OLS regression panel with coefficient table and confidence-interval plot |
+| # | Tab | Core question | Key interactions |
+|---|---|---|---|
+| 1 | **Operations** *(existing)* | How is the city doing operationally, citywide? | KPI bar, dual-line time series, SRType breakdown, geographic map |
+| 2 | **Service Category Explorer** *(new — pure operations, no equity content)* | How does performance differ *among* service categories, and *within* one category across geography and over time — with no race/income framing at all? | Sortable citywide SRType performance table with category pills; among-category comparison chart; selecting a type drives a year-over-year trend view and a plain (non-demographic) choropleth |
+| 3 | **Area Embedding** *(new, aka "Service Category Usage by Geographic Area")* | Do similar areas — by what they request, or by who lives there — cluster together, or is the city more of a continuum? Can those clusters become reusable peer groups? | 2D PCA scatter, one point per tract/CSA, switchable between *service-usage space* and *demographic space* (its inverse); color-by control adapts to the active space; clustering names each space's groups into a persisted, reusable `peer_group` filter dimension |
+| 4 | **Equity** *(existing)* | Is service delivery equitable by race or income, citywide? | Choropleth, distribution comparisons, year-over-year trend |
+| 5 | **Service Category Equity Explorer** *(new — renamed from an earlier "Category Explorer" draft; same scope)* | Does the citywide equity picture in the Equity tab hold up — or differ — among and within individual service categories? | Sortable citywide SRType ranking with category pills; selecting a type drives a within-type choropleth and a within-type race/income equity comparison (reusing the box-and-strip pattern from `equity_distributions.py`) |
+| 6 | **Equity Adjusted for Service Mix** *(new)* | Are the equity gaps surfaced in tabs 4–5 explained by *which* services an area requests (mix-driven) or by *how* the same service is delivered (delivery-driven)? | Side-by-side raw vs. volume-weighted "adjusted" overlap scores; SRType equity ranking by within-type score; OLS regression panel with coefficient table and confidence-interval plot |
 
-All three require `srtype_metrics_{year}.parquet`, `{geo_key}_srtype_metrics_{year}.parquet`, and the demographics CSVs — these are **already committed on `main` for all years 2016–2025** (full backfill, PRs #33–37) and merged into the working branch; the data-availability blocker noted in earlier drafts of this phase was a branch-sync gap, not a real one (see Stage 0 in `TASKS.md` Phase 4d). New runtime dependencies: `scikit-learn` (PCA + clustering for Area Embedding) and `statsmodels` (OLS for Equity Adjusted) — see §8.
+**Naming clarification**: tabs 2 and 5 sound similar but are deliberately distinct tools — Tab 2 is a pure operational drill-down (a city manager's tool, zero demographic content), while Tab 5 is the equity-flavored sibling that asks "...and does this differ by who's asking" for each category. Keeping them as separate tabs, in separate places in the arc (right after Operations vs. right after Equity), lets each audience find their tool without wading through the other's lens — see the naming note in `TASKS.md` Phase 4d for the full rationale.
+
+All four new tabs require `srtype_metrics_{year}.parquet`, `{geo_key}_srtype_metrics_{year}.parquet`, and the demographics CSVs — these are **already committed on `main` for all years 2016–2025** (full backfill, PRs #33–37) and merged into the working branch; the data-availability blocker noted in earlier drafts of this phase was a branch-sync gap, not a real one (see Stage 0 in `TASKS.md` Phase 4d). New runtime dependencies: `scikit-learn` (PCA + clustering for Area Embedding) and `statsmodels` (OLS for Equity Adjusted) — see §8.
 
 ---
 
@@ -229,9 +234,10 @@ Stage 1 — Pipeline (GitHub Actions, output committed to repo)
 Stage 2 — App (reads only from data/processed/, no network dependencies at runtime)
   app/app.py                           → Streamlit entrypoint, tabs, year selector
   app/components/operations_panel.py   → Operations tab (KPI bar, time series, SRType table, map)
-  app/components/category_explorer.py  → Category Explorer tab (Phase 4d — ranking + within-type equity)
-  app/components/area_embedding.py     → Area Embedding tab (Phase 4d — PCA in usage & demographic space)
-  app/components/equity_adjusted.py    → Equity Adjusted tab (Phase 4d — stratified scores + regression)
+  app/components/category_explorer.py  → Service Category Explorer tab — Tab 2 (Phase 4d — pure operations, no equity content)
+  app/components/area_embedding.py     → Area Embedding tab — Tab 3 (Phase 4d — PCA + clustering in usage & demographic space → peer groups)
+  app/components/category_equity_explorer.py → Service Category Equity Explorer tab — Tab 5 (Phase 4d — ranking + within-type equity comparison)
+  app/components/equity_adjusted.py    → Equity Adjusted for Service Mix tab — Tab 6 (Phase 4d — stratified scores + regression)
   app/components/map_view.py           → Plotly choropleth_mapbox builder
   app/components/summary_panel.py      → selected-geography summary card (Equity tab)
   app/components/equity_distributions.py → race + income distribution comparison
