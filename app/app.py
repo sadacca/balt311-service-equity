@@ -7,6 +7,7 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from components.category_explorer import render_category_explorer
 from components.equity_distributions import render_equity_distributions
 from components.equity_trend import render_equity_trend
 from components.map_view import METRIC_OPTIONS, build_choropleth
@@ -40,6 +41,12 @@ with st.sidebar:
         "Citywide volume and performance trends. Breakdown by service type "
         "with year-over-year comparison. Geographic distribution of requests "
         "by census tract or CSA."
+    )
+    st.markdown(
+        "**Service Category Explorer tab**\n\n"
+        "Pure operational comparison among and within service categories — "
+        "usage volume, closure rate, time to close, on-time rate — trended "
+        "across years, with no race or income framing."
     )
     st.markdown(
         "**Equity tab**\n\n"
@@ -116,7 +123,7 @@ else:
 demographics = load_demographics(DATA_DIR / f"{geo_key}_demographics.csv")
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_ops, tab_eq = st.tabs(["Operations", "Equity"])
+tab_ops, tab_cat, tab_eq = st.tabs(["Operations", "Service Category Explorer", "Equity"])
 
 # ── Operations tab ────────────────────────────────────────────────────────────
 with tab_ops:
@@ -127,6 +134,23 @@ with tab_ops:
         )
     else:
         render_operations(
+            DATA_DIR, geo_key, year,
+            df=df_full,
+            geojson=geojson,
+            geo_id_col="geoid",
+            featureidkey=featureidkey,
+            mapbox_token=MAPBOX_TOKEN,
+        )
+
+# ── Service Category Explorer tab ─────────────────────────────────────────────
+with tab_cat:
+    if not data_ready:
+        st.info(
+            f"No processed data found for **{year}** at **{geo_level}** level. "
+            "Run the pipeline to generate it."
+        )
+    else:
+        render_category_explorer(
             DATA_DIR, geo_key, year,
             df=df_full,
             geojson=geojson,

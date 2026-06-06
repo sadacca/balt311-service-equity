@@ -5,27 +5,13 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from components.map_view import METRIC_OPTIONS, build_choropleth
-
-# Minimum requests in a geo×SRType cell to display (suppresses noise; adjustable without rerunning pipeline)
-_MIN_GEO_SRTYPE_N = 5
-
-# Full department names for category pill abbreviations.
-# Source: Baltimore City 311 system (balt311.baltimorecity.gov). Extend as new prefixes appear.
-_CATEGORY_NAMES: dict[str, str] = {
-    "BGE":  "BGE Street Lights",
-    "BCRP": "Recreation & Parks",
-    "CDW":  "Construction & Development",
-    "CHE":  "Environmental Services",
-    "DPW":  "Public Works",
-    "ECC":  "Emergency Communications",
-    "FF":   "Fire & Flood",
-    "GRM":  "Grounds Maintenance",
-    "HCD":  "Housing & Community Development",
-    "MONO": "Parking Authority",
-    "PC":   "Police Commissioner",
-    "SW":   "Solid Waste",
-    "TRS":  "Transportation",
-}
+from components.srtype_shared import (
+    MIN_GEO_SRTYPE_N,
+    category_pills,
+    extract_categories,
+    load_geo_srtype_metrics,
+    load_srtype_history,
+)
 
 # Ops-tab metric options — excludes requests_per_1k (NaN at all-requests level)
 _OPS_METRIC_OPTIONS: dict[str, str] = {
@@ -281,42 +267,6 @@ def _timeseries_fig(
     return fig
 
 
-@st.cache_data
-def _load_geo_srtype_metrics(path: Path) -> pd.DataFrame:
-    if not path.exists():
-        return pd.DataFrame()
-    return pd.read_parquet(path)
-
-
-_EXCLUDED_CATEGORIES = {"TEST"}
-
-
-def _extract_categories(sr: pd.DataFrame) -> list[str]:
-    """Return sorted unique hyphen-prefixes from SRType names (e.g. 'SW', 'HCD', 'TRS')."""
-    return sorted({
-        name.split("-")[0].strip()
-        for name in sr["SRType"]
-        if isinstance(name, str) and "-" in name
-        and name.split("-")[0].strip()
-        and name.split("-")[0].strip() not in _EXCLUDED_CATEGORIES
-    })
-
-
-@st.cache_data
-def _load_srtype_history(data_dir: Path) -> pd.DataFrame:
-    """All available srtype_metrics years combined into one DataFrame."""
-    dfs = []
-    for p in sorted(data_dir.glob("srtype_metrics_*.parquet")):
-        try:
-            y = int(p.stem.split("_")[-1])
-        except ValueError:
-            continue
-        df = pd.read_parquet(p)
-        df["year"] = y
-        dfs.append(df)
-    return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
-
-
 def _srtype_charts(data_dir: Path, year: int) -> tuple[str | None, str | None]:
     """Render category pills + performance table + year-over-year detail.
     Returns (selected_type, selected_cat) — either may be None."""
@@ -336,25 +286,13 @@ def _srtype_charts(data_dir: Path, year: int) -> tuple[str | None, str | None]:
     pct_col = "pct_resident_initiated" if "pct_resident_initiated" in sr_all.columns else None
 
     # ── Category pills ────────────────────────────────────────────────────────
-    categories = _extract_categories(sr_all)
-    selected_cat = None
-    if categories:
-        cat_sel = st.pills(
-            "Category", ["All"] + categories,
-            default="All",
-            key="srtype_cat",
-        )
-        selected_cat = cat_sel if (cat_sel and cat_sel != "All") else None
-        known = {c: _CATEGORY_NAMES[c] for c in categories if c in _CATEGORY_NAMES}
-        if known:
-            st.caption("  ·  ".join(f"**{k}** {v}" for k, v in sorted(known.items())))
-        sr = (
-            sr_all[sr_all["SRType"].str.startswith(f"{selected_cat}-")]
-            if selected_cat
-            else sr_all
-        ).reset_index(drop=True)
-    else:
-        sr = sr_all
+    categories = extract_categories(sr_all)
+    selected_cat = category_pills(categories, key="srtype_cat") if categories else None
+    sr = (
+        sr_all[sr_all["SRType"].str.startswith(f"{selected_cat}-")]
+        if selected_cat
+        else sr_all
+    ).reset_index(drop=True)
 
     # ── Selectable performance table ──────────────────────────────────────────
     scope_label = f"**{selected_cat}** types" if selected_cat else "all types"
@@ -387,7 +325,7 @@ def _srtype_charts(data_dir: Path, year: int) -> tuple[str | None, str | None]:
     )
 
     # ── Year-over-year detail ─────────────────────────────────────────────────
-    history = _load_srtype_history(data_dir)
+    history = load_srtype_history(data_dir)
     selected_rows = event.selection.rows
     chart_layout = dict(
         height=260,
@@ -525,9 +463,9 @@ def render_operations(
             st.rerun()
     st.subheader("Geographic Distribution")
 
-    geo_srtype = _load_geo_srtype_metrics(data_dir / f"{geo_key}_srtype_metrics_{year}.parquet")
+    geo_srtype = load_geo_srtype_metrics(data_dir / f"{geo_key}_srtype_metrics_{year}.parquet")
     totals = (
-        geo_srtype[geo_srtype["total_requests"] >= _MIN_GEO_SRTYPE_N]
+        geo_srtype[geo_srtype["total_requests"] >= MIN_GEO_SRTYPE_N]
         if not geo_srtype.empty else geo_srtype
     )
 
