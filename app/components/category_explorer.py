@@ -17,9 +17,16 @@ from components.srtype_shared import (
 )
 
 # How many highest-volume categories get individual lines in the among-category
-# trend charts and a permanent slot in the category selector — keeps both legible;
-# everything else is one click away (selector expander / "all other" aggregate line).
-_TOP_CATEGORIES_N = 10
+# trend charts and a permanent slot in the category selector — keeps both legible
+# and lets the selector's primary row fit on one line on mobile; everything else is
+# one click away via the selector's expander.
+_TOP_CATEGORIES_N = 8
+
+# Reference gridlines for the log-scale usage axis — without explicit labels, a log
+# axis is easy to misread (e.g. mistaking a value sitting between the 100K and 1M
+# lines for "close to 1M" or higher).
+_LOG_TICKVALS = [100, 1_000, 10_000, 100_000, 1_000_000]
+_LOG_TICKTEXT = ["100", "1K", "10K", "100K", "1M"]
 
 # How many highest-volume subcategories to plot individually before folding the
 # rest into a single "all other types" line — keeps the multi-line charts readable
@@ -117,6 +124,8 @@ def _multi_category_line_fig(
         yaxis=dict(
             title=value_label,
             type="log" if log_y else "linear",
+            tickvals=_LOG_TICKVALS if log_y else None,
+            ticktext=_LOG_TICKTEXT if log_y else None,
             tickformat=".0%" if is_pct else None,
             gridcolor="#eeeeee",
         ),
@@ -208,9 +217,14 @@ def _category_selector(agg: pd.DataFrame, key: str) -> str | None:
     """Two-tier category picker.
 
     The highest-volume categories (sorted alphabetically, so they read as a scannable
-    grid rather than a volume ranking) sit in the always-visible row; everything else
-    is tucked behind an expander. Selecting in one tier clears the other so there's
-    always at most one active category.
+    grid rather than a volume ranking) sit in an always-visible row sized to fit on
+    one line on mobile, labeled by their acronym with a small legend underneath —
+    these are the categories a returning user will recognize and want to jump to
+    quickly. Lower-volume categories are tucked behind an expander and labeled by
+    their full department name instead — a user opening that drawer is browsing,
+    not recalling an acronym, so the name carries more information than the code
+    and no separate legend is needed. Selecting in one tier clears the other so
+    there's always at most one active category.
     """
     ranked = agg["_cat"].tolist()
     top_cats = sorted(ranked[:_TOP_CATEGORIES_N])
@@ -221,19 +235,21 @@ def _category_selector(agg: pd.DataFrame, key: str) -> str | None:
         "Category", top_cats, key=top_key,
         on_change=lambda: st.session_state.update({more_key: None}),
     )
+    top_known = {c: CATEGORY_NAMES[c] for c in top_cats if c in CATEGORY_NAMES}
+    if top_known:
+        st.caption("  ·  ".join(f"**{k}** {v}" for k, v in sorted(top_known.items())))
+
     more_sel = None
     if rest_cats:
         with st.expander(f"+ {len(rest_cats)} lower-volume categories"):
             more_sel = st.pills(
-                "More categories", rest_cats, key=more_key,
+                "More categories", rest_cats,
+                format_func=lambda c: CATEGORY_NAMES.get(c, c),
+                key=more_key,
                 on_change=lambda: st.session_state.update({top_key: None}),
             )
 
-    selected = top_sel or more_sel
-    known = {c: CATEGORY_NAMES[c] for c in ranked if c in CATEGORY_NAMES}
-    if known:
-        st.caption("  ·  ".join(f"**{k}** {v}" for k, v in sorted(known.items())))
-    return selected
+    return top_sel or more_sel
 
 
 def render_category_explorer(data_dir: Path, year: int) -> None:
