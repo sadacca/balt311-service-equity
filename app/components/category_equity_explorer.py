@@ -418,11 +418,11 @@ def _grain_comparison_fig(scores: list[float], dimension: str) -> go.Figure:
 _CONCERN_BINS = dict(start=0.0, end=1.0, size=0.05)
 
 
-def _concern_distribution_fig(eligible_scores: list[float], concern_scores: list[float]) -> go.Figure:
-    """Histogram of every eligible service type's current-year equity score (gray),
-    with the flagged-for-review subset overlaid in red on identical bins — shows
-    whether the 8 most concerning types are a distinct, separated tail or just the
-    bottom edge of one continuous distribution."""
+def _concern_distribution_fig(eligible_scores: list[float], concern_scores: list[float], dimension: str) -> go.Figure:
+    """Histogram of every eligible service type's current-year **{dimension}** equity
+    score (gray), with the flagged-for-review subset overlaid in red on identical
+    bins — shows whether the most concerning types are a distinct, separated tail or
+    just the bottom edge of one continuous distribution."""
     fig = go.Figure()
     fig.add_vrect(x0=0.7, x1=1.0, fillcolor="green",  opacity=0.05, line_width=0)
     fig.add_vrect(x0=0.4, x1=0.7, fillcolor="orange", opacity=0.05, line_width=0)
@@ -441,7 +441,7 @@ def _concern_distribution_fig(eligible_scores: list[float], concern_scores: list
         height=240,
         barmode="overlay",
         margin={"t": 8, "b": 8, "l": 50, "r": 8},
-        xaxis=dict(title="Equity score (worse of race / income)", range=[0, 1], tickformat=".0%"),
+        xaxis=dict(title=f"{dimension}-based equity score", range=[0, 1], tickformat=".0%"),
         yaxis=dict(title="Number of service types", gridcolor="#eeeeee"),
         plot_bgcolor="white", paper_bgcolor="white",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
@@ -459,7 +459,7 @@ def compute_concerning_subtypes(
     metric_col: str,
     year: int,
     top_n: int,
-) -> tuple[pd.DataFrame, list[str], list[float], list[float]]:
+) -> tuple[pd.DataFrame, list[str], dict[str, list[float]], dict[str, list[float]]]:
     """The `top_n` individual service types most in need of equity review this year,
     restricted to types that meet minimum data standards — enough geographic spread,
     volume, and historical depth that a low score reflects a real pattern rather than
@@ -472,18 +472,20 @@ def compute_concerning_subtypes(
     The eligibility filter is applied first, to the full set of individual service
     types — *then* the worst `top_n` (by worse-of-{Race, Income} `year` score,
     ascending) are picked from that eligible set, so a thin or noisy sample can
-    never crowd out a type with a real, well-supported low score.
+    never crowd out a type with a real, well-supported low score. Ranking by the
+    worse-of-both score keeps the *set* of flagged types stable regardless of which
+    single dimension a reader chooses to inspect afterward.
 
     Returns `(history, ranked_labels, eligible_scores, concern_scores)`:
     - `history`: long (label, year, dimension, score) frame for the ranked types,
       ready for `_subtype_score_multiline_fig`
-    - `ranked_labels`: the `top_n` labels, worst first
-    - `eligible_scores`: each eligible type's worse-of-{Race, Income} `year` score —
-      the full distribution the ranked types are drawn from
-    - `concern_scores`: the same worse-of score for just the ranked types, in the
-      same order as `ranked_labels`
+    - `ranked_labels`: the `top_n` labels, worst-of-both first
+    - `eligible_scores`: `{"Race": [...], "Income": [...]}` — every eligible type's
+      `year` score for that dimension (the full distribution the ranked types are
+      drawn from)
+    - `concern_scores`: same shape, but scoped to just the ranked types
     """
-    empty = (pd.DataFrame(columns=["label", "year", "dimension", "score"]), [], [], [])
+    empty = (pd.DataFrame(columns=["label", "year", "dimension", "score"]), [], {"Race": [], "Income": []}, {"Race": [], "Income": []})
     geo_srtype_history = load_geo_srtype_history(data_dir, geo_key)
     if geo_srtype_history.empty:
         return empty
@@ -513,17 +515,19 @@ def compute_concerning_subtypes(
         return empty
 
     merged = year_rows[year_rows["SRType"].isin(eligible)].merge(demographics, on="geoid", how="left")
-    current_scores = {}
+    dims_per_type: dict[str, dict[str, float]] = {}
+    worst_of: dict[str, float] = {}
     for srtype, g in merged.groupby("SRType"):
         valid = g.dropna(subset=[metric_col])
         dims = _dimension_scores(valid, metric_col)
+        dims_per_type[srtype] = dims
         if any(pd.notna(v) for v in dims.values()):
-            current_scores[srtype] = min(v for v in dims.values() if pd.notna(v))
+            worst_of[srtype] = min(v for v in dims.values() if pd.notna(v))
 
-    if not current_scores:
+    if not worst_of:
         return empty
 
-    ranked_types = sorted(current_scores, key=current_scores.get)[:top_n]
+    ranked_types = sorted(worst_of, key=worst_of.get)[:top_n]
 
     records = []
     hist_rows = suppressed[suppressed["SRType"].isin(ranked_types)].merge(demographics, on="geoid", how="left")
@@ -536,8 +540,15 @@ def compute_concerning_subtypes(
             })
     history = pd.DataFrame(records)
     ranked_labels = [f"{_short_label(s)} ({s.split('-')[0].strip()})" for s in ranked_types]
-    concern_scores = [current_scores[s] for s in ranked_types]
-    eligible_scores = list(current_scores.values())
+
+    eligible_scores = {
+        dim: [dims_per_type[s][dim] for s in eligible if s in dims_per_type and pd.notna(dims_per_type[s][dim])]
+        for dim in ("Race", "Income")
+    }
+    concern_scores = {
+        dim: [dims_per_type[s][dim] for s in ranked_types if pd.notna(dims_per_type[s][dim])]
+        for dim in ("Race", "Income")
+    }
     return history, ranked_labels, eligible_scores, concern_scores
 
 
@@ -591,11 +602,36 @@ def render_category_equity_explorer(
     ranked = by_volume.groupby("_cat")["total_requests"].sum().sort_values(ascending=False).index.tolist()
     top_cats = ranked[:_TOP_CATEGORIES_N]
 
-    # ── Metric selector — only metrics available at the geo×SRType grain ─────
-    metric_label = st.radio(
-        "Equity metric", list(_METRIC_OPTIONS.keys()),
-        horizontal=True, key="cat_eq_metric",
-    )
+    # ── Geographic unit + metric selectors ────────────────────────────────────
+    # Tract and CSA rollups often diverge on these scores (CSA values are
+    # population-weighted means of their member tracts) — exposing the same
+    # toggle the Equity tab uses lets a reader check whether a finding holds at
+    # both grains or is an artifact of one. Updates the shared `geo_level` state,
+    # so the choice carries over to the Equity tab too — same convention.
+    ctrl_geo, ctrl_metric = st.columns([1, 2])
+    with ctrl_geo:
+        _curr_geo = st.session_state.get("geo_level", "Census Tract")
+        # Two-way sync with the shared `geo_level`: only overwrite this widget's
+        # keyed value when `geo_level` changed *elsewhere* (e.g. the Equity tab's
+        # own toggle) — tracked via `_seen` — so a fresh click here isn't clobbered
+        # before it has a chance to propagate (Streamlit widgets ignore `index`
+        # once their keyed state is set, so a one-way default isn't enough).
+        if st.session_state.get("cat_eq_geo_seen") != _curr_geo:
+            st.session_state["cat_eq_geo_choice"] = _curr_geo
+            st.session_state["cat_eq_geo_seen"] = _curr_geo
+        new_geo = st.radio(
+            "Geographic unit", ["Census Tract", "CSA"],
+            horizontal=True, key="cat_eq_geo_choice",
+        )
+        if new_geo != _curr_geo:
+            st.session_state["geo_level"] = new_geo
+            st.session_state["cat_eq_geo_seen"] = new_geo
+            st.rerun()
+    with ctrl_metric:
+        metric_label = st.radio(
+            "Equity metric", list(_METRIC_OPTIONS.keys()),
+            horizontal=True, key="cat_eq_metric",
+        )
     metric_col = _METRIC_OPTIONS[metric_label]
 
     st.caption(
@@ -690,30 +726,30 @@ def render_category_equity_explorer(
         )
     else:
         st.markdown(
-            f"Among **{len(eligible_scores)}** individual service types with enough "
-            f"data to trust a score, these **{len(concern_labels)}** posted the worst "
-            f"current-year **{metric_label.lower()}** equity — the types where review is "
-            "most warranted, regardless of which category they belong to."
+            f"These **{len(concern_labels)}** individual service types posted the worst "
+            f"current-year **{metric_label.lower()}** equity (worse of race / income, "
+            "ranked among types that meet the minimum data standards below) — the types "
+            "where review is most warranted, regardless of which category they belong to."
         )
+
+        concern_dim = st.radio(
+            "Equity dimension", ["Race", "Income"],
+            horizontal=True, key="cat_eq_concern_dim",
+        )
+
         st.plotly_chart(
-            _concern_distribution_fig(eligible_scores, concern_scores),
+            _concern_distribution_fig(eligible_scores[concern_dim], concern_scores[concern_dim], concern_dim),
             use_container_width=True, key="cat_eq_concern_dist", config={"displayModeBar": False},
         )
         st.caption(
-            f"Distribution of every eligible type's **{year}** equity score "
-            "(worse of race / income) — red bars mark where the flagged types fall "
-            "within the full picture: a separated tail, or just the lower edge of "
-            "one continuous spread."
+            f"Distribution of every eligible type's **{year}** **{concern_dim.lower()}**-based "
+            "equity score — red bars mark where the flagged types fall within the full "
+            "picture: a separated tail, or just the lower edge of one continuous spread."
         )
-        st.markdown("**Race-based equity score, year over year**")
+        st.markdown(f"**{concern_dim}-based equity score, year over year**")
         st.plotly_chart(
-            _subtype_score_multiline_fig(concern_history, concern_labels, "", "Race"),
-            use_container_width=True, key="cat_eq_concern_race", config={"displayModeBar": False},
-        )
-        st.markdown("**Income-based equity score, year over year**")
-        st.plotly_chart(
-            _subtype_score_multiline_fig(concern_history, concern_labels, "", "Income"),
-            use_container_width=True, key="cat_eq_concern_income", config={"displayModeBar": False},
+            _subtype_score_multiline_fig(concern_history, concern_labels, "", concern_dim),
+            use_container_width=True, key="cat_eq_concern_line", config={"displayModeBar": False},
         )
         st.caption(
             "Eligible for this ranking: service types present in at least "
@@ -721,7 +757,7 @@ def render_category_equity_explorer(
             f"with at least **{_CONCERN_MIN_REQUESTS_PER_YEAR}** requests in {year}, and "
             f"scoreable (post-suppression) in at least **{_CONCERN_MIN_YEARS}** years of "
             "the analysis — applied *before* ranking, so a thin or noisy sample can't "
-            "crowd out a type with a real, well-supported low score. Gaps in the lines "
+            "crowd out a type with a real, well-supported low score. Gaps in the line "
             "above mean a year fell short of the suppression threshold, not zero equity."
         )
 
