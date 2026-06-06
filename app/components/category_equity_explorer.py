@@ -22,7 +22,7 @@ from components.srtype_shared import (
     extract_categories,
     load_geo_srtype_history,
 )
-from components.utils import overlap_score
+from components.utils import overlap_score, score_label
 
 # Metrics available at geo×SRType grain — on_time_rate and requests_per_1k require
 # fields (DueDate, population) that aren't rolled up to this grain.
@@ -33,6 +33,14 @@ _METRIC_OPTIONS = {
 
 _TOP_CATEGORIES_N = 8
 _TOP_SUBTYPES_N = 7
+_CONCERN_TOP_N = 8
+
+# Minimum-data eligibility thresholds for the "most concerning service types" ranking —
+# a low score is only meaningful if it's backed by enough geographic spread, volume,
+# and historical depth to trust; otherwise a thin sample could just be noise.
+_CONCERN_MIN_GEO_COVERAGE = 0.5
+_CONCERN_MIN_REQUESTS_PER_YEAR = 250
+_CONCERN_MIN_YEARS = 5
 
 # Race / income trend-line colors — match the group colors `equity_distributions.py`
 # already established, so the same dimension reads consistently across both tabs.
@@ -377,6 +385,116 @@ def _subtype_score_multiline_fig(
     return fig
 
 
+_GRAIN_LABELS = ["All categories<br>(citywide)", "Within<br>category", "Within<br>service type"]
+
+
+def _grain_comparison_fig(scores: list[float], dimension: str) -> go.Figure:
+    """Three bars — citywide, within-category, within-service-type equity scores for
+    one dimension — colored by `score_label()`'s green/amber/red/gray convention so
+    the rising-at-finer-grain pattern (the usage-mix signature) reads at a glance,
+    in place of the sentence that used to spell out the same three numbers."""
+    colors = [score_label(v)[1] for v in scores]
+    fig = go.Figure(go.Bar(
+        x=_GRAIN_LABELS, y=scores,
+        marker_color=colors,
+        text=[f"{v:.0%}" for v in scores], textposition="outside",
+        hovertemplate="<b>%{x}</b><br>%{y:.0%}<extra></extra>",
+        width=0.55,
+    ))
+    fig.add_hrect(y0=0.7, y1=1.16, fillcolor="green",  opacity=0.05, line_width=0)
+    fig.add_hrect(y0=0.4, y1=0.7,  fillcolor="orange", opacity=0.05, line_width=0)
+    fig.add_hrect(y0=0.0, y1=0.4,  fillcolor="red",    opacity=0.05, line_width=0)
+    fig.update_layout(
+        height=260,
+        margin={"t": 8, "b": 8, "l": 50, "r": 8},
+        yaxis=dict(title="Equity score", range=[0, 1.16], tickformat=".0%", gridcolor="#eeeeee"),
+        xaxis=dict(title=None),
+        plot_bgcolor="white", paper_bgcolor="white",
+        showlegend=False,
+    )
+    return fig
+
+
+# ── Concerning-subtype ranking ────────────────────────────────────────────────
+
+@st.cache_data
+def compute_concerning_subtypes(
+    data_dir: Path,
+    geo_key: str,
+    demographics: pd.DataFrame,
+    metric_col: str,
+    year: int,
+    top_n: int,
+) -> tuple[pd.DataFrame, list[str]]:
+    """The `top_n` individual service types most in need of equity review this year,
+    restricted to types that meet minimum data standards — enough geographic spread,
+    volume, and historical depth that a low score reflects a real pattern rather than
+    a thin sample:
+
+    - present in at least `_CONCERN_MIN_GEO_COVERAGE` of this year's scoreable geographies
+    - at least `_CONCERN_MIN_REQUESTS_PER_YEAR` total requests in `year`
+    - scoreable (post-suppression) in at least `_CONCERN_MIN_YEARS` years
+
+    Eligible types are ranked by their worse-of-{Race, Income} `year` score, ascending —
+    the types where review is most warranted come first. Returns `(history, ranked_labels)`
+    where `history` is a long (label, year, dimension, score) frame for the ranked types,
+    ready for `_subtype_score_multiline_fig`.
+    """
+    geo_srtype_history = load_geo_srtype_history(data_dir, geo_key)
+    if geo_srtype_history.empty:
+        return pd.DataFrame(columns=["label", "year", "dimension", "score"]), []
+
+    suppressed = geo_srtype_history[geo_srtype_history["total_requests"] >= MIN_GEO_SRTYPE_N]
+    year_rows = suppressed[suppressed["year"] == year]
+    if year_rows.empty:
+        return pd.DataFrame(columns=["label", "year", "dimension", "score"]), []
+
+    n_geos_this_year = year_rows["geoid"].nunique()
+    if n_geos_this_year == 0:
+        return pd.DataFrame(columns=["label", "year", "dimension", "score"]), []
+
+    geo_coverage = year_rows.groupby("SRType")["geoid"].nunique() / n_geos_this_year
+    raw_volume = geo_srtype_history.loc[
+        geo_srtype_history["year"] == year
+    ].groupby("SRType")["total_requests"].sum()
+    years_scoreable = suppressed.groupby("SRType")["year"].nunique()
+
+    eligible = sorted(
+        s for s in geo_coverage.index
+        if geo_coverage.get(s, 0) >= _CONCERN_MIN_GEO_COVERAGE
+        and raw_volume.get(s, 0) >= _CONCERN_MIN_REQUESTS_PER_YEAR
+        and years_scoreable.get(s, 0) >= _CONCERN_MIN_YEARS
+    )
+    if not eligible:
+        return pd.DataFrame(columns=["label", "year", "dimension", "score"]), []
+
+    merged = year_rows[year_rows["SRType"].isin(eligible)].merge(demographics, on="geoid", how="left")
+    current_scores = {}
+    for srtype, g in merged.groupby("SRType"):
+        valid = g.dropna(subset=[metric_col])
+        dims = _dimension_scores(valid, metric_col)
+        if any(pd.notna(v) for v in dims.values()):
+            current_scores[srtype] = min(v for v in dims.values() if pd.notna(v))
+
+    if not current_scores:
+        return pd.DataFrame(columns=["label", "year", "dimension", "score"]), []
+
+    ranked_types = sorted(current_scores, key=current_scores.get)[:top_n]
+
+    records = []
+    hist_rows = suppressed[suppressed["SRType"].isin(ranked_types)].merge(demographics, on="geoid", how="left")
+    for (srtype, yr), g in hist_rows.groupby(["SRType", "year"]):
+        valid = g.dropna(subset=[metric_col])
+        for dim, score in _dimension_scores(valid, metric_col).items():
+            records.append({
+                "label": f"{_short_label(srtype)} ({srtype.split('-')[0].strip()})",
+                "year": yr, "dimension": dim, "score": score,
+            })
+    history = pd.DataFrame(records)
+    ranked_labels = [f"{_short_label(s)} ({s.split('-')[0].strip()})" for s in ranked_types]
+    return history, ranked_labels
+
+
 # ── Render ────────────────────────────────────────────────────────────────────
 
 def render_category_equity_explorer(
@@ -385,6 +503,8 @@ def render_category_equity_explorer(
     geo_key: str,
     year: int,
 ) -> None:
+    st.caption("Does the citywide equity picture hold up — or differ — within individual service categories and types?")
+
     if demographics is None or demographics.empty:
         st.caption(
             "Demographic data unavailable — "
@@ -432,13 +552,10 @@ def render_category_equity_explorer(
     )
     metric_col = _METRIC_OPTIONS[metric_label]
 
-    st.markdown(
-        f"Scores below measure **{metric_label.lower()}** — how often outcomes "
-        "interleave between majority-Black vs. majority-White geographies (Race) "
-        "and below- vs. above-median-income geographies (Income). 100% = perfectly "
-        "interleaved · >70% not bad · 40–70% could be better · <40% needs review. "
-        f"Cells with fewer than {MIN_GEO_SRTYPE_N} requests are suppressed before scoring, "
-        "matching the threshold the Operations map already applies."
+    st.caption(
+        f"**{metric_label}** equity score — race (majority-Black vs. majority-White) "
+        "and income (below- vs. above-median) geographies. 100% = perfectly "
+        "interleaved · >70% not bad · 40–70% could be better · <40% needs review."
     )
 
     citywide_trend = compute_citywide_equity_trend(data_dir, demographics, geo_key)
@@ -459,18 +576,25 @@ def render_category_equity_explorer(
         for dim in ("Race", "Income")
     }
     if all(pd.notna(v) for v in [*overall.values(), *cat_avg.values(), *sub_summary.values()]):
-        st.markdown(
-            f"**What {year}'s {metric_label.lower()} scores show:** measured across all "
-            f"categories together, the equity score is **{overall['Race']:.0%}** for race "
-            f"and **{overall['Income']:.0%}** for income. Scored within individual "
-            f"categories instead, those averages move to **{cat_avg['Race']:.0%}** / "
-            f"**{cat_avg['Income']:.0%}**; within individual service types, "
-            f"**{sub_summary['Race']:.0%}** / **{sub_summary['Income']:.0%}**. Scores "
-            "rising at finer grain is the signature of a usage-mix effect, not a "
-            "delivery-difference one: neighborhoods request different *kinds* of "
-            "services in different proportions, and that compositional gap — not how "
-            "any single service type is delivered once requested — drives most of the "
-            "citywide score."
+        st.markdown(f"**What {year}'s {metric_label.lower()} scores show, at three grains:**")
+        col_race, col_income = st.columns(2)
+        with col_race:
+            st.caption("Race-based equity score")
+            st.plotly_chart(
+                _grain_comparison_fig([overall["Race"], cat_avg["Race"], sub_summary["Race"]], "Race"),
+                use_container_width=True, key="cat_eq_grain_race", config={"displayModeBar": False},
+            )
+        with col_income:
+            st.caption("Income-based equity score")
+            st.plotly_chart(
+                _grain_comparison_fig([overall["Income"], cat_avg["Income"], sub_summary["Income"]], "Income"),
+                use_container_width=True, key="cat_eq_grain_income", config={"displayModeBar": False},
+            )
+        st.caption(
+            "Scores rising left to right is the signature of a **usage-mix effect**, not "
+            "a delivery-difference one — neighborhoods request different *kinds* of "
+            "services in different proportions, and that compositional gap, not how any "
+            "single service is delivered once requested, drives most of the citywide score."
         )
 
     # ── Among-category equity trend ───────────────────────────────────────────
@@ -609,4 +733,67 @@ def render_category_equity_explorer(
             "minimum sample needed for a score (gaps in a line = insufficient data, "
             "not zero equity) — a thinner line simply means fewer years are scoreable "
             "for that type, not that its equity is worse."
+        )
+
+    # ── Where review is most warranted ────────────────────────────────────────
+    st.divider()
+    st.subheader("Where equity review is most warranted")
+
+    flagged = (
+        cat_history[(cat_history["year"] == year) & (cat_history["score"] <= 0.7)]
+        .dropna(subset=["score"])
+        .sort_values("score")
+    )
+    if flagged.empty:
+        st.caption(
+            f"No category cleared the {year} bar for review — every one of the "
+            f"**{len(top_cats)}** highest-volume categories scored **above 70%** "
+            "(\"not bad\") on both race and income this year."
+        )
+    else:
+        bits = [
+            f"**{CATEGORY_NAMES.get(row['_cat'], row['_cat'])}** "
+            f"({row['dimension'].lower()}: {row['score']:.0%}, *{score_label(row['score'])[0]}*)"
+            for _, row in flagged.iterrows()
+        ]
+        st.caption(
+            f"**{year}** flags {len(flagged)} category-dimension pairing"
+            f"{'s' if len(flagged) != 1 else ''} in the amber or red bands (≤70%): "
+            + "; ".join(bits) + "."
+        )
+
+    concern_history, concern_labels = compute_concerning_subtypes(
+        data_dir, geo_key, demographics, metric_col, year, _CONCERN_TOP_N,
+    )
+    if not concern_labels:
+        st.caption(
+            "No individual service type currently meets the minimum-data standards "
+            f"below for a reliable concern ranking on **{metric_label.lower()}**."
+        )
+    else:
+        st.markdown(
+            f"The **{len(concern_labels)}** individual service types below have the "
+            f"worst current-year **{metric_label.lower()}** equity scores among types that "
+            "meet minimum data standards — enough geographic spread, volume, and history "
+            "to trust the score, not just a thin or noisy sample. Each line traces that "
+            "type's equity-score history; gaps mean a year fell short of the suppression "
+            "threshold, not zero equity."
+        )
+        st.markdown("**Race-based equity score, year over year**")
+        st.plotly_chart(
+            _subtype_score_multiline_fig(concern_history, concern_labels, "", "Race"),
+            use_container_width=True, key="cat_eq_concern_race", config={"displayModeBar": False},
+        )
+        st.markdown("**Income-based equity score, year over year**")
+        st.plotly_chart(
+            _subtype_score_multiline_fig(concern_history, concern_labels, "", "Income"),
+            use_container_width=True, key="cat_eq_concern_income", config={"displayModeBar": False},
+        )
+        st.caption(
+            "Eligible for this ranking: service types present in at least "
+            f"**{_CONCERN_MIN_GEO_COVERAGE:.0%}** of this year's scoreable geographies, "
+            f"with at least **{_CONCERN_MIN_REQUESTS_PER_YEAR}** requests in {year}, and "
+            f"scoreable (post-suppression) in at least **{_CONCERN_MIN_YEARS}** years of "
+            "the analysis — ranked by their worse-of-race/income score this year, "
+            "lowest (most concerning) first."
         )

@@ -221,10 +221,7 @@ def _subtype_multiline_fig(
 
 
 def render_category_explorer(data_dir: Path, year: int) -> None:
-    st.caption(
-        "An operational overview of Baltimore's 311 service categories — usage, "
-        "service rate, and speed — compared among categories and trended within them."
-    )
+    st.caption("How individual service categories perform and compare — purely operational, no race or income framing.")
 
     srtype_path = data_dir / f"srtype_metrics_{year}.parquet"
     if not srtype_path.exists():

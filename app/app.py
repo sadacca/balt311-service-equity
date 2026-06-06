@@ -182,15 +182,7 @@ with tab_eq:
             icon="ℹ️",
         )
     else:
-        st.caption(
-            "These scores look at equity **citywide**, pooling every service type "
-            "together — and because closure rates and times vary widely by service "
-            "type, some of the apparent gap may reflect *which* services different "
-            "neighborhoods request rather than how any one service is delivered. "
-            "The **Service Equity** tab breaks this down by category: the picture "
-            "improves substantially at that finer grain — though not all the way, "
-            "some disparity remains even after accounting for what's being requested."
-        )
+        st.caption("Does service quality differ systematically by race or income of the requesting neighborhood — citywide?")
 
         # ── Inline controls above map ─────────────────────────────────────────
         ctrl1, ctrl2, ctrl3 = st.columns([2, 3, 5])
