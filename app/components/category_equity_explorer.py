@@ -194,6 +194,35 @@ def compute_subtype_equity_history(
     return pd.DataFrame(records)
 
 
+@st.cache_data
+def compute_subtype_score_summary(
+    geo_srtype_history: pd.DataFrame,
+    demographics: pd.DataFrame,
+    year: int,
+    metric_col: str,
+) -> dict[str, float]:
+    """Mean Race/Income equity score across every individual SRType in `year` —
+    the finest grain scoreable without a category selection. Each geo×SRType row
+    is already one comparable value (no rollup), so this is a straight per-type
+    score-and-average — used only for the opening summary's overall-vs-category-
+    vs-subtype comparison that shows whether scores rise at finer grain (a usage-
+    mix signature) or hold flat (a delivery-difference signature)."""
+    rows = geo_srtype_history[
+        (geo_srtype_history["year"] == year)
+        & (geo_srtype_history["total_requests"] >= MIN_GEO_SRTYPE_N)
+    ].merge(demographics, on="geoid", how="left")
+    if rows.empty:
+        return {"Race": float("nan"), "Income": float("nan")}
+
+    scores: dict[str, list[float]] = {"Race": [], "Income": []}
+    for _, g in rows.groupby("SRType"):
+        valid = g.dropna(subset=[metric_col])
+        for dim, score in _dimension_scores(valid, metric_col).items():
+            if pd.notna(score):
+                scores[dim].append(score)
+    return {dim: (sum(vals) / len(vals) if vals else float("nan")) for dim, vals in scores.items()}
+
+
 # ── Figures ───────────────────────────────────────────────────────────────────
 
 def _multi_category_score_fig(
@@ -205,7 +234,7 @@ def _multi_category_score_fig(
 ) -> go.Figure:
     """One equity-score line per category, trended across years — the equity-flavored
     counterpart to Tab 2's `_multi_category_line_fig`: same per-category palette,
-    dotted year guide, and dashed "Citywide" reference line, but plotted against a
+    dotted year guide, and dashed "All categories" reference line, but plotted against a
     fixed [0, 1] score axis with green/amber/red threshold bands instead of a
     log-scale operational metric."""
     fig = go.Figure()
@@ -229,10 +258,10 @@ def _multi_category_score_fig(
         if not cw.empty:
             fig.add_trace(go.Scatter(
                 x=cw["year"], y=cw["score"],
-                mode="lines+markers", name="Citywide",
+                mode="lines+markers", name="All categories",
                 line=dict(width=2.4, dash="dash", color="#333333"),
                 marker=dict(size=7, color="#333333", symbol="diamond"),
-                hovertemplate="<b>Citywide</b><br>%{x}: %{y:.0%}<extra></extra>",
+                hovertemplate="<b>All categories</b><br>%{x}: %{y:.0%}<extra></extra>",
             ))
     fig.add_vline(x=year, line_width=1, line_dash="dot", line_color="#999999")
     fig.update_layout(**_score_layout_kwargs(320))
@@ -246,9 +275,9 @@ def _category_score_trend_fig(
     year: int,
 ) -> go.Figure:
     """One category's own equity-score trend, selected year picked out in red —
-    mirrors Tab 2's `_line_fig` highlight convention — with the citywide trend for
-    the same metric and dimension overlaid as a dashed reference, exactly as Tab 2
-    overlays the citywide operational average on its rate/speed panels."""
+    mirrors Tab 2's `_line_fig` highlight convention — with the all-categories trend
+    for the same metric and dimension overlaid as a dashed reference, exactly as
+    Tab 2 overlays the citywide operational average on its rate/speed panels."""
     fig = go.Figure()
     _add_score_bands(fig)
 
@@ -269,10 +298,10 @@ def _category_score_trend_fig(
     if not cw.empty:
         fig.add_trace(go.Scatter(
             x=cw["year"], y=cw["score"],
-            mode="lines+markers", name="Citywide",
+            mode="lines+markers", name="All categories",
             line=dict(width=2, dash="dash", color="#333333"),
             marker=dict(size=6, color="#333333", symbol="diamond"),
-            hovertemplate="<b>Citywide</b><br>%{x}: %{y:.0%}<extra></extra>",
+            hovertemplate="<b>All categories</b><br>%{x}: %{y:.0%}<extra></extra>",
         ))
 
     fig.update_layout(**_score_layout_kwargs(260))
@@ -325,15 +354,6 @@ def render_category_equity_explorer(
     geo_key: str,
     year: int,
 ) -> None:
-    st.caption(
-        "The equity-flavored mirror of Service Category Explorer — same trend-line "
-        "language, but tracking the Mann-Whitney **equity score** (race and income) "
-        "rather than operational metrics. Where the Equity tab asks whether service "
-        "delivery is equitable citywide, this tab asks whether that picture holds up "
-        "— or differs — among and within individual service categories, and how it's "
-        "moved over the years in this dataset."
-    )
-
     if demographics is None or demographics.empty:
         st.caption(
             "Demographic data unavailable — "
@@ -391,18 +411,47 @@ def render_category_equity_explorer(
     )
 
     citywide_trend = compute_citywide_equity_trend(data_dir, demographics, geo_key)
+    cat_history = compute_category_equity_history(geo_srtype_history, demographics, tuple(categories), metric_col)
+    sub_summary = compute_subtype_score_summary(geo_srtype_history, demographics, year, metric_col)
+
+    # ── Opening analysis — what this year's scores actually show ──────────────
+    overall = {
+        dim: citywide_trend.loc[
+            (citywide_trend["year"] == year) & (citywide_trend["dimension"] == dim)
+            & (citywide_trend["metric"] == metric_label),
+            "score",
+        ].mean()
+        for dim in ("Race", "Income")
+    }
+    cat_avg = {
+        dim: cat_history.loc[(cat_history["year"] == year) & (cat_history["dimension"] == dim), "score"].dropna().mean()
+        for dim in ("Race", "Income")
+    }
+    if all(pd.notna(v) for v in [*overall.values(), *cat_avg.values(), *sub_summary.values()]):
+        st.markdown(
+            f"**What {year}'s {metric_label.lower()} scores show:** measured across all "
+            f"categories together, the equity score is **{overall['Race']:.0%}** for race "
+            f"and **{overall['Income']:.0%}** for income. Scored within individual "
+            f"categories instead, those averages move to **{cat_avg['Race']:.0%}** / "
+            f"**{cat_avg['Income']:.0%}**; within individual service types, "
+            f"**{sub_summary['Race']:.0%}** / **{sub_summary['Income']:.0%}**. Scores "
+            "rising at finer grain is the signature of a usage-mix effect, not a "
+            "delivery-difference one: neighborhoods request different *kinds* of "
+            "services in different proportions, and that compositional gap — not how "
+            "any single service type is delivered once requested — drives most of the "
+            "citywide score."
+        )
 
     # ── Among-category equity trend ───────────────────────────────────────────
     st.subheader("How categories' equity scores compare over time")
     st.caption(
         f"Year-over-year **{metric_label.lower()}** equity score for the "
         f"**{len(top_cats)}** highest-volume categories (same set Tab 2 trends, "
-        f"ranked by **{year}** volume) — read each line against the dashed citywide "
-        "reference and the green/amber/red bands to see whether a category's equity "
-        "picture tracks the city as a whole, runs persistently better or worse, or "
-        "has shifted over the years in this dataset."
+        f"ranked by **{year}** volume) — read each line against the dashed "
+        "**all categories** reference and the green/amber/red bands to see whether a "
+        "category's equity picture tracks the citywide average, runs persistently "
+        "better or worse, or has shifted over the years in this dataset."
     )
-    cat_history = compute_category_equity_history(geo_srtype_history, demographics, tuple(categories), metric_col)
     if cat_history.empty:
         st.caption("Not enough geo×SRType coverage to compute category-level equity scores for this metric.")
     else:
@@ -427,7 +476,7 @@ def render_category_equity_explorer(
     st.subheader("Explore one category's equity picture over time")
     st.caption(
         "The panels above show each category as a single equity-score line — drilling "
-        "into one reveals whether its trend tracks the citywide line by coincidence or "
+        "into one reveals whether its trend tracks the all-categories line by coincidence or "
         "by consistency, and which of its specific service types are driving the score, "
         "for better or worse."
     )
@@ -448,8 +497,8 @@ def render_category_equity_explorer(
         st.caption(f"Not enough geo×SRType coverage to compute equity scores for **{display_name}**.")
         return
 
-    # ── Category-level equity-score trend, vs. citywide ───────────────────────
-    st.markdown(f"**{display_name}** — equity-score trend vs. citywide · **{year}** highlighted")
+    # ── Category-level equity-score trend, vs. all categories ─────────────────
+    st.markdown(f"**{display_name}** — equity-score trend vs. all categories · **{year}** highlighted")
     col_r, col_i = st.columns(2)
     with col_r:
         st.caption("Race-based equity score")
