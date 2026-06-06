@@ -17,9 +17,16 @@ from components.srtype_shared import (
 )
 
 # How many highest-volume categories get individual lines in the among-category
-# trend charts and a permanent slot in the category selector — keeps both legible;
-# everything else is one click away (selector expander / "all other" aggregate line).
-_TOP_CATEGORIES_N = 10
+# trend charts and a permanent slot in the category selector — keeps both legible
+# and lets the selector's primary row fit on one line on mobile; everything else is
+# one click away via the selector's expander.
+_TOP_CATEGORIES_N = 8
+
+# Reference gridlines for the log-scale usage axis — without explicit labels, a log
+# axis is easy to misread (e.g. mistaking a value sitting between the 100K and 1M
+# lines for "close to 1M" or higher).
+_LOG_TICKVALS = [100, 1_000, 10_000, 100_000, 1_000_000]
+_LOG_TICKTEXT = ["100", "1K", "10K", "100K", "1M"]
 
 # How many highest-volume subcategories to plot individually before folding the
 # rest into a single "all other types" line — keeps the multi-line charts readable
@@ -91,8 +98,12 @@ def _multi_category_line_fig(
     year: int,
     log_y: bool = False,
     is_pct: bool = False,
+    citywide: pd.DataFrame | None = None,
 ) -> go.Figure:
-    """One line per category, trended across years — a dotted guide marks the selected year."""
+    """One line per category, trended across years — a dotted guide marks the selected
+    year, and an optional dashed "Citywide average" trace gives each category a fixed
+    baseline to be read against (passing it for a volume panel would be meaningless,
+    since "citywide volume" is just the sum of every category — not a comparable rate)."""
     hover_fmt = "%{y:.1%}" if is_pct else "%{y:,.1f}"
     fig = go.Figure()
     for i, cat in enumerate(cats):
@@ -109,6 +120,16 @@ def _multi_category_line_fig(
             marker=dict(size=5, color=color),
             hovertemplate=f"<b>{cat} — {label}</b><br>%{{x}}: {hover_fmt}<extra></extra>",
         ))
+    if citywide is not None:
+        cw = citywide.dropna(subset=[value_col])
+        if not cw.empty:
+            fig.add_trace(go.Scatter(
+                x=cw["year"], y=cw[value_col],
+                mode="lines+markers", name="Citywide average",
+                line=dict(width=2.4, dash="dash", color="#333333"),
+                marker=dict(size=7, color="#333333", symbol="diamond"),
+                hovertemplate=f"<b>Citywide average</b><br>%{{x}}: {hover_fmt}<extra></extra>",
+            ))
     fig.add_vline(x=year, line_width=1, line_dash="dot", line_color="#999999")
     fig.update_layout(
         height=320,
@@ -117,6 +138,8 @@ def _multi_category_line_fig(
         yaxis=dict(
             title=value_label,
             type="log" if log_y else "linear",
+            tickvals=_LOG_TICKVALS if log_y else None,
+            ticktext=_LOG_TICKTEXT if log_y else None,
             tickformat=".0%" if is_pct else None,
             gridcolor="#eeeeee",
         ),
@@ -208,9 +231,14 @@ def _category_selector(agg: pd.DataFrame, key: str) -> str | None:
     """Two-tier category picker.
 
     The highest-volume categories (sorted alphabetically, so they read as a scannable
-    grid rather than a volume ranking) sit in the always-visible row; everything else
-    is tucked behind an expander. Selecting in one tier clears the other so there's
-    always at most one active category.
+    grid rather than a volume ranking) sit in an always-visible row sized to fit on
+    one line on mobile, labeled by their acronym with a small legend underneath —
+    these are the categories a returning user will recognize and want to jump to
+    quickly. Lower-volume categories are tucked behind an expander and labeled by
+    their full department name instead — a user opening that drawer is browsing,
+    not recalling an acronym, so the name carries more information than the code
+    and no separate legend is needed. Selecting in one tier clears the other so
+    there's always at most one active category.
     """
     ranked = agg["_cat"].tolist()
     top_cats = sorted(ranked[:_TOP_CATEGORIES_N])
@@ -221,19 +249,21 @@ def _category_selector(agg: pd.DataFrame, key: str) -> str | None:
         "Category", top_cats, key=top_key,
         on_change=lambda: st.session_state.update({more_key: None}),
     )
+    top_known = {c: CATEGORY_NAMES[c] for c in top_cats if c in CATEGORY_NAMES}
+    if top_known:
+        st.caption("  ·  ".join(f"**{k}** {v}" for k, v in sorted(top_known.items())))
+
     more_sel = None
     if rest_cats:
         with st.expander(f"+ {len(rest_cats)} lower-volume categories"):
             more_sel = st.pills(
-                "More categories", rest_cats, key=more_key,
+                "More categories", rest_cats,
+                format_func=lambda c: CATEGORY_NAMES.get(c, c),
+                key=more_key,
                 on_change=lambda: st.session_state.update({top_key: None}),
             )
 
-    selected = top_sel or more_sel
-    known = {c: CATEGORY_NAMES[c] for c in ranked if c in CATEGORY_NAMES}
-    if known:
-        st.caption("  ·  ".join(f"**{k}** {v}" for k, v in sorted(known.items())))
-    return selected
+    return top_sel or more_sel
 
 
 def render_category_explorer(data_dir: Path, year: int) -> None:
@@ -261,33 +291,63 @@ def render_category_explorer(data_dir: Path, year: int) -> None:
         return
     top_cats = agg["_cat"].head(_TOP_CATEGORIES_N).tolist()
 
+    # ── Opening orientation — where the city stands today, in scale ───────────
+    citywide_total_year = float(sr_all["total_requests"].sum())
+    citywide_by_year = history.groupby("year")["total_requests"].sum()
+    top_cat = agg.iloc[0]
+    top_share = top_cat["total_requests"] / citywide_total_year if citywide_total_year else float("nan")
+    topN_share = agg.head(_TOP_CATEGORIES_N)["total_requests"].sum() / citywide_total_year if citywide_total_year else float("nan")
+    st.markdown(
+        f"Baltimore logged **{citywide_total_year:,.0f}** 311 requests in **{year}**. "
+        f"Citywide annual volume has run between **{citywide_by_year.min():,.0f}** and "
+        f"**{citywide_by_year.max():,.0f}** over {citywide_by_year.index.min()}–{citywide_by_year.index.max()} — "
+        f"so {year} is roughly {'in the middle of' if citywide_by_year.min() < citywide_total_year < citywide_by_year.max() else 'at the edge of'} "
+        f"that range. The **{len(top_cats)}** categories trended below made up "
+        f"**{topN_share:.0%}** of {year}'s volume on their own; **{top_cat['label']}** "
+        f"alone accounted for **{top_share:.0%}**."
+    )
+
     # ── Among-category comparison, trended across years ───────────────────────
     st.subheader("How categories compare over time")
     st.caption(
         f"Year-over-year trend for the **{len(top_cats)}** highest-volume categories "
         f"(ranked by **{year}** volume) — read down the three panels to see whether a "
         "high-volume category also tends to run slower or faster than its peers. "
-        f"Dotted vertical guide marks **{year}**."
+        f"Dotted vertical guide marks **{year}**; dashed line on the rate/speed panels "
+        "is the citywide average for that metric, so each category can be read against "
+        "the city as a whole, not just against its peers."
     )
+    citywide_closure = _yearly_aggregate(history, "closure_rate")
+    citywide_days = _yearly_aggregate(history, "median_days_to_close")
+
     st.caption("**Usage** — total requests per year (log scale: usage spans several orders of magnitude across categories)")
     st.plotly_chart(
         _multi_category_line_fig(history, top_cats, "total_requests", "Requests", year, log_y=True),
         use_container_width=True, key="cat_explorer_trend_vol", config={"displayModeBar": False},
     )
-    st.caption("**Service rate** — closure rate per year")
+    st.caption("**Service rate** — closure rate per year, vs. the citywide average (dashed)")
     st.plotly_chart(
-        _multi_category_line_fig(history, top_cats, "closure_rate", "Closure rate", year, is_pct=True),
+        _multi_category_line_fig(history, top_cats, "closure_rate", "Closure rate", year,
+                                 is_pct=True, citywide=citywide_closure),
         use_container_width=True, key="cat_explorer_trend_closure", config={"displayModeBar": False},
     )
-    st.caption("**Speed** — median days to close per year")
+    st.caption("**Speed** — median days to close per year, vs. the citywide average (dashed)")
     st.plotly_chart(
-        _multi_category_line_fig(history, top_cats, "median_days_to_close", "Median days to close", year),
+        _multi_category_line_fig(history, top_cats, "median_days_to_close", "Median days to close", year,
+                                 citywide=citywide_days),
         use_container_width=True, key="cat_explorer_trend_days", config={"displayModeBar": False},
     )
 
     # ── Category selection ────────────────────────────────────────────────────
     st.divider()
     st.subheader("Explore one category over time")
+    st.caption(
+        "The panels above show each category as a single trend line — but that line is "
+        "itself an average. Drilling into one category reveals what's underneath it: "
+        "whether its citywide trend is driven by one dominant request type or spread "
+        "evenly across many, and whether its subcategories close at similar rates and "
+        "speeds or the category average is hiding a wide spread."
+    )
     categories = extract_categories(sr_all)
     selected_cat = _category_selector(agg, key="cat_explorer_cat") if categories else None
 
