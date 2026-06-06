@@ -18,7 +18,7 @@ _METRIC_COLORS = {
 
 
 @st.cache_data
-def _compute_trend(
+def compute_citywide_equity_trend(
     data_dir: Path,
     demographics: pd.DataFrame,
     geo_key: str,
@@ -119,7 +119,7 @@ def render_equity_trend(
         "Bands: green >70% · amber 40–70% · red <40%."
     )
 
-    trend_df = _compute_trend(data_dir, demographics, geo_key)
+    trend_df = compute_citywide_equity_trend(data_dir, demographics, geo_key)
     if trend_df.empty:
         st.caption("No trend data available.")
         return
