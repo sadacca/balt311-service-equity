@@ -245,18 +245,13 @@ def render_category_explorer(data_dir: Path, year: int) -> None:
         return
     top_cats = agg["_cat"].head(_TOP_CATEGORIES_N).tolist()
 
-    # ── Opening orientation — where the city stands today, in scale ───────────
+    # ── Opening orientation — where the trended categories sit in scale ───────
     citywide_total_year = float(sr_all["total_requests"].sum())
-    citywide_by_year = history.groupby("year")["total_requests"].sum()
     top_cat = agg.iloc[0]
     top_share = top_cat["total_requests"] / citywide_total_year if citywide_total_year else float("nan")
     topN_share = agg.head(_TOP_CATEGORIES_N)["total_requests"].sum() / citywide_total_year if citywide_total_year else float("nan")
     st.markdown(
-        f"Baltimore logged **{citywide_total_year:,.0f}** 311 requests in **{year}**. "
-        f"Citywide annual volume has run between **{citywide_by_year.min():,.0f}** and "
-        f"**{citywide_by_year.max():,.0f}** over {citywide_by_year.index.min()}–{citywide_by_year.index.max()} — "
-        f"so {year} is roughly {'in the middle of' if citywide_by_year.min() < citywide_total_year < citywide_by_year.max() else 'at the edge of'} "
-        f"that range. The **{len(top_cats)}** categories trended below made up "
+        f"The **{len(top_cats)}** categories trended below made up "
         f"**{topN_share:.0%}** of {year}'s volume on their own; **{top_cat['label']}** "
         f"alone accounted for **{top_share:.0%}**."
     )
