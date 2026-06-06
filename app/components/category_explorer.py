@@ -1,11 +1,7 @@
 """Service Category Explorer — Tab 2.
 
-Pure operational comparison among and within service categories: usage,
-service rate, and speed — trended across years. Deliberately contains
-**no** race/income framing — that lens lives in the Service Category Equity
-Explorer (Tab 5). A department manager should be able to answer "how is my
-service type doing, and how fast" here without wading through demographic
-content that isn't theirs to interpret.
+Operational overview across and within Baltimore's 311 service categories: usage,
+service rate, and speed — compared among categories and trended within them.
 """
 from pathlib import Path
 
@@ -16,15 +12,26 @@ import streamlit as st
 from components.srtype_shared import (
     CATEGORY_NAMES,
     EXCLUDED_CATEGORIES,
-    category_pills,
     extract_categories,
     load_srtype_history,
 )
+
+# How many highest-volume categories get individual lines in the among-category
+# trend charts and a permanent slot in the category selector — keeps both legible;
+# everything else is one click away (selector expander / "all other" aggregate line).
+_TOP_CATEGORIES_N = 10
 
 # How many highest-volume subcategories to plot individually before folding the
 # rest into a single "all other types" line — keeps the multi-line charts readable
 # for categories (e.g. Solid Waste) that contain dozens of SRTypes.
 _TOP_SUBTYPES_N = 10
+
+# Cycled through for the among-category comparison lines — Plotly's default
+# qualitative palette gives ten visually distinct colors.
+_PALETTE = [
+    "#636EFA", "#EF553B", "#00CC96", "#AB63FA", "#FFA15A",
+    "#19D3F3", "#FF6692", "#B6E880", "#FF97FF", "#FECB52",
+]
 
 
 def _wmean(df: pd.DataFrame, value_col: str, weight_col: str = "total_requests") -> float:
@@ -42,7 +49,7 @@ def _category_aggregates(sr_all: pd.DataFrame) -> pd.DataFrame:
 
     Mirrors `extract_categories`'s definition of a "category": a hyphen-prefixed
     SRType with a non-empty, non-excluded prefix — anything else is left out,
-    exactly as it's left out of the category pills.
+    exactly as it's left out of the category selector.
     """
     has_prefix = sr_all["SRType"].apply(
         lambda n: isinstance(n, str) and "-" in n
@@ -64,29 +71,6 @@ def _category_aggregates(sr_all: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values("total_requests", ascending=False).reset_index(drop=True)
 
 
-def _ranked_bar_fig(agg: pd.DataFrame, value_col: str, value_label: str, is_pct: bool = False) -> go.Figure:
-    """Horizontal bar ranking, one bar per category — highest value at top."""
-    d = agg.dropna(subset=[value_col]).sort_values(value_col, ascending=True)
-    hover_fmt = "%{x:.1%}" if is_pct else "%{x:,.1f}"
-    fig = go.Figure(go.Bar(
-        x=d[value_col],
-        y=d["_cat"],
-        orientation="h",
-        marker_color="#1F4E8C",
-        customdata=d["label"],
-        hovertemplate=f"<b>%{{customdata}}</b> (%{{y}}): {hover_fmt}<extra></extra>",
-    ))
-    fig.update_layout(
-        height=max(220, 26 * len(d) + 50),
-        margin={"t": 4, "b": 30, "l": 60, "r": 16},
-        xaxis=dict(title=value_label, tickformat=".0%" if is_pct else None, gridcolor="#eeeeee"),
-        yaxis=dict(title=None),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-    )
-    return fig
-
-
 def _yearly_aggregate(scope: pd.DataFrame, value_col: str) -> pd.DataFrame:
     """Per-year aggregate across a set of SRType rows: sum for volume, volume-weighted mean for rates."""
     if value_col == "total_requests":
@@ -97,6 +81,50 @@ def _yearly_aggregate(scope: pd.DataFrame, value_col: str) -> pd.DataFrame:
         )
     rows = [{"year": yr, value_col: _wmean(g, value_col)} for yr, g in scope.groupby("year")]
     return pd.DataFrame(rows).sort_values("year").reset_index(drop=True)
+
+
+def _multi_category_line_fig(
+    history: pd.DataFrame,
+    cats: list[str],
+    value_col: str,
+    value_label: str,
+    year: int,
+    log_y: bool = False,
+    is_pct: bool = False,
+) -> go.Figure:
+    """One line per category, trended across years — a dotted guide marks the selected year."""
+    hover_fmt = "%{y:.1%}" if is_pct else "%{y:,.1f}"
+    fig = go.Figure()
+    for i, cat in enumerate(cats):
+        scope = history[history["SRType"].str.startswith(f"{cat}-")]
+        d = _yearly_aggregate(scope, value_col).dropna(subset=[value_col])
+        if d.empty:
+            continue
+        label = CATEGORY_NAMES.get(cat, cat)
+        color = _PALETTE[i % len(_PALETTE)]
+        fig.add_trace(go.Scatter(
+            x=d["year"], y=d[value_col],
+            mode="lines+markers", name=cat,
+            line=dict(width=1.8, color=color),
+            marker=dict(size=5, color=color),
+            hovertemplate=f"<b>{cat} — {label}</b><br>%{{x}}: {hover_fmt}<extra></extra>",
+        ))
+    fig.add_vline(x=year, line_width=1, line_dash="dot", line_color="#999999")
+    fig.update_layout(
+        height=320,
+        margin={"t": 8, "b": 8, "l": 70, "r": 8},
+        xaxis=dict(title="Year", dtick=1),
+        yaxis=dict(
+            title=value_label,
+            type="log" if log_y else "linear",
+            tickformat=".0%" if is_pct else None,
+            gridcolor="#eeeeee",
+        ),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font=dict(size=10)),
+    )
+    return fig
 
 
 def _line_fig(d: pd.DataFrame, value_col: str, value_label: str, year: int, is_pct: bool = False) -> go.Figure:
@@ -176,11 +204,42 @@ def _subtype_multiline_fig(
     return fig
 
 
+def _category_selector(agg: pd.DataFrame, key: str) -> str | None:
+    """Two-tier category picker.
+
+    The highest-volume categories (sorted alphabetically, so they read as a scannable
+    grid rather than a volume ranking) sit in the always-visible row; everything else
+    is tucked behind an expander. Selecting in one tier clears the other so there's
+    always at most one active category.
+    """
+    ranked = agg["_cat"].tolist()
+    top_cats = sorted(ranked[:_TOP_CATEGORIES_N])
+    rest_cats = sorted(ranked[_TOP_CATEGORIES_N:])
+    top_key, more_key = f"{key}_top", f"{key}_more"
+
+    top_sel = st.pills(
+        "Category", top_cats, key=top_key,
+        on_change=lambda: st.session_state.update({more_key: None}),
+    )
+    more_sel = None
+    if rest_cats:
+        with st.expander(f"+ {len(rest_cats)} lower-volume categories"):
+            more_sel = st.pills(
+                "More categories", rest_cats, key=more_key,
+                on_change=lambda: st.session_state.update({top_key: None}),
+            )
+
+    selected = top_sel or more_sel
+    known = {c: CATEGORY_NAMES[c] for c in ranked if c in CATEGORY_NAMES}
+    if known:
+        st.caption("  ·  ".join(f"**{k}** {v}" for k, v in sorted(known.items())))
+    return selected
+
+
 def render_category_explorer(data_dir: Path, year: int) -> None:
     st.caption(
-        "A pure operational view — usage, service rate, and speed, compared among and "
-        "within service categories, with **no race or income framing**. Looking for the "
-        "equity angle on these same categories? See **Service Category Equity Explorer**."
+        "An operational overview of Baltimore's 311 service categories — usage, "
+        "service rate, and speed — compared among categories and trended within them."
     )
 
     srtype_path = data_dir / f"srtype_metrics_{year}.parquet"
@@ -191,38 +250,46 @@ def render_category_explorer(data_dir: Path, year: int) -> None:
         )
         return
     sr_all = pd.read_parquet(srtype_path)
+    history = load_srtype_history(data_dir)
+    if history.empty:
+        st.caption("No historical SRType data found.")
+        return
 
-    # ── Among-category comparison ─────────────────────────────────────────────
-    st.subheader("How categories compare to each other")
-    st.caption(
-        f"Citywide, {year} — each panel ranks departments on one operational dimension. "
-        "Read across all three to see, for example, whether a high-volume category also "
-        "tends to run slow (e.g. \"rodent control runs 3× longer than streetlight repair\")."
-    )
     agg = _category_aggregates(sr_all)
-    if not agg.empty:
-        col_vol, col_close, col_days = st.columns(3)
-        with col_vol:
-            st.caption("**Usage** — total requests")
-            st.plotly_chart(_ranked_bar_fig(agg, "total_requests", "Total requests"),
-                            use_container_width=True, key="cat_explorer_rank_vol",
-                            config={"displayModeBar": False})
-        with col_close:
-            st.caption("**Service rate** — closure rate")
-            st.plotly_chart(_ranked_bar_fig(agg, "closure_rate", "Closure rate", is_pct=True),
-                            use_container_width=True, key="cat_explorer_rank_closure",
-                            config={"displayModeBar": False})
-        with col_days:
-            st.caption("**Speed** — median days to close")
-            st.plotly_chart(_ranked_bar_fig(agg, "median_days_to_close", "Median days to close"),
-                            use_container_width=True, key="cat_explorer_rank_days",
-                            config={"displayModeBar": False})
+    if agg.empty:
+        st.caption("No categorized SRType data found for this year.")
+        return
+    top_cats = agg["_cat"].head(_TOP_CATEGORIES_N).tolist()
+
+    # ── Among-category comparison, trended across years ───────────────────────
+    st.subheader("How categories compare over time")
+    st.caption(
+        f"Year-over-year trend for the **{len(top_cats)}** highest-volume categories "
+        f"(ranked by **{year}** volume) — read down the three panels to see whether a "
+        "high-volume category also tends to run slower or faster than its peers. "
+        f"Dotted vertical guide marks **{year}**."
+    )
+    st.caption("**Usage** — total requests per year (log scale: usage spans several orders of magnitude across categories)")
+    st.plotly_chart(
+        _multi_category_line_fig(history, top_cats, "total_requests", "Requests", year, log_y=True),
+        use_container_width=True, key="cat_explorer_trend_vol", config={"displayModeBar": False},
+    )
+    st.caption("**Service rate** — closure rate per year")
+    st.plotly_chart(
+        _multi_category_line_fig(history, top_cats, "closure_rate", "Closure rate", year, is_pct=True),
+        use_container_width=True, key="cat_explorer_trend_closure", config={"displayModeBar": False},
+    )
+    st.caption("**Speed** — median days to close per year")
+    st.plotly_chart(
+        _multi_category_line_fig(history, top_cats, "median_days_to_close", "Median days to close", year),
+        use_container_width=True, key="cat_explorer_trend_days", config={"displayModeBar": False},
+    )
 
     # ── Category selection ────────────────────────────────────────────────────
     st.divider()
     st.subheader("Explore one category over time")
     categories = extract_categories(sr_all)
-    selected_cat = category_pills(categories, key="cat_explorer_cat") if categories else None
+    selected_cat = _category_selector(agg, key="cat_explorer_cat") if categories else None
 
     if not selected_cat:
         st.caption(
@@ -231,7 +298,6 @@ def render_category_explorer(data_dir: Path, year: int) -> None:
         )
         return
 
-    history = load_srtype_history(data_dir)
     scope = history[history["SRType"].str.startswith(f"{selected_cat}-")].copy()
     if scope.empty:
         st.caption(f"No historical data found for **{selected_cat}**.")
