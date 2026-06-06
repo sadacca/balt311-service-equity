@@ -47,6 +47,27 @@ _DEMO_COLOR_OPTIONS = {
     "Median household income": "median_income",
 }
 
+# Demographic-space embedding's input features — a single, year-independent ACS
+# 2023 snapshot (low-dimensional, so this is closer to a "light PCA" than the
+# usage space's compositional-data treatment). P4d-6a will extend this list with
+# age-group shares, Hispanic/Latino ethnicity, bachelor's attainment, etc.; this
+# picks up whichever of those land in `{tract,csa}_demographics.csv` automatically.
+_DEMO_FEATURE_COLS = ["pct_black", "pct_white", "median_income"]
+
+# Color-by options for the demographic view — service-side measures from the
+# selected year's geo metrics, answering the inverse question: do areas that
+# look alike demographically also look alike in how they use/experience 311?
+_SERVICE_COLOR_OPTIONS = {
+    "Predominant service type": "top_sr_type",
+    "Requests per 1,000 residents": "requests_per_1k",
+    "Median days to close": "median_days_to_close",
+}
+
+_VIEWS = {
+    "Service usage": "usage",
+    "Demographic profile": "demographic",
+}
+
 
 def _usage_share_matrix(history: pd.DataFrame, feature_set: str) -> pd.DataFrame:
     """Wide `(geoid, year) x feature` share matrix — each row sums to 1."""
@@ -125,6 +146,36 @@ def compute_usage_embedding(
     return embedding, feature_cols, var
 
 
+@st.cache_data
+def compute_demographic_embedding(
+    demographics: pd.DataFrame,
+) -> tuple[pd.DataFrame, list[str], tuple[float, float]]:
+    """2D PCA embedding of every geography's ACS demographic profile.
+
+    Unlike the usage space, this is a single, year-independent snapshot (ACS
+    2023 5-year estimates) — each geography appears once, not animated across
+    years, and the input is low-dimensional enough that this is closer to a
+    "light PCA" than the usage space's compositional-data treatment.
+
+    Returns `(embedding, feature_cols, (pc1_variance_ratio, pc2_variance_ratio))`.
+    `embedding` carries `geoid`, the feature columns, and `x` / `y`.
+    """
+    cols = [c for c in _DEMO_FEATURE_COLS if c in demographics.columns]
+    df = demographics.dropna(subset=cols) if cols else demographics.iloc[0:0]
+    if len(cols) < 2 or len(df) < 3:
+        return pd.DataFrame(), [], (float("nan"), float("nan"))
+
+    X = StandardScaler().fit_transform(df[cols].to_numpy())
+    pca = PCA(n_components=2)
+    xy = pca.fit_transform(X)
+
+    embedding = df[["geoid"] + cols].reset_index(drop=True)
+    embedding["x"] = xy[:, 0]
+    embedding["y"] = xy[:, 1]
+    var = (float(pca.explained_variance_ratio_[0]), float(pca.explained_variance_ratio_[1]))
+    return embedding, cols, var
+
+
 def _dominant_feature_labels(embedding: pd.DataFrame, feature_cols: list[str], feature_set: str) -> pd.Series:
     """The feature with the largest share in each row — a readable categorical color key."""
     dominant = embedding[feature_cols].idxmax(axis=1)
@@ -133,7 +184,7 @@ def _dominant_feature_labels(embedding: pd.DataFrame, feature_cols: list[str], f
     return dominant
 
 
-def render_area_embedding(data_dir: Path, demographics: pd.DataFrame | None, geo_key: str, year: int) -> None:
+def _render_usage_view(data_dir: Path, demographics: pd.DataFrame | None, geo_key: str, year: int) -> None:
     st.caption(
         "Where does each neighborhood sit in the citywide landscape of *what it "
         "asks 311 for*? Every tract or CSA, for every year, is projected into a "
@@ -142,26 +193,7 @@ def render_area_embedding(data_dir: Path, demographics: pd.DataFrame | None, geo
         "coordinate system shifting under it. Press play to trace trajectories."
     )
 
-    ctrl_geo, ctrl_feat, ctrl_color = st.columns([2, 2, 3])
-
-    with ctrl_geo:
-        # Two-way sync with the shared `geo_level` (mirrors the Service Equity
-        # Explorer's `cat_eq_geo_*` pattern): only overwrite this widget's keyed
-        # state when `geo_level` changed *elsewhere*, so a fresh click here isn't
-        # clobbered before it propagates — Streamlit ignores `index` once a
-        # widget's keyed state is set, so a one-way default isn't enough.
-        _curr_geo = st.session_state.get("geo_level", "Census Tract")
-        if st.session_state.get("area_emb_geo_seen") != _curr_geo:
-            st.session_state["area_emb_geo_choice"] = _curr_geo
-            st.session_state["area_emb_geo_seen"] = _curr_geo
-        new_geo = st.radio(
-            "Geographic unit", ["Census Tract", "CSA"],
-            horizontal=True, key="area_emb_geo_choice",
-        )
-        if new_geo != _curr_geo:
-            st.session_state["geo_level"] = new_geo
-            st.session_state["area_emb_geo_seen"] = new_geo
-            st.rerun()
+    ctrl_feat, ctrl_color = st.columns([2, 3])
 
     with ctrl_feat:
         feature_label = st.radio(
@@ -256,3 +288,125 @@ def render_area_embedding(data_dir: Path, demographics: pd.DataFrame | None, geo
         "Hover a point for its geography ID; press the play button below the "
         "chart, or drag the slider, to step through years one at a time."
     )
+
+
+def _render_demographic_view(
+    demographics: pd.DataFrame | None, geo_key: str, df: pd.DataFrame | None, year: int,
+) -> None:
+    st.caption(
+        "The inverse view: where does each neighborhood sit by *who lives there*? "
+        "This space comes from a single, year-independent ACS 2023 snapshot — race, "
+        "income — so each geography is one fixed point (no trajectory; the profile "
+        "doesn't move year to year the way usage does). Coloring it by a "
+        f"**{year}** service-side measure tests the inverse question directly: do "
+        "areas that look alike demographically also look alike in how they use "
+        "and experience 311 — or do the two diverge?"
+    )
+
+    if demographics is None:
+        st.info(
+            f"Demographic data unavailable — `{geo_key}_demographics.csv` not found "
+            "in `data/processed/`. Re-run the pipeline to generate it."
+        )
+        return
+
+    embedding, feature_cols, var = compute_demographic_embedding(demographics)
+    if embedding.empty:
+        st.info("Not enough demographic coverage at this geographic level to build an embedding.")
+        return
+
+    embedding = embedding.copy()
+    color_options = {}
+    if df is not None:
+        for label, col in _SERVICE_COLOR_OPTIONS.items():
+            if col in df.columns:
+                color_options[label] = col
+
+    color_col = color_label = None
+    is_categorical = True
+    if color_options:
+        color_label = st.selectbox("Color by", list(color_options.keys()), key="area_emb_demo_color")
+        color_col = color_options[color_label]
+        if df is not None and color_col in df.columns:
+            embedding = embedding.merge(df[["geoid", color_col]], on="geoid", how="left")
+        is_categorical = color_col == "top_sr_type"
+
+    pc1_pct, pc2_pct = var[0] * 100, var[1] * 100
+    _topic = {"pct_black": "race", "pct_white": "race", "median_income": "income"}
+    feature_phrase = " and ".join(dict.fromkeys(_topic.get(c, c) for c in feature_cols))
+    st.caption(
+        f"The first two principal components capture **{pc1_pct:.0f}%** (PC1) and "
+        f"**{pc2_pct:.0f}%** (PC2) of the variation in {feature_phrase} — "
+        f"**{pc1_pct + pc2_pct:.0f}% combined** — across {len(embedding)} "
+        f"{'tracts' if geo_key == 'tract' else 'CSAs'}. *(P4d-6a will broaden the "
+        "profile with age, ethnicity, and education variables, sharpening this view.)*"
+    )
+
+    fig = px.scatter(
+        embedding,
+        x="x", y="y",
+        color=color_col,
+        hover_name="geoid",
+        hover_data={c: True for c in feature_cols},
+        labels={"x": "PC1", "y": "PC2", **({color_col: color_label} if color_col else {})},
+        color_continuous_scale="Viridis" if not is_categorical else None,
+    )
+    fig.update_traces(marker=dict(size=11, opacity=0.85, line=dict(width=0.5, color="white")))
+    fig.update_layout(
+        height=600,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        margin=dict(l=10, r=10, t=10, b=10),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption("Hover a point for its geography ID and demographic profile.")
+
+
+def render_area_embedding(
+    data_dir: Path,
+    demographics: pd.DataFrame | None,
+    geo_key: str,
+    year: int,
+    df: pd.DataFrame | None = None,
+) -> None:
+    st.caption(
+        "Two complementary lenses on the same geographies: what each one *asks "
+        "311 for* (service-usage space, trended across years) and *who lives "
+        "there* (demographic profile, a single ACS 2023 snapshot). Switch between "
+        "them below — each can be colored by the other side's variables, so a "
+        "reader can ask either half of the same question: does service usage "
+        "track demographics, or do the two diverge?"
+    )
+
+    ctrl_geo, ctrl_view = st.columns([2, 3])
+
+    with ctrl_geo:
+        # Two-way sync with the shared `geo_level` (mirrors the Service Equity
+        # Explorer's `cat_eq_geo_*` pattern): only overwrite this widget's keyed
+        # state when `geo_level` changed *elsewhere*, so a fresh click here isn't
+        # clobbered before it propagates — Streamlit ignores `index` once a
+        # widget's keyed state is set, so a one-way default isn't enough.
+        _curr_geo = st.session_state.get("geo_level", "Census Tract")
+        if st.session_state.get("area_emb_geo_seen") != _curr_geo:
+            st.session_state["area_emb_geo_choice"] = _curr_geo
+            st.session_state["area_emb_geo_seen"] = _curr_geo
+        new_geo = st.radio(
+            "Geographic unit", ["Census Tract", "CSA"],
+            horizontal=True, key="area_emb_geo_choice",
+        )
+        if new_geo != _curr_geo:
+            st.session_state["geo_level"] = new_geo
+            st.session_state["area_emb_geo_seen"] = new_geo
+            st.rerun()
+
+    with ctrl_view:
+        view_label = st.radio(
+            "View", list(_VIEWS.keys()), horizontal=True, key="area_emb_view",
+        )
+        view = _VIEWS[view_label]
+
+    st.divider()
+
+    if view == "usage":
+        _render_usage_view(data_dir, demographics, geo_key, year)
+    else:
+        _render_demographic_view(demographics, geo_key, df, year)
