@@ -14,13 +14,13 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from sklearn.decomposition import PCA
-from sklearn.preprocessing import RobustScaler
+from sklearn.preprocessing import QuantileTransformer, RobustScaler
 
 from components.srtype_shared import CATEGORY_NAMES, MIN_GEO_SRTYPE_N, load_geo_srtype_history
 
 # Minimum total requests in a (geo, year) row for its usage-share vector to be
 # meaningful — distinct from MIN_GEO_SRTYPE_N, which suppresses individual cells.
-_MIN_GEO_YEAR_TOTAL = 50
+_MIN_GEO_YEAR_TOTAL = 200
 
 # Restrict the CLR transform to the K most common features by mean share —
 # anchors the embedding to substantively meaningful categories/types instead of
@@ -36,12 +36,6 @@ _SRTYPE_POOL_RANK_N = 100
 
 _PSEUDOCOUNT = 1e-4
 
-# After CLR, clip each feature column at its 1st/99th percentile before PCA.
-# Geographies with highly concentrated usage (e.g. 90%+ one SRType) produce
-# extreme CLR values that pull the first principal component toward them and
-# compress the rest of the distribution visually — clipping addresses that at
-# the source without discarding the rows entirely.
-_CLR_CLIP_PCT = 99
 
 _FEATURE_SETS = {
     "High-level categories": "category",
@@ -156,18 +150,17 @@ def compute_usage_embedding(
 
     transformed, feature_cols = _clr(shares, top_k)
 
-    # Clip each CLR column at its [1%, 99%] percentile before scaling.
-    # Geographies with highly concentrated usage produce extreme log-ratio
-    # values that drag the first PCA axis toward them; clipping caps that
-    # influence without discarding the rows entirely.
-    lo = np.percentile(transformed, 100 - _CLR_CLIP_PCT, axis=0)
-    hi = np.percentile(transformed, _CLR_CLIP_PCT, axis=0)
-    transformed = np.clip(transformed, lo, hi)
-
-    # RobustScaler (median / IQR) is less sensitive to remaining outliers than
-    # StandardScaler (mean / std), since the IQR is computed on the central 50%
-    # of the distribution rather than the full range.
-    X = RobustScaler().fit_transform(transformed)
+    # QuantileTransformer maps each CLR column independently to a Gaussian,
+    # regardless of how skewed or sparse the column is. This is the right tool
+    # here because most usage-space features are heavily zero-inflated: e.g. FCPF
+    # (parking citations) is near 0% for 98% of CSA-years and 24-64% for Downtown
+    # alone — making the standard outlier-resistance approaches (RobustScaler,
+    # per-column clipping) brittle when column IQR ≈ 0. QuantileTransformer is
+    # neutral to that structure: Downtown remains "different in FCPF" but the
+    # difference is compressed to a proportionate rank rather than a 7× distance.
+    n_q = min(len(shares), 300)
+    X = QuantileTransformer(n_quantiles=n_q, output_distribution="normal",
+                            random_state=42).fit_transform(transformed)
     pca = PCA(n_components=2)
     xy = pca.fit_transform(X)
 
@@ -293,14 +286,17 @@ def _render_usage_view(data_dir: Path, demographics: pd.DataFrame | None, geo_ke
         margin=dict(l=10, r=10, t=10, b=10),
     )
 
-    # Fix axis ranges across frames: the PCA is fit once on the pooled matrix, so
-    # the space itself is stable. Without an explicit range, Plotly autoscales
-    # each frame to its own points and trajectories appear to jitter even when
-    # an area hasn't actually moved.
-    x_pad = (embedding["x"].max() - embedding["x"].min()) * 0.05
-    y_pad = (embedding["y"].max() - embedding["y"].min()) * 0.05
-    fig.update_xaxes(range=[embedding["x"].min() - x_pad, embedding["x"].max() + x_pad])
-    fig.update_yaxes(range=[embedding["y"].min() - y_pad, embedding["y"].max() + y_pad])
+    # Fix axis ranges across frames so the animation doesn't jitter (the space is
+    # fit once, so positions are stable — without explicit ranges Plotly autoscales
+    # per frame). Use the 5th/95th percentile of coordinates, not the full min/max:
+    # genuine outliers (Downtown's FCPF concentration, Dickeyville's SW concentration)
+    # are real signal but shouldn't compress the main cluster into 30% of the chart.
+    pad = 0.08
+    x5, x95 = np.percentile(embedding["x"], [5, 95])
+    y5, y95 = np.percentile(embedding["y"], [5, 95])
+    xw, yw = (x95 - x5) * pad, (y95 - y5) * pad
+    fig.update_xaxes(range=[x5 - xw, x95 + xw])
+    fig.update_yaxes(range=[y5 - yw, y95 + yw])
 
     # Open on the year selected elsewhere in the dashboard rather than always the
     # earliest — swap the initial trace data to that frame and move the slider
