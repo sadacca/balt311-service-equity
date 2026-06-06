@@ -182,7 +182,11 @@ with tab_eq:
             icon="ℹ️",
         )
     else:
-        st.caption("Does service quality differ systematically by race or income of the requesting neighborhood — citywide?")
+        st.caption(
+            "Does service quality differ systematically by where it's delivered and who "
+            "it's delivered to? *Note: differences here can reflect the kinds of services "
+            "delivered as much as delivery quality.*"
+        )
 
         # ── Inline controls above map ─────────────────────────────────────────
         ctrl1, ctrl2, ctrl3 = st.columns([2, 3, 5])

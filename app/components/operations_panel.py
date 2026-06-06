@@ -414,7 +414,7 @@ def render_operations(
     featureidkey: str,
     mapbox_token: str,
 ) -> None:
-    st.caption("The citywide health check — request volume, performance, and trends, before anything else.")
+    st.caption("A citywide health check: request volume and performance trends.")
 
     ts = _build_timeseries(data_dir)
     eq_ts = _build_equity_citywide_ts(data_dir)
