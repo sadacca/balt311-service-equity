@@ -228,19 +228,23 @@ def compute_subtype_equity_history(
 
 
 @st.cache_data
-def compute_subtype_score_summary(
+def _subtype_current_year_scores(
     data_dir: Path,
     geo_key: str,
     demographics: pd.DataFrame,
     year: int,
     metric_col: str,
-) -> dict[str, float]:
-    """Mean Race/Income equity score across every individual SRType in `year` —
-    the finest grain scoreable without a category selection. Each geo×SRType row
-    is already one comparable value (no rollup), so this is a straight per-type
-    score-and-average — used only for the opening summary's overall-vs-category-
-    vs-subtype comparison that shows whether scores rise at finer grain (a usage-
-    mix signature) or hold flat (a delivery-difference signature).
+) -> pd.DataFrame:
+    """Long (SRType, dimension, score) frame — every individual service type's Race
+    and Income equity score for `year`, each computed once from its suppressed
+    geo×SRType cells (no rollup needed; each row is already one comparable value).
+
+    Factored out as the shared base for `compute_subtype_score_summary` (citywide
+    subtype average, for the opening grain comparison) and `compute_concerning_subtypes`
+    (eligibility + ranking, for the closing review section) — both need every
+    individual type's current-year score, and previously computed it independently;
+    scoring ~150 types × 2 dimensions is the dominant cost in both, so doing it once
+    here and letting Streamlit cache the result is a real, not theoretical, saving.
 
     Loads the geo×SRType history internally from `(data_dir, geo_key)` rather than
     taking it as a DataFrame argument — see `compute_category_equity_history` for why.
@@ -251,15 +255,36 @@ def compute_subtype_score_summary(
         & (geo_srtype_history["total_requests"] >= MIN_GEO_SRTYPE_N)
     ].merge(demographics, on="geoid", how="left")
     if rows.empty:
-        return {"Race": float("nan"), "Income": float("nan")}
+        return pd.DataFrame(columns=["SRType", "dimension", "score"])
 
-    scores: dict[str, list[float]] = {"Race": [], "Income": []}
-    for _, g in rows.groupby("SRType"):
+    records = []
+    for srtype, g in rows.groupby("SRType"):
         valid = g.dropna(subset=[metric_col])
         for dim, score in _dimension_scores(valid, metric_col).items():
-            if pd.notna(score):
-                scores[dim].append(score)
-    return {dim: (sum(vals) / len(vals) if vals else float("nan")) for dim, vals in scores.items()}
+            records.append({"SRType": srtype, "dimension": dim, "score": score})
+    return pd.DataFrame(records)
+
+
+@st.cache_data
+def compute_subtype_score_summary(
+    data_dir: Path,
+    geo_key: str,
+    demographics: pd.DataFrame,
+    year: int,
+    metric_col: str,
+) -> dict[str, float]:
+    """Mean Race/Income equity score across every individual SRType in `year` —
+    the finest grain scoreable without a category selection — used only for the
+    opening summary's overall-vs-category-vs-subtype comparison that shows whether
+    scores rise at finer grain (a usage-mix signature) or hold flat (a
+    delivery-difference signature)."""
+    scores = _subtype_current_year_scores(data_dir, geo_key, demographics, year, metric_col)
+    if scores.empty:
+        return {"Race": float("nan"), "Income": float("nan")}
+    return {
+        dim: scores.loc[scores["dimension"] == dim, "score"].dropna().mean()
+        for dim in ("Race", "Income")
+    }
 
 
 # ── Figures ───────────────────────────────────────────────────────────────────
@@ -458,34 +483,37 @@ def compute_concerning_subtypes(
     demographics: pd.DataFrame,
     metric_col: str,
     year: int,
+    dimension: str,
     top_n: int,
-) -> tuple[pd.DataFrame, list[str], dict[str, list[float]], dict[str, list[float]]]:
-    """The `top_n` individual service types most in need of equity review this year,
-    restricted to types that meet minimum data standards — enough geographic spread,
-    volume, and historical depth that a low score reflects a real pattern rather than
-    a thin sample:
+) -> tuple[pd.DataFrame, list[str], list[float], list[float]]:
+    """The `top_n` individual service types most in need of equity review this year
+    *on `dimension` specifically*, restricted to types that meet minimum data
+    standards — enough geographic spread, volume, and historical depth that a low
+    score reflects a real pattern rather than a thin sample:
 
     - present in at least `_CONCERN_MIN_GEO_COVERAGE` of this year's scoreable geographies
     - at least `_CONCERN_MIN_REQUESTS_PER_YEAR` total requests in `year`
     - scoreable (post-suppression) in at least `_CONCERN_MIN_YEARS` years
 
     The eligibility filter is applied first, to the full set of individual service
-    types — *then* the worst `top_n` (by worse-of-{Race, Income} `year` score,
-    ascending) are picked from that eligible set, so a thin or noisy sample can
-    never crowd out a type with a real, well-supported low score. Ranking by the
-    worse-of-both score keeps the *set* of flagged types stable regardless of which
-    single dimension a reader chooses to inspect afterward.
+    types — *then* the worst `top_n` (by `dimension` `year` score, ascending) are
+    picked from that eligible set, so a thin or noisy sample can never crowd out a
+    type with a real, well-supported low score. Ranking by the *displayed* dimension
+    (rather than a worse-of-{Race, Income} composite) guarantees the flagged set is
+    internally consistent with whichever histogram is shown — a flagged type's score
+    on `dimension` is, by construction, among the worst — at the cost of the flagged
+    set itself changing when the reader toggles dimensions, which is the more
+    intuitive reading anyway ("show me the worst types by Race" vs. "by Income").
 
     Returns `(history, ranked_labels, eligible_scores, concern_scores)`:
     - `history`: long (label, year, dimension, score) frame for the ranked types,
       ready for `_subtype_score_multiline_fig`
-    - `ranked_labels`: the `top_n` labels, worst-of-both first
-    - `eligible_scores`: `{"Race": [...], "Income": [...]}` — every eligible type's
-      `year` score for that dimension (the full distribution the ranked types are
-      drawn from)
-    - `concern_scores`: same shape, but scoped to just the ranked types
+    - `ranked_labels`: the `top_n` labels, worst-on-`dimension` first
+    - `eligible_scores`: every eligible type's `year` score on `dimension` — the
+      full distribution the ranked types are drawn from
+    - `concern_scores`: same, but scoped to just the ranked types
     """
-    empty = (pd.DataFrame(columns=["label", "year", "dimension", "score"]), [], {"Race": [], "Income": []}, {"Race": [], "Income": []})
+    empty = (pd.DataFrame(columns=["label", "year", "dimension", "score"]), [], [], [])
     geo_srtype_history = load_geo_srtype_history(data_dir, geo_key)
     if geo_srtype_history.empty:
         return empty
@@ -514,20 +542,17 @@ def compute_concerning_subtypes(
     if not eligible:
         return empty
 
-    merged = year_rows[year_rows["SRType"].isin(eligible)].merge(demographics, on="geoid", how="left")
-    dims_per_type: dict[str, dict[str, float]] = {}
-    worst_of: dict[str, float] = {}
-    for srtype, g in merged.groupby("SRType"):
-        valid = g.dropna(subset=[metric_col])
-        dims = _dimension_scores(valid, metric_col)
-        dims_per_type[srtype] = dims
-        if any(pd.notna(v) for v in dims.values()):
-            worst_of[srtype] = min(v for v in dims.values() if pd.notna(v))
-
-    if not worst_of:
+    current = _subtype_current_year_scores(data_dir, geo_key, demographics, year, metric_col)
+    dim_scores = current[
+        (current["dimension"] == dimension)
+        & current["SRType"].isin(eligible)
+        & current["score"].notna()
+    ].sort_values("score")
+    if dim_scores.empty:
         return empty
 
-    ranked_types = sorted(worst_of, key=worst_of.get)[:top_n]
+    ranked = dim_scores.head(top_n)
+    ranked_types = ranked["SRType"].tolist()
 
     records = []
     hist_rows = suppressed[suppressed["SRType"].isin(ranked_types)].merge(demographics, on="geoid", how="left")
@@ -541,14 +566,8 @@ def compute_concerning_subtypes(
     history = pd.DataFrame(records)
     ranked_labels = [f"{_short_label(s)} ({s.split('-')[0].strip()})" for s in ranked_types]
 
-    eligible_scores = {
-        dim: [dims_per_type[s][dim] for s in eligible if s in dims_per_type and pd.notna(dims_per_type[s][dim])]
-        for dim in ("Race", "Income")
-    }
-    concern_scores = {
-        dim: [dims_per_type[s][dim] for s in ranked_types if pd.notna(dims_per_type[s][dim])]
-        for dim in ("Race", "Income")
-    }
+    eligible_scores = dim_scores["score"].tolist()
+    concern_scores = ranked["score"].tolist()
     return history, ranked_labels, eligible_scores, concern_scores
 
 
@@ -715,30 +734,36 @@ def render_category_equity_explorer(
     # the ones actually driving disparity, so this is where review should be aimed.
     st.divider()
     st.subheader("Where equity review is most warranted")
+    st.caption(
+        "Ranked by individual service type — not high-level category — since a "
+        "category can read \"not bad\" overall while one of its own subtypes is the "
+        "one actually driving disparity."
+    )
+
+    concern_dim = st.radio(
+        "Equity dimension", ["Race", "Income"],
+        horizontal=True, key="cat_eq_concern_dim",
+    )
 
     concern_history, concern_labels, eligible_scores, concern_scores = compute_concerning_subtypes(
-        data_dir, geo_key, demographics, metric_col, year, _CONCERN_TOP_N,
+        data_dir, geo_key, demographics, metric_col, year, concern_dim, _CONCERN_TOP_N,
     )
     if not concern_labels:
         st.caption(
             "No individual service type currently meets the minimum-data standards "
-            f"below for a reliable concern ranking on **{metric_label.lower()}**."
+            f"below for a reliable concern ranking on **{metric_label.lower()}** "
+            f"({concern_dim.lower()})."
         )
     else:
         st.markdown(
             f"These **{len(concern_labels)}** individual service types posted the worst "
-            f"current-year **{metric_label.lower()}** equity (worse of race / income, "
-            "ranked among types that meet the minimum data standards below) — the types "
-            "where review is most warranted, regardless of which category they belong to."
+            f"current-year **{metric_label.lower()}** **{concern_dim.lower()}**-based "
+            "equity — out of every type that meets the minimum data standards below — "
+            "the types where review is most warranted, regardless of which category "
+            "they belong to."
         )
-
-        concern_dim = st.radio(
-            "Equity dimension", ["Race", "Income"],
-            horizontal=True, key="cat_eq_concern_dim",
-        )
-
         st.plotly_chart(
-            _concern_distribution_fig(eligible_scores[concern_dim], concern_scores[concern_dim], concern_dim),
+            _concern_distribution_fig(eligible_scores, concern_scores, concern_dim),
             use_container_width=True, key="cat_eq_concern_dist", config={"displayModeBar": False},
         )
         st.caption(
@@ -757,8 +782,11 @@ def render_category_equity_explorer(
             f"with at least **{_CONCERN_MIN_REQUESTS_PER_YEAR}** requests in {year}, and "
             f"scoreable (post-suppression) in at least **{_CONCERN_MIN_YEARS}** years of "
             "the analysis — applied *before* ranking, so a thin or noisy sample can't "
-            "crowd out a type with a real, well-supported low score. Gaps in the line "
-            "above mean a year fell short of the suppression threshold, not zero equity."
+            "crowd out a type with a real, well-supported low score, and types are "
+            f"ranked by their **{concern_dim.lower()}** score specifically, so a flagged "
+            "type is guaranteed to actually score low on the dimension shown — not just "
+            "on whichever of its two scores happens to be lower. Gaps in the line above "
+            "mean a year fell short of the suppression threshold, not zero equity."
         )
 
     # ── Category selection ────────────────────────────────────────────────────

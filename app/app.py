@@ -79,7 +79,7 @@ with st.sidebar:
 
 # ── Geographic unit — shared session state ────────────────────────────────────
 if "geo_level" not in st.session_state:
-    st.session_state["geo_level"] = "Census Tract"
+    st.session_state["geo_level"] = "CSA"
 geo_level = st.session_state["geo_level"]
 geo_key = "tract" if geo_level == "Census Tract" else "csa"
 featureidkey = "properties.GEOID" if geo_level == "Census Tract" else "properties.csa_name"
