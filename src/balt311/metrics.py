@@ -141,18 +141,20 @@ def rollup_demographics_to_csa(
     tract_demo_df: pd.DataFrame,
     xwalk_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Aggregate tract-level ACS race and income demographics to CSA level.
+    """Aggregate tract-level ACS demographics to CSA level.
 
     Race percentages are recomputed from raw population counts (accurate).
-    Median income is a population-weighted mean of tract medians (approximation).
-    Output columns: geoid (csa_name), pct_black, pct_white, median_income.
+    All other numeric columns (income, age, ethnicity, education, poverty) use
+    a population-weighted mean of tract values — standard approximation, same
+    methodology as BNIA Vital Signs. New demographic columns in the tract CSV
+    are rolled up automatically without requiring changes here.
     """
     merged = tract_demo_df.merge(
         xwalk_df[["geoid", "csa_name"]], on="geoid", how="left"
     )
     merged = merged[merged["csa_name"].notna()].copy()
 
-    # Race: sum raw counts then recompute percentages for accuracy
+    # Race: from raw counts — most accurate method
     race_sums = (
         merged.groupby("csa_name")
         .agg(
@@ -165,26 +167,35 @@ def rollup_demographics_to_csa(
     denom = race_sums["total_race_pop"].replace(0, float("nan"))
     race_sums["pct_black"] = race_sums["black_pop"] / denom
     race_sums["pct_white"] = race_sums["white_pop"] / denom
+    result = race_sums.copy()
 
-    # Income: population-weighted mean of tract medians
-    inc_valid = merged.dropna(subset=["median_income", "total_race_pop"])
-    if not inc_valid.empty:
-        income_wtd = (
-            inc_valid.groupby("csa_name")
+    # All other numeric columns: population-weighted mean of tract values.
+    # Using total_race_pop as the weight — closely tracks each table's own
+    # denominator (age: B01001_001E; education: B15003_001E; poverty: B17001_001E)
+    # and is already in the CSV, keeping the rollup self-contained.
+    raw_cols = {"geoid", "total_race_pop", "black_pop", "white_pop", "pct_black", "pct_white"}
+    wtd_cols = [
+        c for c in tract_demo_df.columns
+        if c not in raw_cols and pd.api.types.is_numeric_dtype(tract_demo_df[c])
+    ]
+    for col in wtd_cols:
+        valid = merged.dropna(subset=[col, "total_race_pop"])
+        if valid.empty:
+            result[col] = float("nan")
+            continue
+        col_wtd = (
+            valid.groupby("csa_name")
             .apply(
-                lambda g: np.average(g["median_income"], weights=g["total_race_pop"]),
+                lambda g, c=col: np.average(g[c], weights=g["total_race_pop"]),
                 include_groups=False,
             )
-            .reset_index(name="median_income")
+            .reset_index(name=col)
         )
-        result = race_sums.merge(income_wtd, on="csa_name", how="left")
-    else:
-        result = race_sums
-        result["median_income"] = float("nan")
+        result = result.merge(col_wtd, on="csa_name", how="left")
 
-    return result[["csa_name", "pct_black", "pct_white", "median_income"]].rename(
-        columns={"csa_name": "geoid"}
-    )
+    # Preserve column order: geoid first, then all others in tract CSV order
+    ordered = ["csa_name"] + [c for c in tract_demo_df.columns if c != "geoid" and c in result.columns]
+    return result[ordered].rename(columns={"csa_name": "geoid"})
 
 
 def rollup_to_csa(

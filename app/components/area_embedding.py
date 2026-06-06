@@ -14,7 +14,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from sklearn.decomposition import PCA
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import RobustScaler
 
 from components.srtype_shared import CATEGORY_NAMES, MIN_GEO_SRTYPE_N, load_geo_srtype_history
 
@@ -36,6 +36,13 @@ _SRTYPE_POOL_RANK_N = 100
 
 _PSEUDOCOUNT = 1e-4
 
+# After CLR, clip each feature column at its 1st/99th percentile before PCA.
+# Geographies with highly concentrated usage (e.g. 90%+ one SRType) produce
+# extreme CLR values that pull the first principal component toward them and
+# compress the rest of the distribution visually — clipping addresses that at
+# the source without discarding the rows entirely.
+_CLR_CLIP_PCT = 99
+
 _FEATURE_SETS = {
     "High-level categories": "category",
     "Individual service types": "srtype",
@@ -47,12 +54,18 @@ _DEMO_COLOR_OPTIONS = {
     "Median household income": "median_income",
 }
 
-# Demographic-space embedding's input features — a single, year-independent ACS
-# 2023 snapshot (low-dimensional, so this is closer to a "light PCA" than the
-# usage space's compositional-data treatment). P4d-6a will extend this list with
-# age-group shares, Hispanic/Latino ethnicity, bachelor's attainment, etc.; this
-# picks up whichever of those land in `{tract,csa}_demographics.csv` automatically.
-_DEMO_FEATURE_COLS = ["pct_black", "pct_white", "median_income"]
+# Demographic-space embedding's input features. The pipeline now writes these
+# columns to `{tract,csa}_demographics.csv`; `compute_demographic_embedding`
+# uses whichever subset is actually present, so adding more features to the
+# pipeline CSV automatically enriches the embedding with no code change here.
+_DEMO_FEATURE_COLS = [
+    "pct_black", "pct_white",        # race
+    "pct_hispanic",                   # ethnicity (distinct axis from race in Census conventions)
+    "median_income", "pct_poverty",   # economic position
+    "pct_bachelors_plus",             # educational attainment
+    "pct_under18", "pct_65plus",      # age structure (two poles of the age distribution)
+    "median_age",                     # age scalar — complementary to the shares
+]
 
 # Color-by options for the demographic view — service-side measures from the
 # selected year's geo metrics, answering the inverse question: do areas that
@@ -70,10 +83,17 @@ _VIEWS = {
 
 
 def _usage_share_matrix(history: pd.DataFrame, feature_set: str) -> pd.DataFrame:
-    """Wide `(geoid, year) x feature` share matrix — each row sums to 1."""
+    """Wide `(geoid, year) x feature` share matrix — each row sums to 1.
+
+    ECC types (information/dispatch calls, no actual service delivery) are
+    excluded — they inflate a geography's usage share without reflecting what
+    services that area actually receives, causing ECC-heavy geographies to
+    appear as outliers far from every operational cluster.
+    """
     df = history[
         (history["total_requests"] >= MIN_GEO_SRTYPE_N)
         & history["SRType"].astype(str).str.contains("-")
+        & ~history["SRType"].astype(str).str.startswith("ECC-")
     ].copy()
 
     if feature_set == "category":
@@ -135,7 +155,19 @@ def compute_usage_embedding(
         return pd.DataFrame(), [], (float("nan"), float("nan"))
 
     transformed, feature_cols = _clr(shares, top_k)
-    X = StandardScaler().fit_transform(transformed)
+
+    # Clip each CLR column at its [1%, 99%] percentile before scaling.
+    # Geographies with highly concentrated usage produce extreme log-ratio
+    # values that drag the first PCA axis toward them; clipping caps that
+    # influence without discarding the rows entirely.
+    lo = np.percentile(transformed, 100 - _CLR_CLIP_PCT, axis=0)
+    hi = np.percentile(transformed, _CLR_CLIP_PCT, axis=0)
+    transformed = np.clip(transformed, lo, hi)
+
+    # RobustScaler (median / IQR) is less sensitive to remaining outliers than
+    # StandardScaler (mean / std), since the IQR is computed on the central 50%
+    # of the distribution rather than the full range.
+    X = RobustScaler().fit_transform(transformed)
     pca = PCA(n_components=2)
     xy = pca.fit_transform(X)
 
@@ -165,7 +197,10 @@ def compute_demographic_embedding(
     if len(cols) < 2 or len(df) < 3:
         return pd.DataFrame(), [], (float("nan"), float("nan"))
 
-    X = StandardScaler().fit_transform(df[cols].to_numpy())
+    # RobustScaler neutralises income's heavy-tailed distribution (a handful of
+    # census tracts with very high or very low median income would otherwise
+    # compress the main cluster if StandardScaler were used).
+    X = RobustScaler().fit_transform(df[cols].to_numpy())
     pca = PCA(n_components=2)
     xy = pca.fit_transform(X)
 
@@ -332,7 +367,13 @@ def _render_demographic_view(
         is_categorical = color_col == "top_sr_type"
 
     pc1_pct, pc2_pct = var[0] * 100, var[1] * 100
-    _topic = {"pct_black": "race", "pct_white": "race", "median_income": "income"}
+    _topic = {
+        "pct_black": "race", "pct_white": "race",
+        "pct_hispanic": "ethnicity",
+        "median_income": "income/poverty", "pct_poverty": "income/poverty",
+        "pct_bachelors_plus": "education",
+        "pct_under18": "age", "pct_65plus": "age", "median_age": "age",
+    }
     feature_phrase = " and ".join(dict.fromkeys(_topic.get(c, c) for c in feature_cols))
     st.caption(
         f"The first two principal components capture **{pc1_pct:.0f}%** (PC1) and "
