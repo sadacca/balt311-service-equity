@@ -7,6 +7,7 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from components.area_embedding import render_area_embedding
 from components.category_equity_explorer import render_category_equity_explorer
 from components.category_explorer import render_category_explorer
 from components.equity_distributions import render_equity_distributions
@@ -54,6 +55,13 @@ with st.sidebar:
         "*How individual service categories perform and compare* — usage "
         "volume, closure rate, time to close, on-time rate — trended across "
         "years, with no race or income framing yet."
+    )
+    st.markdown(
+        "**Areas** — then, by neighborhood pattern\n\n"
+        "*Which neighborhoods ask 311 for similar things, and how does that "
+        "shift year to year?* A 2D map of tracts/CSAs by service-usage mix, "
+        "fit once across all years so movement traces real change rather than "
+        "the coordinate system drifting underneath it."
     )
     st.markdown(
         "**Equity** — then, citywide\n\n"
@@ -143,8 +151,8 @@ else:
 demographics = load_demographics(DATA_DIR / f"{geo_key}_demographics.csv")
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_ops, tab_cat, tab_eq, tab_cat_eq = st.tabs([
-    "Operations", "Services", "Equity", "Service Equity",
+tab_ops, tab_cat, tab_areas, tab_eq, tab_cat_eq = st.tabs([
+    "Operations", "Services", "Areas", "Equity", "Service Equity",
 ])
 
 # ── Operations tab ────────────────────────────────────────────────────────────
@@ -173,6 +181,10 @@ with tab_cat:
         )
     else:
         render_category_explorer(DATA_DIR, year)
+
+# ── Area Embedding tab ────────────────────────────────────────────────────────
+with tab_areas:
+    render_area_embedding(DATA_DIR, demographics, geo_key, year)
 
 # ── Equity tab ────────────────────────────────────────────────────────────────
 with tab_eq:
