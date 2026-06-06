@@ -1,11 +1,11 @@
 """Service Category Explorer — Tab 2.
 
-Pure operational comparison among and within service categories: usage volume,
-closure rate, time to close, and on-time performance, trended across years.
-Deliberately contains **no** race/income framing — that lens lives in the
-Service Category Equity Explorer (Tab 5). A department manager should be able
-to answer "how is my service type doing, where, and how fast" here without
-wading through demographic content that isn't theirs to interpret.
+Pure operational comparison among and within service categories: usage,
+service rate, and speed — trended across years. Deliberately contains
+**no** race/income framing — that lens lives in the Service Category Equity
+Explorer (Tab 5). A department manager should be able to answer "how is my
+service type doing, and how fast" here without wading through demographic
+content that isn't theirs to interpret.
 """
 from pathlib import Path
 
@@ -13,36 +13,37 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from components.map_view import build_choropleth
 from components.srtype_shared import (
     CATEGORY_NAMES,
     EXCLUDED_CATEGORIES,
-    MIN_GEO_SRTYPE_N,
     category_pills,
     extract_categories,
-    load_geo_srtype_metrics,
     load_srtype_history,
 )
 
-_CHART_LAYOUT = dict(
-    height=260,
-    margin={"t": 8, "b": 8, "l": 60, "r": 8},
-    xaxis=dict(title="Year", dtick=1),
-    plot_bgcolor="white",
-    paper_bgcolor="white",
-)
+# How many highest-volume subcategories to plot individually before folding the
+# rest into a single "all other types" line — keeps the multi-line charts readable
+# for categories (e.g. Solid Waste) that contain dozens of SRTypes.
+_TOP_SUBTYPES_N = 10
+
+
+def _wmean(df: pd.DataFrame, value_col: str, weight_col: str = "total_requests") -> float:
+    """Volume-weighted mean — the convention this dashboard uses everywhere it
+    needs to combine a rate metric (closure rate, median days) across SRTypes."""
+    sub = df.dropna(subset=[value_col, weight_col])
+    sub = sub[sub[weight_col] > 0]
+    if sub.empty:
+        return float("nan")
+    return float((sub[value_col] * sub[weight_col]).sum() / sub[weight_col].sum())
 
 
 def _category_aggregates(sr_all: pd.DataFrame) -> pd.DataFrame:
-    """Roll SRType rows up to department-prefix categories.
+    """Roll SRType rows up to department-prefix categories for the selected year.
 
-    total_requests is summed; median_days_to_close is a volume-weighted mean —
-    the same convention `_build_timeseries` uses to combine SRTypes citywide.
+    Mirrors `extract_categories`'s definition of a "category": a hyphen-prefixed
+    SRType with a non-empty, non-excluded prefix — anything else is left out,
+    exactly as it's left out of the category pills.
     """
-    # Mirrors `extract_categories`'s definition of a "category": a hyphen-prefixed
-    # SRType name with a non-empty, non-excluded prefix. Anything else (e.g. names
-    # without a department prefix) is left out of this rollup, exactly as it's left
-    # out of the category pills.
     has_prefix = sr_all["SRType"].apply(
         lambda n: isinstance(n, str) and "-" in n
         and n.split("-")[0].strip()
@@ -51,256 +52,242 @@ def _category_aggregates(sr_all: pd.DataFrame) -> pd.DataFrame:
     work = sr_all[has_prefix].copy()
     work["_cat"] = work["SRType"].str.split("-").str[0].str.strip()
 
-    out = work.groupby("_cat")["total_requests"].sum().reset_index(name="total_requests")
-
-    days = work.dropna(subset=["median_days_to_close", "total_requests"]).copy()
-    if not days.empty:
-        days["_wtd"] = days["median_days_to_close"] * days["total_requests"]
-        wmean = (
-            (days.groupby("_cat")["_wtd"].sum() / days.groupby("_cat")["total_requests"].sum())
-            .reset_index(name="median_days_to_close")
-        )
-        out = out.merge(wmean, on="_cat", how="left")
-    else:
-        out["median_days_to_close"] = float("nan")
-
-    out["label"] = out["_cat"].map(lambda c: CATEGORY_NAMES.get(c, c))
-    return out.sort_values("total_requests", ascending=False).reset_index(drop=True)
+    rows = []
+    for cat, g in work.groupby("_cat"):
+        rows.append({
+            "_cat": cat,
+            "label": CATEGORY_NAMES.get(cat, cat),
+            "total_requests": g["total_requests"].sum(),
+            "closure_rate": _wmean(g, "closure_rate"),
+            "median_days_to_close": _wmean(g, "median_days_to_close"),
+        })
+    return pd.DataFrame(rows).sort_values("total_requests", ascending=False).reset_index(drop=True)
 
 
-def _among_category_fig(agg: pd.DataFrame) -> go.Figure:
-    """Bubble chart: one point per category — x = volume, y = typical time to close, size = volume.
-
-    Puts categories side by side on the two axes the narrative most often invokes
-    ("rodent control runs N× longer than streetlight repair") without any demographic split.
-    """
-    sizes = agg["total_requests"].fillna(0)
-    max_size = max(float(sizes.max()), 1.0) if not sizes.empty else 1.0
-    fig = go.Figure(go.Scatter(
-        x=agg["total_requests"],
-        y=agg["median_days_to_close"],
-        mode="markers+text",
-        text=agg["_cat"],
-        textposition="top center",
-        marker=dict(
-            size=sizes,
-            sizemode="area",
-            sizeref=2.0 * max_size / (42.0 ** 2),
-            sizemin=6,
-            color="#1F4E8C",
-            opacity=0.65,
-            line=dict(width=1, color="white"),
-        ),
-        customdata=agg["label"],
-        hovertemplate=(
-            "<b>%{customdata}</b> (%{text})<br>"
-            "Requests: %{x:,.0f}<br>"
-            "Median days to close: %{y:.1f}<extra></extra>"
-        ),
+def _ranked_bar_fig(agg: pd.DataFrame, value_col: str, value_label: str, is_pct: bool = False) -> go.Figure:
+    """Horizontal bar ranking, one bar per category — highest value at top."""
+    d = agg.dropna(subset=[value_col]).sort_values(value_col, ascending=True)
+    hover_fmt = "%{x:.1%}" if is_pct else "%{x:,.1f}"
+    fig = go.Figure(go.Bar(
+        x=d[value_col],
+        y=d["_cat"],
+        orientation="h",
+        marker_color="#1F4E8C",
+        customdata=d["label"],
+        hovertemplate=f"<b>%{{customdata}}</b> (%{{y}}): {hover_fmt}<extra></extra>",
     ))
     fig.update_layout(
-        height=380,
-        margin={"t": 8, "b": 45, "l": 60, "r": 20},
-        xaxis=dict(title="Total requests (volume)", gridcolor="#eeeeee"),
-        yaxis=dict(title="Median days to close (speed)", gridcolor="#eeeeee"),
+        height=max(220, 26 * len(d) + 50),
+        margin={"t": 4, "b": 30, "l": 60, "r": 16},
+        xaxis=dict(title=value_label, tickformat=".0%" if is_pct else None, gridcolor="#eeeeee"),
+        yaxis=dict(title=None),
         plot_bgcolor="white",
         paper_bgcolor="white",
     )
     return fig
 
 
-def _table_and_selection(data_dir: Path, year: int) -> tuple[pd.DataFrame | None, str | None, str | None]:
-    """Citywide SRType performance table for the selected year, with category pills.
+def _yearly_aggregate(scope: pd.DataFrame, value_col: str) -> pd.DataFrame:
+    """Per-year aggregate across a set of SRType rows: sum for volume, volume-weighted mean for rates."""
+    if value_col == "total_requests":
+        return (
+            scope.groupby("year")["total_requests"].sum()
+            .reset_index(name=value_col)
+            .sort_values("year")
+        )
+    rows = [{"year": yr, value_col: _wmean(g, value_col)} for yr, g in scope.groupby("year")]
+    return pd.DataFrame(rows).sort_values("year").reset_index(drop=True)
 
-    Returns (sr_all, selected_type, selected_cat) — sr_all is None if no data exists.
-    """
+
+def _line_fig(d: pd.DataFrame, value_col: str, value_label: str, year: int, is_pct: bool = False) -> go.Figure:
+    """Single-line year-over-year chart with the selected year picked out in red."""
+    valid = d.dropna(subset=[value_col])
+    hover_fmt = "%{y:.1%}" if is_pct else "%{y:,.1f}"
+    fig = go.Figure(go.Scatter(
+        x=valid["year"],
+        y=valid[value_col],
+        mode="lines+markers",
+        line=dict(color="#1F4E8C", width=2),
+        marker=dict(
+            size=[11 if y == year else 7 for y in valid["year"]],
+            color=["#d73027" if y == year else "#1F4E8C" for y in valid["year"]],
+        ),
+        hovertemplate=f"%{{x}}: {hover_fmt}<extra></extra>",
+    ))
+    fig.update_layout(
+        height=240,
+        margin={"t": 8, "b": 8, "l": 60, "r": 8},
+        xaxis=dict(title="Year", dtick=1),
+        yaxis=dict(title=value_label, tickformat=".0%" if is_pct else None, gridcolor="#eeeeee"),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+    )
+    return fig
+
+
+def _short_label(srtype: str) -> str:
+    """Drop the redundant category prefix from a legend label (e.g. 'SW-Dirty Alley' -> 'Dirty Alley')."""
+    return srtype.split("-", 1)[1].strip() if "-" in srtype else srtype
+
+
+def _subtype_multiline_fig(
+    scope: pd.DataFrame,
+    top_types: list[str],
+    other_label: str,
+    value_col: str,
+    value_label: str,
+    is_pct: bool = False,
+) -> go.Figure:
+    """One line per subcategory (SRType) across years, plus a volume-weighted "all other types" line."""
+    hover_fmt = "%{y:.1%}" if is_pct else "%{y:,.1f}"
+    fig = go.Figure()
+    for srtype in top_types:
+        g = scope[scope["SRType"] == srtype].sort_values("year").dropna(subset=[value_col])
+        if g.empty:
+            continue
+        fig.add_trace(go.Scatter(
+            x=g["year"], y=g[value_col],
+            mode="lines+markers", name=_short_label(srtype),
+            line=dict(width=1.8), marker=dict(size=5),
+            hovertemplate=f"<b>{srtype}</b><br>%{{x}}: {hover_fmt}<extra></extra>",
+        ))
+
+    rest = scope[~scope["SRType"].isin(top_types)]
+    if not rest.empty:
+        other = _yearly_aggregate(rest, value_col).dropna(subset=[value_col])
+        if not other.empty:
+            fig.add_trace(go.Scatter(
+                x=other["year"], y=other[value_col],
+                mode="lines+markers", name=other_label,
+                line=dict(width=2, dash="dot", color="#999999"),
+                marker=dict(size=5, color="#999999"),
+                hovertemplate=f"<b>{other_label}</b><br>%{{x}}: {hover_fmt}<extra></extra>",
+            ))
+
+    fig.update_layout(
+        height=340,
+        margin={"t": 8, "b": 8, "l": 60, "r": 8},
+        xaxis=dict(title="Year", dtick=1),
+        yaxis=dict(title=value_label, tickformat=".0%" if is_pct else None, gridcolor="#eeeeee"),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font=dict(size=10)),
+    )
+    return fig
+
+
+def render_category_explorer(data_dir: Path, year: int) -> None:
+    st.caption(
+        "A pure operational view — usage, service rate, and speed, compared among and "
+        "within service categories, with **no race or income framing**. Looking for the "
+        "equity angle on these same categories? See **Service Category Equity Explorer**."
+    )
+
     srtype_path = data_dir / f"srtype_metrics_{year}.parquet"
     if not srtype_path.exists():
         st.caption(
             "SRType performance data unavailable for this year — run "
             "`pipeline.py --stage srtype --year <year>` to generate it."
         )
-        return None, None, None
-
-    sr_all = (
-        pd.read_parquet(srtype_path)
-        .sort_values("total_requests", ascending=False)
-        .reset_index(drop=True)
-    )
-    pct_col = "pct_resident_initiated" if "pct_resident_initiated" in sr_all.columns else None
-
-    categories = extract_categories(sr_all)
-    selected_cat = category_pills(categories, key="cat_explorer_cat") if categories else None
-    sr = (
-        sr_all[sr_all["SRType"].str.startswith(f"{selected_cat}-")]
-        if selected_cat
-        else sr_all
-    ).reset_index(drop=True)
-
-    scope_label = f"**{selected_cat}** types" if selected_cat else "all types"
-    st.markdown(
-        f"**Performance by type** ({scope_label}, {year}) — "
-        "click a column header to sort, click a row to drill into its trend and geography"
-    )
-    display_cols = ["SRType", "total_requests", "closure_rate", "median_days_to_close", "on_time_rate"]
-    if pct_col:
-        display_cols.append(pct_col)
-    fmt = {
-        "total_requests": "{:,.0f}",
-        "closure_rate": "{:.1%}",
-        "median_days_to_close": "{:.1f}",
-        "on_time_rate": "{:.1%}",
-    }
-    if pct_col:
-        fmt[pct_col] = "{:.0%}"
-    rename = {
-        "SRType": "Type", "total_requests": "Requests",
-        "closure_rate": "Closure rate", "median_days_to_close": "Median days",
-        "on_time_rate": "On-time rate", "pct_resident_initiated": "% Resident-initiated",
-    }
-    display = sr[display_cols].rename(columns=rename)
-    event = st.dataframe(
-        display.style.format({rename.get(k, k): v for k, v in fmt.items()}, na_rep="—"),
-        use_container_width=True,
-        hide_index=True,
-        height=min(420, max(150, 35 * len(sr) + 38)),
-        on_select="rerun",
-        selection_mode="single-row",
-        key="cat_explorer_table",
-    )
-
-    selected_rows = event.selection.rows
-    selected_type = sr.iloc[selected_rows[0]]["SRType"] if selected_rows else None
-    return sr_all, selected_type, selected_cat
-
-
-def _within_type_trend(history: pd.DataFrame, selected_type: str, year: int) -> None:
-    """Year-over-year volume + median-days bars for one SRType — selected year highlighted in red."""
-    type_hist = history[history["SRType"] == selected_type].sort_values("year")
-    if type_hist.empty:
-        st.caption(f"No historical data found for **{selected_type}**.")
         return
+    sr_all = pd.read_parquet(srtype_path)
 
-    days_hist = type_hist.dropna(subset=["median_days_to_close"])
-    bar_colors_vol = ["#d73027" if y == year else "#1F4E8C" for y in type_hist["year"]]
-    bar_colors_days = ["#d73027" if y == year else "#1F4E8C" for y in days_hist["year"]]
-
-    st.markdown(f"**{selected_type}** — year over year · selected year in red")
-    col_vol, col_days = st.columns(2)
-    with col_vol:
-        st.caption("Total requests")
-        fig_vol = go.Figure(go.Bar(
-            x=type_hist["year"],
-            y=type_hist["total_requests"],
-            marker_color=bar_colors_vol,
-            hovertemplate="%{x}: %{y:,}<extra></extra>",
-        ))
-        fig_vol.update_layout(**_CHART_LAYOUT, yaxis=dict(title="Requests", gridcolor="#eeeeee"))
-        st.plotly_chart(fig_vol, use_container_width=True, key="cat_explorer_vol",
-                        config={"displayModeBar": False})
-
-    with col_days:
-        st.caption("Median days to close")
-        fig_days = go.Figure(go.Bar(
-            x=days_hist["year"],
-            y=days_hist["median_days_to_close"],
-            marker_color=bar_colors_days,
-            hovertemplate="%{x}: %{y:.1f} days<extra></extra>",
-        ))
-        fig_days.update_layout(**_CHART_LAYOUT, yaxis=dict(title="Days", gridcolor="#eeeeee"))
-        st.plotly_chart(fig_days, use_container_width=True, key="cat_explorer_days",
-                        config={"displayModeBar": False})
-
-
-def _geo_breakdown(
-    data_dir: Path,
-    geo_key: str,
-    year: int,
-    df: pd.DataFrame,
-    geojson: dict,
-    geo_id_col: str,
-    featureidkey: str,
-    mapbox_token: str,
-    selected_type: str,
-) -> None:
-    """Plain (non-demographic) choropleth of one SRType's volume across geography."""
-    geo_srtype = load_geo_srtype_metrics(data_dir / f"{geo_key}_srtype_metrics_{year}.parquet")
-    if geo_srtype.empty:
-        st.caption(
-            "Geo × SRType data unavailable for this year — run "
-            "`pipeline.py --stage srtype --year <year>` to generate it."
-        )
-        return
-
-    totals = geo_srtype[geo_srtype["total_requests"] >= MIN_GEO_SRTYPE_N]
-    type_totals = totals[totals["SRType"] == selected_type][["geoid", "total_requests"]]
-    map_df = df[["geoid"]].merge(type_totals, on="geoid", how="left")
-    map_df["total_requests"] = map_df["total_requests"].fillna(0).astype(int)
-
-    st.caption(
-        f"**{selected_type}** request volume by geography "
-        f"(cells with fewer than {MIN_GEO_SRTYPE_N} requests suppressed — shown as-is, no demographic lens)"
-    )
-    fig_map = build_choropleth(
-        df=map_df,
-        geojson=geojson,
-        geo_id_col=geo_id_col,
-        featureidkey=featureidkey,
-        metric_col="total_requests",
-        metric_label="Total requests",
-        mapbox_token=mapbox_token,
-        sequential=True,
-    )
-    st.plotly_chart(fig_map, use_container_width=True, key="cat_explorer_map")
-
-
-def render_category_explorer(
-    data_dir: Path,
-    geo_key: str,
-    year: int,
-    df: pd.DataFrame,
-    geojson: dict,
-    geo_id_col: str,
-    featureidkey: str,
-    mapbox_token: str,
-) -> None:
-    st.caption(
-        "A pure operational view — usage rates, time to close, and trends among and within "
-        "service categories, with **no race or income framing**. Looking for the equity angle "
-        "on these same categories? See **Service Category Equity Explorer**."
-    )
-
-    sr_all, selected_type, selected_cat = _table_and_selection(data_dir, year)
-    if sr_all is None:
-        return
-
-    st.divider()
+    # ── Among-category comparison ─────────────────────────────────────────────
     st.subheader("How categories compare to each other")
     st.caption(
-        "Each bubble is one department category. Position shows volume (x) and typical "
-        "time to close (y); size also tracks volume. Categories toward the bottom resolve "
-        "quickly relative to demand; those toward the top take longer."
+        f"Citywide, {year} — each panel ranks departments on one operational dimension. "
+        "Read across all three to see, for example, whether a high-volume category also "
+        "tends to run slow (e.g. \"rodent control runs 3× longer than streetlight repair\")."
     )
     agg = _category_aggregates(sr_all)
     if not agg.empty:
-        st.plotly_chart(
-            _among_category_fig(agg),
-            use_container_width=True,
-            key="cat_explorer_among",
-            config={"displayModeBar": False},
-        )
+        col_vol, col_close, col_days = st.columns(3)
+        with col_vol:
+            st.caption("**Usage** — total requests")
+            st.plotly_chart(_ranked_bar_fig(agg, "total_requests", "Total requests"),
+                            use_container_width=True, key="cat_explorer_rank_vol",
+                            config={"displayModeBar": False})
+        with col_close:
+            st.caption("**Service rate** — closure rate")
+            st.plotly_chart(_ranked_bar_fig(agg, "closure_rate", "Closure rate", is_pct=True),
+                            use_container_width=True, key="cat_explorer_rank_closure",
+                            config={"displayModeBar": False})
+        with col_days:
+            st.caption("**Speed** — median days to close")
+            st.plotly_chart(_ranked_bar_fig(agg, "median_days_to_close", "Median days to close"),
+                            use_container_width=True, key="cat_explorer_rank_days",
+                            config={"displayModeBar": False})
 
+    # ── Category selection ────────────────────────────────────────────────────
     st.divider()
-    if selected_type:
-        st.subheader(f"{selected_type} — within-category detail")
-        history = load_srtype_history(data_dir)
-        _within_type_trend(history, selected_type, year)
-        st.divider()
-        _geo_breakdown(
-            data_dir, geo_key, year, df, geojson, geo_id_col, featureidkey, mapbox_token, selected_type,
+    st.subheader("Explore one category over time")
+    categories = extract_categories(sr_all)
+    selected_cat = category_pills(categories, key="cat_explorer_cat") if categories else None
+
+    if not selected_cat:
+        st.caption(
+            "Select a category above to see its multi-year trend and a "
+            "year-over-year breakdown by subcategory."
+        )
+        return
+
+    history = load_srtype_history(data_dir)
+    scope = history[history["SRType"].str.startswith(f"{selected_cat}-")].copy()
+    if scope.empty:
+        st.caption(f"No historical data found for **{selected_cat}**.")
+        return
+
+    cat_label = CATEGORY_NAMES.get(selected_cat, selected_cat)
+    display_name = f"{cat_label} ({selected_cat})" if cat_label != selected_cat else selected_cat
+
+    # ── Category-level year-over-year composite ───────────────────────────────
+    st.markdown(f"**{display_name}** — category average, year over year · **{year}** highlighted")
+    vol_yoy = _yearly_aggregate(scope, "total_requests")
+    days_yoy = _yearly_aggregate(scope, "median_days_to_close")
+    col_v, col_d = st.columns(2)
+    with col_v:
+        st.caption("Total requests")
+        st.plotly_chart(_line_fig(vol_yoy, "total_requests", "Requests", year),
+                        use_container_width=True, key="cat_explorer_cat_vol",
+                        config={"displayModeBar": False})
+    with col_d:
+        st.caption("Median days to close")
+        st.plotly_chart(_line_fig(days_yoy, "median_days_to_close", "Days", year),
+                        use_container_width=True, key="cat_explorer_cat_days",
+                        config={"displayModeBar": False})
+
+    # ── Within-category subcategory breakdown ─────────────────────────────────
+    st.divider()
+    st.subheader(f"{display_name} — by subcategory")
+
+    current = scope[scope["year"] == year].sort_values("total_requests", ascending=False)
+    n_types = scope["SRType"].nunique()
+    top_types = current["SRType"].head(_TOP_SUBTYPES_N).tolist()
+    n_other = n_types - len(top_types)
+    other_label = f"All other {selected_cat} types ({n_other})"
+
+    if n_other > 0:
+        st.caption(
+            f"{selected_cat} contains {n_types} request types. Showing the "
+            f"{len(top_types)} highest-volume types individually (ranked by {year} volume); "
+            f"the remaining {n_other} are combined into **{other_label}** "
+            "(volume summed, rates volume-weighted) so the chart stays readable."
         )
     else:
-        st.caption(
-            "Select a row in the performance table above to see that type's trend across "
-            "all available years and its geographic distribution."
-        )
+        st.caption(f"{selected_cat} contains {n_types} request type{'s' if n_types != 1 else ''}.")
+
+    st.markdown("**Requests, year over year**")
+    st.plotly_chart(
+        _subtype_multiline_fig(scope, top_types, other_label, "total_requests", "Requests"),
+        use_container_width=True, key="cat_explorer_sub_vol", config={"displayModeBar": False},
+    )
+    st.markdown("**Closure rate, year over year**")
+    st.plotly_chart(
+        _subtype_multiline_fig(scope, top_types, other_label, "closure_rate", "Closure rate", is_pct=True),
+        use_container_width=True, key="cat_explorer_sub_closure", config={"displayModeBar": False},
+    )
+    st.markdown("**Median days to close, year over year**")
+    st.plotly_chart(
+        _subtype_multiline_fig(scope, top_types, other_label, "median_days_to_close", "Median days to close"),
+        use_container_width=True, key="cat_explorer_sub_days", config={"displayModeBar": False},
+    )

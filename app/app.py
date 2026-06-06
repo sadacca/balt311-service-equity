@@ -150,14 +150,7 @@ with tab_cat:
             "Run the pipeline to generate it."
         )
     else:
-        render_category_explorer(
-            DATA_DIR, geo_key, year,
-            df=df_full,
-            geojson=geojson,
-            geo_id_col="geoid",
-            featureidkey=featureidkey,
-            mapbox_token=MAPBOX_TOKEN,
-        )
+        render_category_explorer(DATA_DIR, year)
 
 # ── Equity tab ────────────────────────────────────────────────────────────────
 with tab_eq:
