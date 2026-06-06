@@ -36,24 +36,38 @@ with st.sidebar:
         "Operational and equity visibility into Baltimore's 311 "
         "service request system — 2016 through 2025."
     )
+    st.caption(
+        "The four tabs read as one arc: how the city is doing → how that breaks "
+        "down by service → whether outcomes differ by neighborhood demographics → "
+        "whether that citywide equity picture holds up once you account for "
+        "*which* services an area actually requests."
+    )
     st.divider()
     st.markdown(
-        "**Operations tab**\n\n"
+        "**Operations** — start here\n\n"
         "Citywide volume and performance trends. Breakdown by service type "
         "with year-over-year comparison. Geographic distribution of requests "
         "by census tract or CSA."
     )
     st.markdown(
-        "**Service Category Explorer tab**\n\n"
+        "**Services** — then, by department\n\n"
         "Pure operational comparison among and within service categories — "
         "usage volume, closure rate, time to close, on-time rate — trended "
-        "across years, with no race or income framing."
+        "across years, with no race or income framing yet."
     )
     st.markdown(
-        "**Equity tab**\n\n"
+        "**Equity** — then, citywide\n\n"
         "Choropleth map of service performance across neighborhoods. "
         "Demographic comparisons (race, income) using Mann-Whitney overlap scores. "
         "Year-over-year equity trend."
+    )
+    st.markdown(
+        "**Service Equity** — finally, by department\n\n"
+        "The same equity lens, scored within and across service categories instead "
+        "of citywide. The picture improves substantially at that finer grain — "
+        "evidence that some of the citywide gap reflects *which* services different "
+        "neighborhoods request, not just how they're delivered — though it doesn't "
+        "fully close, so real disparities remain even after accounting for that."
     )
     st.divider()
     st.caption(
@@ -168,6 +182,16 @@ with tab_eq:
             icon="ℹ️",
         )
     else:
+        st.caption(
+            "These scores look at equity **citywide**, pooling every service type "
+            "together — and because closure rates and times vary widely by service "
+            "type, some of the apparent gap may reflect *which* services different "
+            "neighborhoods request rather than how any one service is delivered. "
+            "The **Service Equity** tab breaks this down by category: the picture "
+            "improves substantially at that finer grain — though not all the way, "
+            "some disparity remains even after accounting for what's being requested."
+        )
+
         # ── Inline controls above map ─────────────────────────────────────────
         ctrl1, ctrl2, ctrl3 = st.columns([2, 3, 5])
 
