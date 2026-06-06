@@ -37,7 +37,7 @@ Read top to bottom, the live tabs already trace a meaningful arc: an **operation
 
 ### Operations tab
 
-The default tab answers "how is Baltimore 311 performing overall?" before asking equity questions.
+*A citywide health check: request volume and performance trends.* The default tab — the landing view that answers "how is Baltimore 311 performing overall?" before asking equity questions.
 
 **City-wide Performance**
 
@@ -57,7 +57,7 @@ A choropleth map at the bottom shows request volume by census tract or CSA. A "V
 
 ### Services tab
 
-A pure operational drill-down into Baltimore's service categories — usage volume, closure rate, time to close — with no race or income framing. Built for department managers and anyone who wants to compare how individual service types perform, independent of demographic context.
+*How individual service categories perform and compare.* A pure operational drill-down — usage volume, closure rate, time to close, on-time rate — with no race or income framing. Built for department managers and anyone who wants to compare how individual service types perform, independent of demographic context.
 
 **Among-category comparison** — year-over-year multi-line trends for the highest-volume categories: usage (log scale, since volume spans orders of magnitude across departments), closure rate, and median days to close, each with a dashed citywide-average reference line so a category can be read against the city as a whole, not just its peers.
 
@@ -66,6 +66,8 @@ A pure operational drill-down into Baltimore's service categories — usage volu
 ---
 
 ### Equity tab — Map
+
+*Does service quality differ systematically by where it's delivered and who it's delivered to?* Differences here can reflect *which* services an area requests as much as delivery quality — the Service Equity tab investigates that distinction directly.
 
 Three inline controls above the map: geographic unit toggle (Census Tract / CSA), metric selectbox (Color map by), and an optional filter by the geography's top request type. Four equity metrics are available:
 
@@ -105,11 +107,13 @@ A year-over-year line chart tracks the Mann-Whitney overlap score for each metri
 
 ### Service Equity tab
 
-The equity-flavored mirror of the Services tab: the same multi-line trend language — top-N categories, top-N subtypes folded into an "all other" remainder, a two-tier selector, a dotted year guide — but tracking the **Mann-Whitney equity score** (race and income overlap, on the same fixed 0–100% scale and green/amber/red bands as the Equity Trend chart) instead of operational metrics.
+*Does the citywide equity picture hold up or differ within individual service categories and types?* The equity-flavored mirror of the Services tab: the same multi-line trend language — top-N categories, top-N subtypes folded into an "all other" remainder, a two-tier selector, a dotted year guide — but tracking the **Mann-Whitney equity score** (race and income overlap, on the same fixed 0–100% scale and green/amber/red bands as the Equity Trend chart) instead of operational metrics. CSA is the default geographic unit here (and across the app) — it carries less sparse-cell suppression than census tracts, so its equity scores are the more reliable starting point.
 
-**The headline finding**: scored citywide across every service type pooled together, equity scores can run notably lower than the same metric scored within individual categories, or within individual service types — direct evidence that part of the apparent citywide gap reflects *which* services different neighborhoods request (a usage-mix effect) rather than *how* any one service is delivered once requested. The improvement at finer grain is real but not total — some disparity persists even after accounting for service mix, so the citywide number still matters; it just needs this finer-grained view to interpret correctly. The tab states this comparison directly, with the current year's actual scores, right where the panels begin.
+**The headline finding — three grains, side by side**: a pair of bar charts (race, income) opens the tab with the current year's actual scores at three grains: citywide-pooled, the average within-category score, and the average within-individual-type score. Scores climb substantially at each finer grain — direct evidence that part of the apparent citywide gap reflects *which* services different neighborhoods request (a usage-mix effect) rather than *how* any one service is delivered once requested. The improvement is real but not total — disparity persists even at the finest grain, so the citywide number still matters; it just needs this view to interpret correctly.
 
 **Among-category equity trend** — multi-line equity-score trends for the highest-volume categories, read against a dashed "All categories" reference line and the same threshold bands as the citywide Equity Trend.
+
+**Where equity review is most warranted** — a Race/Income toggle ranks the worst-scoring *individual service types* (deliberately not high-level categories — a category can read "not bad" overall while one of its own subtypes is the one actually driving disparity), restricted to types that meet minimum data standards (geographic coverage, request volume, and years of history) so a thin or noisy sample can't crowd out a type with a real, well-supported low score. Ranking is by the selected dimension specifically, so a flagged type is guaranteed to score low on the dimension shown — not just on whichever of its two scores happens to be lower. A histogram overlays the flagged types (red) on the full distribution of eligible scores (gray) — showing whether they're a separated tail or just the lower edge of one continuous spread — paired with each flagged type's year-over-year score trend.
 
 **Category drill-down** — select a category (the same two-tier selector as the Services tab) to see its own equity-score trend against the all-categories baseline, plus a within-category breakdown of equity scores by subtype.
 

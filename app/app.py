@@ -45,29 +45,34 @@ with st.sidebar:
     st.divider()
     st.markdown(
         "**Operations** — start here\n\n"
-        "Citywide volume and performance trends. Breakdown by service type "
-        "with year-over-year comparison. Geographic distribution of requests "
-        "by census tract or CSA."
+        "*A citywide health check: request volume and performance trends.* "
+        "Breakdown by service type with year-over-year comparison, plus "
+        "geographic distribution of requests by census tract or CSA."
     )
     st.markdown(
         "**Services** — then, by department\n\n"
-        "Pure operational comparison among and within service categories — "
-        "usage volume, closure rate, time to close, on-time rate — trended "
-        "across years, with no race or income framing yet."
+        "*How individual service categories perform and compare* — usage "
+        "volume, closure rate, time to close, on-time rate — trended across "
+        "years, with no race or income framing yet."
     )
     st.markdown(
         "**Equity** — then, citywide\n\n"
-        "Choropleth map of service performance across neighborhoods. "
-        "Demographic comparisons (race, income) using Mann-Whitney overlap scores. "
-        "Year-over-year equity trend."
+        "*Does service quality differ systematically by where it's delivered "
+        "and who it's delivered to?* Choropleth map, demographic comparisons "
+        "(race, income) via Mann-Whitney overlap scores, and a year-over-year "
+        "equity trend — though differences here can reflect *which* services "
+        "an area requests as much as delivery quality, which the next tab "
+        "investigates."
     )
     st.markdown(
         "**Service Equity** — finally, by department\n\n"
-        "The same equity lens, scored within and across service categories instead "
-        "of citywide. The picture improves substantially at that finer grain — "
-        "evidence that some of the citywide gap reflects *which* services different "
-        "neighborhoods request, not just how they're delivered — though it doesn't "
-        "fully close, so real disparities remain even after accounting for that."
+        "*Does the citywide equity picture hold up or differ within individual "
+        "service categories and types?* The same equity lens, scored within "
+        "and across categories instead of citywide. The picture improves "
+        "substantially at that finer grain — evidence that some of the "
+        "citywide gap reflects *which* services different neighborhoods "
+        "request, not just how they're delivered — though it doesn't fully "
+        "close, so real disparities remain even after accounting for that."
     )
     st.divider()
     st.caption(
