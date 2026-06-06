@@ -29,9 +29,10 @@ _LOG_TICKVALS = [100, 1_000, 10_000, 100_000, 1_000_000]
 _LOG_TICKTEXT = ["100", "1K", "10K", "100K", "1M"]
 
 # How many highest-volume subcategories to plot individually before folding the
-# rest into a single "all other types" line — keeps the multi-line charts readable
-# for categories (e.g. Solid Waste) that contain dozens of SRTypes.
-_TOP_SUBTYPES_N = 10
+# rest into a single "all other types" line — keeps the multi-line charts (and
+# their legends, which wrap awkwardly past ~8 horizontal entries) readable for
+# categories (e.g. Solid Waste) that contain dozens of SRTypes.
+_TOP_SUBTYPES_N = 7
 
 # Cycled through for the among-category comparison lines — Plotly's default
 # qualitative palette gives ten visually distinct colors.
@@ -145,7 +146,7 @@ def _multi_category_line_fig(
         ),
         plot_bgcolor="white",
         paper_bgcolor="white",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font=dict(size=10)),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
     )
     return fig
 
@@ -222,7 +223,7 @@ def _subtype_multiline_fig(
         yaxis=dict(title=value_label, tickformat=".0%" if is_pct else None, gridcolor="#eeeeee"),
         plot_bgcolor="white",
         paper_bgcolor="white",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font=dict(size=10)),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
     )
     return fig
 
