@@ -121,6 +121,8 @@ Ordered by dependency. Complete data investigation tasks before building on thei
 
 **Goal**: answer "is service delivery equitable when you account for what's being requested?". The key insight: aggregate equity scores can be misleading because neighborhoods differ in their mix of request types, and different types have structurally different resolution times.
 
+> **Implementation note**: the unchecked app additions below (P4-1b through P4-6) are detailed and staged as concrete tab builds in **Phase 4d**. Build them there, not as standalone items — this list stays as the conceptual record.
+
 ### Conceptual framing
 Two equity questions at different levels:
 1. **Within-type equity**: for a given SRType (e.g. "Pothole Repair"), do majority-Black tracts wait longer than majority-White tracts? This is the cleanest equity signal — it controls for type mix differences.
@@ -172,6 +174,8 @@ Two equity questions at different levels:
 
 **Goal**: a "middle view" between Operations (city-wide) and Equity (demographic disparity) aimed at area managers and district supervisors. The core question: are there geographies that look similar — in demographics, request mix, or both — but produce meaningfully different service outcomes? Gives managers a peer-comparison lens to self-check their area without needing to interpret equity scores.
 
+> **Implementation note**: P4b-2's "peer similarity index" is reframed and detailed in **Phase 4d** as a visual PCA embedding (Tab 2 — Area Embedding) rather than a nearest-neighbor list — it answers the same question (which areas look alike?) but lets the user see the whole structure (continuous vs. clustered) at once, in both service-usage space and demographic space. P4b-1, P4b-3 through P4b-5 remain open future work once the embedding view validates which peer groupings are meaningful.
+
 ### Concept
 
 Two geographies are "peers" if they share similar inputs (demographic profile, SRType volume mix) but may differ on outputs (closure rate, median days to close). Surfacing outliers within peer groups is more actionable than a citywide ranking, because it controls for structural differences in what's being requested and by whom.
@@ -193,6 +197,62 @@ Two geographies are "peers" if they share similar inputs (demographic profile, S
 - Requires demographics CSV and geo×SRType metrics files (both available).
 - Peer similarity computation is O(n²) over geographies — fine for ~200 tracts, trivial for ~55 CSAs. No pipeline changes needed for MVP.
 - Peer count N and weighting of demographic vs. request-mix dimensions should be tunable via UI sliders or sidebar controls, not hardcoded.
+
+---
+
+## Phase 4d — Three Bridging Tabs: Category Explorer, Area Embedding, Equity Adjusted for Mix *(next release)*
+
+**Goal**: give every audience a step-by-step path from "how is the city doing operationally" to "is it equitable" by adding three tabs that connect service-category performance, geographic/demographic clustering, and mix-adjusted equity scoring. Together they answer: do areas that are demographically or economically similar also tend to request similar services, and are the equity gaps shown in the Equity tab actually explained by *which* services an area requests (some structurally slower to resolve than others) — or does the same service get delivered unequally to different areas regardless of mix?
+
+This phase consolidates and gives concrete, ordered shape to P4-1b, P4-2, P4-3, P4-4, P4-6, and the Phase 4b peer-similarity concept (P4b-2). Those items stay listed in their original phases as the conceptual record; build them here as part of these three tabs, not separately.
+
+### Stage 0 — Data generation *(blocks all three tabs — do this first)*
+
+- [ ] **P4d-0a: Generate geo×SRType + citywide SRType metrics for all committed years** — run `python scripts/pipeline.py --year <Y> --stage srtype` for each year that already has `tract_metrics_{Y}.parquet` / `csa_metrics_{Y}.parquet` committed (currently 2024 and 2025 only; ideally backfill 2016–2025 to match the Operations time series). `stage_srtype` requires `data/interim/requests_{Y}_clean.parquet`, which requires `--stage ingest` and `--stage process` first — `data/raw/` and `data/interim/` are gitignored and currently empty. Prefer triggering `backfill.yml` (handles ordering, retries, ESRI-friendly pacing, per-year commits) over running the chain locally.
+- [ ] **P4d-0b: Generate demographics CSVs** — run `python scripts/pipeline.py --stage demographics` once (year-independent, requires `CENSUS_API_KEY`); produces `tract_demographics.csv` and `csa_demographics.csv`.
+- [ ] **P4d-0c: Commit and verify outputs** — confirm `srtype_metrics_{Y}.parquet`, `tract_srtype_metrics_{Y}.parquet`, `csa_srtype_metrics_{Y}.parquet` exist for each processed year; check that summed `total_requests` matches the existing Operations KPI figures, and run the TD-2 spot-checks against the new demographics CSVs.
+- [ ] **P4d-0d: Graceful degradation during the transition** — each new tab loads its required files through `@st.cache_data` loaders that return `None` / an empty `DataFrame` when a file is absent (mirror `load_demographics` in `app.py` and `_load_geo_srtype_metrics` in `operations_panel.py`) and shows `st.info()` naming the pipeline command that would generate it — never `st.error()`, consistent with how the app already handles missing `srtype_metrics`/demographics.
+
+### Tab 1 — Service Category Explorer (`app/components/category_explorer.py`)
+
+*Gives concrete shape to P4-3 (ranking panel) and is the first instance of "within-type equity" (P4-1b).*
+
+- [ ] **P4d-1: Citywide SRType ranking table** — all SRTypes sorted by a chosen performance metric (volume, closure rate, median days to close, on-time rate, % resident-initiated), with category pills above filtering by department prefix. Reuse `_CATEGORY_NAMES`, `_EXCLUDED_CATEGORIES`, `_extract_categories()`, and the pill pattern already built in `operations_panel.py` (consider promoting to a shared constants module if duplicated elsewhere).
+- [ ] **P4d-2: Within-category geographic breakdown** — selecting a row renders a choropleth of that SRType's volume or speed across tracts/CSAs from `{geo_key}_srtype_metrics_{year}.parquet`, reusing `build_choropleth()` from `map_view.py` directly (e.g. `metric_col="total_requests"`, `sequential=True`).
+- [ ] **P4d-3: Within-category equity comparison** — for the selected SRType, join its geo×SRType rows (after `_MIN_GEO_SRTYPE_N` suppression) to demographics, split into majority-Black/White and above/below-median-income groups, and render two `_comparison_fig()` panels (race, income) — the same pattern `equity_distributions.py` uses citywide, scoped to one service category.
+- [ ] **P4d-4: Wire into `app.py`** — add `"Category Explorer"` to `st.tabs([...])`; pass through the already-loaded `geojson`, `demographics`, `DATA_DIR`, `geo_key`, `year`, `featureidkey`, `MAPBOX_TOKEN`.
+
+### Tab 2 — Area Embedding (`app/components/area_embedding.py`)
+
+*Reframes Phase 4b's "peer similarity index" (P4b-2) as a visual embedding the user can read at a glance — continuous vs. clustered — rather than a nearest-neighbor list, and pairs it with its inverse so both "what areas use" and "who areas are" can be explored side by side.*
+
+Two complementary embeddings, switchable by the user, over the **same** set of geographies:
+
+- [ ] **P4d-5: Service-usage-space embedding** — build a geography × SRType usage matrix from `{geo_key}_srtype_metrics_{year}.parquet` (row-normalized to shares, `_MIN_GEO_SRTYPE_N`-suppressed, sparse SRTypes/geographies dropped), reduce to 2D with `sklearn.decomposition.PCA` (after `StandardScaler`), one point per tract/CSA. Color-by control toggles between (a) a demographic continuous scale (`pct_black` or `median_income`) and (b) the saturation of a user-selected SRType's usage share. Answers: *"are areas continuous or clustered in what they request, and do demographically similar areas request similar things?"*
+- [ ] **P4d-6: Demographic-space embedding — the inverse view** — place the same geographies in 2D from their demographic profile (`pct_black`, `pct_white`, `median_income`; likely a direct scatter or light PCA since the input is already low-dimensional), colored by service-side variables: predominant SRType (categorical), overall service-request rate (`requests_per_1k`), or speed of resolution (`median_days_to_close`), user-selectable. Answers the inverse question: *"do areas that look alike demographically also look alike in how they use and experience 311?"*
+- [ ] **P4d-7: Shared view-switch and adaptive color-by controls** — one control (e.g. `st.radio`) toggles between the two embeddings; the color-by selector's options adapt to the active view (service-usage view offers demographic / service-saturation colors, demographic view offers service-mix / rate / speed colors) so the two read as one connected exploration rather than two separate tools.
+- [ ] **P4d-8: Optional SRType×SRType correlation heatmap** — secondary panel (e.g. `np.corrcoef` on the usage matrix) showing which service categories tend to be requested together across geographies; show only when ≥5 SRTypes are present.
+- [ ] **P4d-9: Wire into `app.py` + new dependency** — add `"Area Embedding"` tab; add `scikit-learn>=1.3.0` to `app/requirements.txt` (`PCA` + `StandardScaler`). Note `umap-learn` as a future enhancement once the PCA structure is validated — its `numba`/LLVM dependency makes it a much heavier install.
+
+### Tab 3 — Equity Adjusted for Service Mix (`app/components/equity_adjusted.py`)
+
+*Gives concrete shape to P4-1b, P4-2, P4-3 (ranking by within-type score), P4-4, and P4-6.*
+
+- [ ] **P4d-10: Stratified, volume-weighted "adjusted" equity score** — for each SRType with sufficient coverage, compute race- and income-based `overlap_score()` (reuse `utils.overlap_score`) within that type alone, then combine into a citywide "adjusted" score weighted by each type's request volume. Display side-by-side with the existing raw citywide score (`equity_distributions`/`equity_trend`), with a plain-language caption: a higher adjusted score than raw means part of the gap is mix-driven (disadvantaged areas request structurally slower-to-resolve services more often); a similar score means the gap is in how the *same* service gets delivered. *(implements P4-1b, P4-2, P4-4)*
+- [ ] **P4d-11: SRType equity ranking panel** — dot-plot or table of SRTypes ranked by within-type overlap score, color-coded via `score_label()`; clicking a type shows its full distribution comparison (reuse `_comparison_fig`). Answers *"which services are delivered most inequitably?"* *(implements P4-3)*
+- [ ] **P4d-12: Regression panel** — OLS `log(median_days_to_close) ~ pct_black + median_income + SRType FE + year FE` over the stacked tract×SRType×year panel (an aggregate-level approximation of the original record-level spec — label it clearly, since record-level data isn't in `data/processed/`). Show a coefficient table + 95% CI plot for `pct_black`/`median_income` plus an auto-generated plain-language interpretation. Add `statsmodels>=0.14.0` to `app/requirements.txt`. *(implements P4-6)*
+- [ ] **P4d-13: Wire into `app.py`** — add `"Equity Adjusted"` tab; receive the active `metric_col`/`metric_label` from the Equity tab's selector so scores and regression stay aligned with what the user is already looking at.
+
+### Suggested build order
+
+Stage 0 (data) → Tab 1 ranking → Tab 1 choropleth → Tab 1 within-type equity comparison → Tab 3 stratified scores (extends the Tab 1 comparison to every SRType) → Tab 3 regression → Tab 2 embeddings (independent of Tabs 1/3 once Stage 0 lands) → wire all three into `app.py` together as one coordinated change to the tab list, imports, and sidebar description.
+
+### Verification
+
+- **Stage 0**: confirm all six new parquet files exist per processed year and both demographics CSVs exist; `total_requests` sums match the Operations KPI bar.
+- **Tab 1**: ranking table loads and pills filter it; selecting a row updates the choropleth and renders both equity comparison panels; a low-volume type shows "insufficient data" gracefully (NaN score).
+- **Tab 2**: scatter renders one point per geography (199 tracts / 56 CSAs); variance-explained caption is non-trivial; toggling color-by (demographic ↔ service saturation, usage-space ↔ demographic-space) changes the plot as expected; geo-level toggle re-renders with the right point count.
+- **Tab 3**: raw vs. adjusted scores both display and differ meaningfully; ranking dot-plot is color-coded by `score_label()`; regression table shows non-null `pct_black`/`median_income` coefficients with CIs; missing-file states show `st.info()`, not errors.
 
 ---
 

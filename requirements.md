@@ -101,6 +101,20 @@ Run an OLS regression of `log(days_to_close)` on:
 
 This isolates income effect from confounders and produces a defensible claim about whether disparity is income-driven vs. structurally driven.
 
+### 3.5 Service-Mix and Area-Embedding Analysis (Phase 4d)
+
+Three additional analyses bridge the operational (Section 3.2) and equity (Section 3.3) layers, each becoming its own dashboard tab (see §4.5):
+
+1. **Within-type equity stratification** — rather than computing one Mann-Whitney overlap score per metric citywide, compute it *separately within each SRType* (e.g., do majority-Black tracts wait longer than majority-White tracts specifically for pothole repairs?), then combine the per-type scores into a single citywide "adjusted" score weighted by each type's request volume. Comparing this adjusted score to the existing raw citywide score decomposes the equity gap into two parts: how much is explained by *which* services an area happens to request (type-mix effect — some types are structurally slower) versus how much reflects *unequal delivery of the same service* (the cleaner equity signal). This generalizes §3.3's bivariate approach into a controlled, stratified comparison and operationalizes the "within-type vs. type-mix equity" framing already present in `TASKS.md` Phase 4.
+
+2. **Area embedding in two complementary spaces** — represent each tract/CSA as a point in 2D using dimensionality reduction (PCA, with UMAP as a future option) over two different feature spaces:
+   - **Service-usage space**: each geography's vector of SRType request shares (row-normalized geo×SRType volumes). Reveals whether geographies form tight clusters of similar service consumption or vary continuously, and — when colored by demographics — whether demographically similar areas cluster together in what they request.
+   - **Demographic space (the inverse view)**: each geography's race/income profile (`pct_black`, `pct_white`, `median_income`). Colored by service-side variables — predominant SRType, request rate (`requests_per_1k`), or speed of resolution (`median_days_to_close`) — this answers the inverse question: do areas that look alike demographically also look alike in how they use and experience 311?
+
+   Viewing both spaces side by side, with synchronized color-by controls, lets a user trace the same set of geographies through "what they request" and "who they are" and see where the two pictures align or diverge. This supersedes the simpler nearest-neighbor "peer similarity index" sketched for Phase 4b (§5) with a single visual structure that shows clustering vs. continuity at a glance.
+
+3. **Mix-adjusted regression** — extends §3.4's regression to the aggregate tract×SRType×year panel available in `data/processed/` (record-level data is not retained): `log(median_days_to_close) ~ pct_black + median_income + SRType fixed effects + year fixed effects`. Reported as a coefficient table with 95% confidence intervals for the race and income terms, paired with the stratified scores above as two independent lines of evidence for the same question — is the *same* service delivered more slowly to disadvantaged areas, controlling for what's being requested and when?
+
 ---
 
 ## 4. Output Specifications
@@ -147,6 +161,18 @@ This isolates income effect from confounders and produces a defensible claim abo
 - Equity trend view (year-over-year for selected geography)
 - Regression output panel (income coefficient, confidence interval)
 - Evaluate migration to Plotly Dash if Phase 2 interactivity exceeds Streamlit's event model
+
+### 4.5 Phase 4d Scope — Bridging Tabs (Category Explorer, Area Embedding, Equity Adjusted)
+
+Three new tabs operationalize §3.5's analyses, each answering one step of the journey from "how are we doing operationally" to "is it equitable, once you account for what's being requested." Detailed staged build plan lives in `TASKS.md` Phase 4d; summary of each tab's scope:
+
+| Tab | Core question | Key interactions |
+|---|---|---|
+| **Category Explorer** | How does performance differ *among* service categories, and *within* one category across geography and demographics? | Sortable citywide SRType ranking with category pills; selecting a type drives a within-type choropleth and a within-type race/income equity comparison (reusing the box-and-strip pattern from `equity_distributions.py`) |
+| **Area Embedding** | Do similar areas — by what they request, or by who lives there — cluster together, or is the city more of a continuum? | 2D PCA scatter, one point per tract/CSA, switchable between *service-usage space* and *demographic space* (its inverse); color-by control adapts to the active space (demographics or service saturation in usage space; predominant service / request rate / resolution speed in demographic space) |
+| **Equity Adjusted** | Are equity gaps explained by *which* services an area requests (mix-driven) or by *how* the same service is delivered (delivery-driven)? | Side-by-side raw vs. volume-weighted "adjusted" overlap scores; SRType equity ranking ranked by within-type score; OLS regression panel with coefficient table and confidence-interval plot |
+
+All three require `srtype_metrics_{year}.parquet`, `{geo_key}_srtype_metrics_{year}.parquet`, and the demographics CSVs — currently absent from `data/processed/` and the first blocking step of the phase (P4d-0a/0b in `TASKS.md`). New runtime dependencies: `scikit-learn` (PCA for Area Embedding) and `statsmodels` (OLS for Equity Adjusted) — see §8.
 
 ---
 
@@ -201,6 +227,9 @@ Stage 1 — Pipeline (GitHub Actions, output committed to repo)
 Stage 2 — App (reads only from data/processed/, no network dependencies at runtime)
   app/app.py                           → Streamlit entrypoint, tabs, year selector
   app/components/operations_panel.py   → Operations tab (KPI bar, time series, SRType table, map)
+  app/components/category_explorer.py  → Category Explorer tab (Phase 4d — ranking + within-type equity)
+  app/components/area_embedding.py     → Area Embedding tab (Phase 4d — PCA in usage & demographic space)
+  app/components/equity_adjusted.py    → Equity Adjusted tab (Phase 4d — stratified scores + regression)
   app/components/map_view.py           → Plotly choropleth_mapbox builder
   app/components/summary_panel.py      → selected-geography summary card (Equity tab)
   app/components/equity_distributions.py → race + income distribution comparison
@@ -210,6 +239,10 @@ Stage 2 — App (reads only from data/processed/, no network dependencies at run
   src/balt311/metrics.py               → parse_timestamps, compute_days_to_close,
                                           aggregate_tract, rollup_to_csa, rollup_demographics_to_csa
 ```
+
+**New Phase 4d dependencies** (`app/requirements.txt`):
+- `scikit-learn>=1.3.0` — `PCA` + `StandardScaler` for the Area Embedding tab (UMAP considered as a future, heavier-install alternative)
+- `statsmodels>=0.14.0` — `OLS` with robust standard errors for the Equity Adjusted regression panel
 
 **Repository layout:**
 ```
