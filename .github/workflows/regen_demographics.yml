@@ -1,0 +1,53 @@
+name: Regenerate demographics
+
+# Force-regenerates tract_demographics.csv and csa_demographics.csv from the
+# Census ACS 2023 5-year API, regardless of whether the files already exist.
+# Use this whenever the demographics pipeline changes (new ACS variables,
+# updated methodology, ACS vintage bump) and you need the committed files to
+# reflect the new code.
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to checkout and commit into"
+        required: false
+        default: "main"
+        type: string
+
+jobs:
+  regen:
+    name: "Regenerate ACS demographics → ${{ inputs.branch }}"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pandas pyarrow
+
+      - name: Regenerate ACS demographics (always runs — no skip check)
+        env:
+          CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
+        run: python scripts/pipeline.py --stage demographics
+
+      - name: Commit updated demographic files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/processed/tract_demographics.csv data/processed/csa_demographics.csv
+          if git diff --staged --quiet; then
+            echo "Demographic files unchanged — nothing to commit."
+          else
+            git commit -m "pipeline: regenerate ACS demographic reference files"
+            git push origin ${{ inputs.branch }}
+          fi
