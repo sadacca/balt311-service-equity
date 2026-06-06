@@ -12,9 +12,11 @@ import streamlit as st
 from components.srtype_shared import (
     CATEGORY_NAMES,
     EXCLUDED_CATEGORIES,
+    category_selector,
     extract_categories,
     load_srtype_history,
 )
+from components.utils import wmean as _wmean
 
 # How many highest-volume categories get individual lines in the among-category
 # trend charts and a permanent slot in the category selector — keeps both legible
@@ -40,16 +42,6 @@ _PALETTE = [
     "#636EFA", "#EF553B", "#00CC96", "#AB63FA", "#FFA15A",
     "#19D3F3", "#FF6692", "#B6E880", "#FF97FF", "#FECB52",
 ]
-
-
-def _wmean(df: pd.DataFrame, value_col: str, weight_col: str = "total_requests") -> float:
-    """Volume-weighted mean — the convention this dashboard uses everywhere it
-    needs to combine a rate metric (closure rate, median days) across SRTypes."""
-    sub = df.dropna(subset=[value_col, weight_col])
-    sub = sub[sub[weight_col] > 0]
-    if sub.empty:
-        return float("nan")
-    return float((sub[value_col] * sub[weight_col]).sum() / sub[weight_col].sum())
 
 
 def _category_aggregates(sr_all: pd.DataFrame) -> pd.DataFrame:
@@ -228,45 +220,6 @@ def _subtype_multiline_fig(
     return fig
 
 
-def _category_selector(agg: pd.DataFrame, key: str) -> str | None:
-    """Two-tier category picker.
-
-    The highest-volume categories (sorted alphabetically, so they read as a scannable
-    grid rather than a volume ranking) sit in an always-visible row sized to fit on
-    one line on mobile, labeled by their acronym with a small legend underneath —
-    these are the categories a returning user will recognize and want to jump to
-    quickly. Lower-volume categories are tucked behind an expander and labeled by
-    their full department name instead — a user opening that drawer is browsing,
-    not recalling an acronym, so the name carries more information than the code
-    and no separate legend is needed. Selecting in one tier clears the other so
-    there's always at most one active category.
-    """
-    ranked = agg["_cat"].tolist()
-    top_cats = sorted(ranked[:_TOP_CATEGORIES_N])
-    rest_cats = sorted(ranked[_TOP_CATEGORIES_N:])
-    top_key, more_key = f"{key}_top", f"{key}_more"
-
-    top_sel = st.pills(
-        "Category", top_cats, key=top_key,
-        on_change=lambda: st.session_state.update({more_key: None}),
-    )
-    top_known = {c: CATEGORY_NAMES[c] for c in top_cats if c in CATEGORY_NAMES}
-    if top_known:
-        st.caption("  ·  ".join(f"**{k}** {v}" for k, v in sorted(top_known.items())))
-
-    more_sel = None
-    if rest_cats:
-        with st.expander(f"+ {len(rest_cats)} lower-volume categories"):
-            more_sel = st.pills(
-                "More categories", rest_cats,
-                format_func=lambda c: CATEGORY_NAMES.get(c, c),
-                key=more_key,
-                on_change=lambda: st.session_state.update({top_key: None}),
-            )
-
-    return top_sel or more_sel
-
-
 def render_category_explorer(data_dir: Path, year: int) -> None:
     st.caption(
         "An operational overview of Baltimore's 311 service categories — usage, "
@@ -350,7 +303,7 @@ def render_category_explorer(data_dir: Path, year: int) -> None:
         "speeds or the category average is hiding a wide spread."
     )
     categories = extract_categories(sr_all)
-    selected_cat = _category_selector(agg, key="cat_explorer_cat") if categories else None
+    selected_cat = category_selector(agg["_cat"].tolist(), _TOP_CATEGORIES_N, key="cat_explorer_cat") if categories else None
 
     if not selected_cat:
         st.caption(

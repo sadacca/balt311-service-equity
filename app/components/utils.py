@@ -37,6 +37,17 @@ def score_label(score: float) -> tuple[str, str]:
     return "needs review", "red"
 
 
+def wmean(df: pd.DataFrame, value_col: str, weight_col: str = "total_requests") -> float:
+    """Volume-weighted mean — the convention this dashboard uses everywhere it
+    needs to combine a rate metric (closure rate, median days) across SRTypes
+    or geographies: sum(value*weight) / sum(weight)."""
+    sub = df.dropna(subset=[value_col, weight_col])
+    sub = sub[sub[weight_col] > 0]
+    if sub.empty:
+        return float("nan")
+    return float((sub[value_col] * sub[weight_col]).sum() / sub[weight_col].sum())
+
+
 def format_metric(val: float, metric_col: str) -> str:
     """Format a metric value for display (percentage or decimal)."""
     if metric_col in ("closure_rate", "on_time_rate"):

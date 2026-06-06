@@ -7,6 +7,7 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from components.category_equity_explorer import render_category_equity_explorer
 from components.category_explorer import render_category_explorer
 from components.equity_distributions import render_equity_distributions
 from components.equity_trend import render_equity_trend
@@ -123,7 +124,9 @@ else:
 demographics = load_demographics(DATA_DIR / f"{geo_key}_demographics.csv")
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_ops, tab_cat, tab_eq = st.tabs(["Operations", "Service Category Explorer", "Equity"])
+tab_ops, tab_cat, tab_eq, tab_cat_eq = st.tabs([
+    "Operations", "Service Category Explorer", "Equity", "Service Category Equity Explorer",
+])
 
 # ── Operations tab ────────────────────────────────────────────────────────────
 with tab_ops:
@@ -250,3 +253,13 @@ with tab_eq:
                     f"`{geo_key}_demographics.csv` not found in `data/processed/`. "
                     "Re-run the pipeline to generate it."
                 )
+
+# ── Service Category Equity Explorer tab ──────────────────────────────────────
+with tab_cat_eq:
+    if not data_ready:
+        st.info(
+            f"No processed data found for **{year}** at **{geo_level}** level. "
+            "Run the pipeline to generate it."
+        )
+    else:
+        render_category_equity_explorer(DATA_DIR, demographics, geo_key, year)
