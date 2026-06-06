@@ -52,12 +52,33 @@ ACS_POPULATION_URL = (
     "?get=B01003_001E&for=tract:*&in=state:24%20county:510"
 )
 
-# ACS 2023 5-year race (B02001) and median household income (B19013) — same geography.
-# B02001_001E: total, B02001_002E: White alone, B02001_003E: Black or African American alone.
-# B19013_001E: median household income (-666666666 = no data sentinel).
+# ACS 2023 5-year variables for demographics. Expanding beyond race+income to
+# include age structure, Hispanic/Latino ethnicity, educational attainment, and
+# poverty rate — the fuller profile makes the demographic-space embedding in Tab 3
+# meaningfully multi-dimensional rather than essentially a race-income scatter.
+_ACS_VARS = [
+    # Race (B02001)
+    "B02001_001E", "B02001_002E", "B02001_003E",
+    # Median household income — null sentinel -666666666 (B19013)
+    "B19013_001E",
+    # Age sex×age (B01001): total + under-18 cells + 65+ cells by sex
+    "B01001_001E",
+    "B01001_003E", "B01001_004E", "B01001_005E", "B01001_006E",    # male: <5, 5-9, 10-14, 15-17
+    "B01001_020E", "B01001_021E", "B01001_022E", "B01001_023E", "B01001_024E", "B01001_025E",  # male: 65-66, 67-69, 70-74, 75-79, 80-84, 85+
+    "B01001_027E", "B01001_028E", "B01001_029E", "B01001_030E",    # female: <5, 5-9, 10-14, 15-17
+    "B01001_044E", "B01001_045E", "B01001_046E", "B01001_047E", "B01001_048E", "B01001_049E",  # female: 65-66 … 85+
+    # Median age — null sentinel -666666666 (B01002)
+    "B01002_001E",
+    # Hispanic/Latino origin — any race (B03003)
+    "B03003_001E", "B03003_003E",
+    # Educational attainment for pop 25+ (B15003): total + bachelor's through doctorate
+    "B15003_001E", "B15003_022E", "B15003_023E", "B15003_024E", "B15003_025E",
+    # Poverty status (B17001): total for determination + below poverty level
+    "B17001_001E", "B17001_002E",
+]
 ACS_DEMOGRAPHICS_URL = (
     "https://api.census.gov/data/2023/acs/acs5"
-    "?get=B02001_001E,B02001_002E,B02001_003E,B19013_001E&for=tract:*&in=state:24%20county:510"
+    "?get=" + ",".join(_ACS_VARS) + "&for=tract:*&in=state:24%20county:510"
 )
 
 # BNIA VitalSigns 2020 census-tract → CSA crosswalk.
@@ -157,16 +178,20 @@ def _fetch_baltimore_population(dest: Path) -> bool:
 
 
 def _fetch_tract_demographics(dest: Path) -> bool:
-    """Download ACS 2023 5-year race and median income for Baltimore City census tracts.
+    """Download ACS 2023 5-year demographics for Baltimore City census tracts.
 
-    Saves geoid, pct_black, pct_white, median_income, and raw population counts needed
-    for accurate CSA-level rollup. Returns True on success, False on soft failure.
+    Saves geoid, race pct and raw counts (accurate CSA rollup), median income,
+    plus age structure (pct_under18, pct_65plus, median_age), Hispanic/Latino
+    ethnicity (pct_hispanic), educational attainment (pct_bachelors_plus), and
+    poverty rate (pct_poverty) — the fuller profile that makes the demographic-
+    space embedding in Tab 3 meaningfully multi-dimensional.
+    Returns True on success, False on soft failure.
     """
     api_key = os.environ.get("CENSUS_API_KEY", "").strip()
     url = ACS_DEMOGRAPHICS_URL + (f"&key={api_key}" if api_key else "")
     if not api_key:
         log("  NOTE: CENSUS_API_KEY not set — demographics request may be rate-limited")
-    log("Downloading ACS 2023 5-year race and income data (Baltimore City tracts) ...")
+    log("Downloading ACS 2023 5-year demographics (race, income, age, ethnicity, education, poverty) ...")
     raw = ""
     for attempt in range(1, 5):
         try:
@@ -196,23 +221,63 @@ def _fetch_tract_demographics(dest: Path) -> bool:
     headers, data = rows[0], rows[1:]
     df = pd.DataFrame(data, columns=headers)
     df["geoid"] = df["state"] + df["county"] + df["tract"]
-    for col in ["B02001_001E", "B02001_002E", "B02001_003E", "B19013_001E"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-    # ACS uses -666666666 as the null sentinel for suppressed income estimates
-    df.loc[df["B19013_001E"] < 0, "B19013_001E"] = float("nan")
 
-    total = df["B02001_001E"].replace(0, float("nan"))
-    df["pct_black"] = df["B02001_003E"] / total
-    df["pct_white"] = df["B02001_002E"] / total
+    # Parse all ACS estimate columns as numeric; coerce non-numeric to NaN.
+    for col in _ACS_VARS:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    # ACS uses -666666666 as the null sentinel for suppressed estimates.
+    for col in _ACS_VARS:
+        if col in df.columns:
+            df.loc[df[col] < 0, col] = float("nan")
+
+    # ── Race (B02001) ─────────────────────────────────────────────────────────
+    total_race = df["B02001_001E"].replace(0, float("nan"))
+    df["pct_black"] = df["B02001_003E"] / total_race
+    df["pct_white"] = df["B02001_002E"] / total_race
     df["median_income"] = df["B19013_001E"]
     df["total_race_pop"] = df["B02001_001E"]
     df["black_pop"] = df["B02001_003E"]
     df["white_pop"] = df["B02001_002E"]
 
-    out_cols = ["geoid", "pct_black", "pct_white", "median_income",
-                "total_race_pop", "black_pop", "white_pop"]
+    # ── Age structure (B01001) ────────────────────────────────────────────────
+    total_age = df["B01001_001E"].replace(0, float("nan"))
+    _under18 = [
+        "B01001_003E", "B01001_004E", "B01001_005E", "B01001_006E",   # male
+        "B01001_027E", "B01001_028E", "B01001_029E", "B01001_030E",   # female
+    ]
+    _over65 = [
+        "B01001_020E", "B01001_021E", "B01001_022E", "B01001_023E", "B01001_024E", "B01001_025E",  # male
+        "B01001_044E", "B01001_045E", "B01001_046E", "B01001_047E", "B01001_048E", "B01001_049E",  # female
+    ]
+    df["pct_under18"] = df[_under18].sum(axis=1) / total_age
+    df["pct_65plus"] = df[_over65].sum(axis=1) / total_age
+    df["median_age"] = df["B01002_001E"]
+
+    # ── Hispanic / Latino origin (B03003) ─────────────────────────────────────
+    total_hisp = df["B03003_001E"].replace(0, float("nan"))
+    df["pct_hispanic"] = df["B03003_003E"] / total_hisp
+
+    # ── Educational attainment for pop 25+ (B15003) ───────────────────────────
+    total_edu = df["B15003_001E"].replace(0, float("nan"))
+    _bach_plus = ["B15003_022E", "B15003_023E", "B15003_024E", "B15003_025E"]
+    df["pct_bachelors_plus"] = df[_bach_plus].sum(axis=1) / total_edu
+
+    # ── Poverty rate (B17001) ─────────────────────────────────────────────────
+    total_pov = df["B17001_001E"].replace(0, float("nan"))
+    df["pct_poverty"] = df["B17001_002E"] / total_pov
+
+    out_cols = [
+        "geoid",
+        "pct_black", "pct_white", "median_income",
+        "total_race_pop", "black_pop", "white_pop",
+        "pct_hispanic",
+        "pct_under18", "pct_65plus", "median_age",
+        "pct_bachelors_plus",
+        "pct_poverty",
+    ]
     df[out_cols].to_csv(dest, index=False)
-    log(f"  {len(df)} tracts → {dest.name}")
+    log(f"  {len(df)} tracts → {dest.name} ({len(out_cols) - 1} features)")
     return True
 
 
@@ -529,11 +594,13 @@ def stage_srtype(year: int) -> None:
 
 
 def stage_demographics() -> None:
-    """Fetch ACS race and income demographics and commit-ready CSVs to data/processed/.
+    """Fetch ACS demographics and write commit-ready CSVs to data/processed/.
 
-    Year-independent: only needs to be run once. Files are reused across all
-    pipeline years. Fails loudly if the Census API is unavailable — check that
-    CENSUS_API_KEY is set in the environment.
+    Fetches race (B02001), median income (B19013), age structure (B01001/B01002),
+    Hispanic/Latino ethnicity (B03003), educational attainment (B15003), and
+    poverty rate (B17001) — the fuller profile used by Tab 3's demographic-space
+    embedding. Year-independent: only needs to be run once. Fails loudly if the
+    Census API is unavailable — check that CENSUS_API_KEY is set in the environment.
     """
     for d in (RAW_DIR, INTERIM, PROC):
         d.mkdir(parents=True, exist_ok=True)
