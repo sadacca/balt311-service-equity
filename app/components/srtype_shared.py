@@ -13,22 +13,43 @@ import streamlit as st
 # Minimum requests in a geo×SRType cell to display (suppresses noise; adjustable without rerunning pipeline)
 MIN_GEO_SRTYPE_N = 5
 
-# Full department names for category pill abbreviations.
-# Source: Baltimore City 311 system (balt311.baltimorecity.gov). Extend as new prefixes appear.
+# Full department/bureau names for category pill abbreviations. Baltimore's 311
+# system doesn't publish a prefix glossary, so these are inferred from the content
+# of each prefix's subcategories (e.g. "WW-Hydrant Leaking", "WW-Sediment or Erosion
+# Problem" → Water & Wastewater). Extend as new prefixes appear.
 CATEGORY_NAMES: dict[str, str] = {
-    "BGE":  "BGE Street Lights",
-    "BCRP": "Recreation & Parks",
-    "CDW":  "Construction & Development",
-    "CHE":  "Environmental Services",
-    "DPW":  "Public Works",
-    "ECC":  "Emergency Communications",
-    "FF":   "Fire & Flood",
-    "GRM":  "Grounds Maintenance",
-    "HCD":  "Housing & Community Development",
-    "MONO": "Parking Authority",
-    "PC":   "Police Commissioner",
-    "SW":   "Solid Waste",
-    "TRS":  "Transportation",
+    "BCLB":    "Board of Liquor License Commissioners",
+    "BGE":     "Baltimore Gas & Electric (utility coordination)",
+    "BPD":     "Police Department",
+    "CC":      "City Council",
+    "DPW":     "Public Works",
+    "ECC":     "Emergency Communications",
+    "EOC":     "Emergency Operations Center",
+    "FCCS":    "Finance — Customer & Collections Services",
+    "FCDA":    "Finance — Central Debt & Accounts",
+    "FCPF":    "Finance — Citations & Parking Fines",
+    "FIN":     "Finance",
+    "FINBAPS": "Finance — Accounting & Payroll Services",
+    "FIR":     "Fire Department",
+    "FOR":     "Forestry",
+    "HCD":     "Housing & Community Development",
+    "HLTH":    "Health Department",
+    "MOHS":    "Mayor's Office of Homeless Services",
+    "MOIT":    "Mayor's Office of Information Technology",
+    "OEM":     "Office of Emergency Management",
+    "PABC":    "Parking Authority of Baltimore City",
+    "RP":      "Recreation & Parks",
+    "SW":      "Solid Waste",
+    "TEC":     "Transportation — Engineering & Construction",
+    "TR":      "Transportation — Right-of-Way",
+    "TRA":     "Transportation — Automated Traffic Enforcement",
+    "TRC":     "Transportation — Conduits",
+    "TRD":     "Transportation — Administration",
+    "TRM":     "Transportation — Maintenance",
+    "TRS":     "Transportation — Parking Enforcement",
+    "TRT":     "Transportation — Traffic",
+    "TTR":     "Transportation — Towing & Vehicle Recovery",
+    "WW":      "Water & Wastewater",
 }
 
 EXCLUDED_CATEGORIES = {"TEST"}
