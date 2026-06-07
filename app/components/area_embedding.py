@@ -570,8 +570,9 @@ def _render_usage_view(data_dir: Path, year: int) -> None:
     n_tracts = embedding["geo_type"].eq("Tract").sum() // max(len(embedding["year"].unique()), 1)
     n_csas   = embedding["geo_type"].eq("CSA").sum()   // max(len(embedding["year"].unique()), 1)
     st.caption(
-        f"PC1 **{pc1_pct:.0f}%** · PC2 **{pc2_pct:.0f}%** · "
-        f"combined **{pc1_pct + pc2_pct:.0f}%** — {n_tracts} tracts + {n_csas} CSAs"
+        f"These two dimensions capture **{pc1_pct + pc2_pct:.0f}%** of the variation in how "
+        f"neighborhoods use 311 — so similar positions here usually reflect similar real-world patterns. "
+        f"({n_tracts} tracts · {n_csas} CSAs)"
     )
 
     pad    = 0.27
@@ -724,9 +725,10 @@ def _render_demographic_view(data_dir: Path, year: int) -> None:
     n_tracts = embedding["geo_type"].eq("Tract").sum()
     n_csas   = embedding["geo_type"].eq("CSA").sum()
     st.caption(
-        f"PC1 **{pc1_pct:.0f}%** · PC2 **{pc2_pct:.0f}%** · "
-        f"combined **{pc1_pct + pc2_pct:.0f}%** of variation in {feature_phrase} "
-        f"across {n_tracts} tracts + {n_csas} CSAs."
+        f"These two dimensions capture **{pc1_pct + pc2_pct:.0f}%** of the variation in "
+        f"{feature_phrase} across Baltimore neighborhoods — "
+        f"so similar positions here usually reflect similar real-world demographic profiles. "
+        f"({n_tracts} tracts · {n_csas} CSAs)"
     )
 
     pad    = 0.27

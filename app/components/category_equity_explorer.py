@@ -662,9 +662,9 @@ def render_category_equity_explorer(
     metric_col = _METRIC_OPTIONS[metric_label]
 
     st.caption(
-        f"**{metric_label}** equity score — race (majority-Black vs. majority-White) "
-        "and income (below- vs. above-median) geographies. 100% = perfectly "
-        "interleaved · >70% not bad · 40–70% could be better · <40% needs review."
+        f"**{metric_label}** equity score — race (majority-Black vs. majority-White neighborhoods) "
+        "and income (below- vs. above-median neighborhoods). "
+        "100% = no gap between groups · >70% not bad · 40–70% could be better · <40% needs review."
     )
 
     citywide_trend = compute_citywide_equity_trend(data_dir, demographics, geo_key)

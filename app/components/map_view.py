@@ -36,16 +36,24 @@ def build_choropleth(
         range_color = [0, data_max]
         colorbar_ticks = {"tickvals": [0, data_max], "ticktext": ["Fewer", "More"]}
     else:
-        colorscale = "RdBu_r"
         midpoint = float(valid_vals.median()) if not valid_vals.empty else None
         range_color = None
         data_min = float(valid_vals.min()) if not valid_vals.empty else 0.0
         data_max = float(valid_vals.max()) if not valid_vals.empty else 1.0
         data_mid = midpoint if midpoint is not None else (data_min + data_max) / 2
-        colorbar_ticks = {
-            "tickvals": [data_min, data_mid, data_max],
-            "ticktext": ["Lower", "City median", "Higher"],
-        }
+        if metric_col == "median_days_to_close":
+            # Lower = faster = better → use blue for low end so "good" reads as blue
+            colorscale = "RdBu"
+            colorbar_ticks = {
+                "tickvals": [data_min, data_mid, data_max],
+                "ticktext": ["Shorter wait", "City median", "Longer wait"],
+            }
+        else:
+            colorscale = "RdBu_r"
+            colorbar_ticks = {
+                "tickvals": [data_min, data_mid, data_max],
+                "ticktext": ["Lower", "City median", "Higher"],
+            }
 
     fig = px.choropleth_mapbox(
         df,
