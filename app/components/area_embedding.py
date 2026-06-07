@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import QuantileTransformer, RobustScaler
@@ -375,6 +376,46 @@ def _dedup_legend(fig) -> None:
             seen.add(name)
 
 
+def _add_highlight_trace(fig, emb: pd.DataFrame, search: str, year: int | None = None) -> None:
+    """Overlay a gold ring on any geography whose name matches the search string."""
+    q = search.strip().lower()
+    if not q:
+        return
+
+    cands = emb.copy()
+    # Match on CSA name (geoid) or NSA neighborhood name
+    name_match = cands["geoid"].str.lower().str.contains(q, na=False)
+    if "nsa_name" in cands.columns:
+        name_match = name_match | cands["nsa_name"].str.lower().str.contains(q, na=False)
+    cands = cands[name_match]
+    if cands.empty:
+        return
+
+    # For animated (usage) view, show the selected year's position
+    if year is not None and "year" in cands.columns:
+        yr_cands = cands[cands["year"] == year]
+        cands = yr_cands if not yr_cands.empty else cands
+
+    pts = cands.groupby("geoid")[["x", "y"]].mean().reset_index()
+    fig.add_trace(go.Scatter(
+        x=pts["x"],
+        y=pts["y"],
+        mode="markers+text",
+        marker=dict(
+            symbol="circle",
+            size=26,
+            color="rgba(255, 215, 0, 0.25)",
+            line=dict(color="goldenrod", width=3),
+        ),
+        text=pts["geoid"],
+        textposition="top center",
+        textfont=dict(size=12, color="goldenrod"),
+        name="Highlighted",
+        showlegend=False,
+        hoverinfo="skip",
+    ))
+
+
 def _top_legend_layout(is_categorical: bool) -> dict:
     if is_categorical:
         return dict(
@@ -533,7 +574,7 @@ def _render_quadrant_srtype_bar(
 # ── View renderers ────────────────────────────────────────────────────────────
 
 @st.fragment
-def _render_usage_view(data_dir: Path, year: int) -> None:
+def _render_usage_view(data_dir: Path, year: int, highlight: str = "") -> None:
     st.caption(
         "Every geography projected into a shared 2D space by service-request mix — "
         "fit once across all years so movement between frames is real change. Press play."
@@ -645,6 +686,7 @@ def _render_usage_view(data_dir: Path, year: int) -> None:
         fig.layout.sliders[0].y = -0.08
 
     _dedup_legend(fig)
+    _add_highlight_trace(fig, display_df, highlight, year=year)
     st.plotly_chart(fig, use_container_width=True)
     nsa_note = (
         f"~{round(_CSA_LABEL_FRAC * 100):.0f}% of tract NSA names labeled (min {_CSA_LABEL_MIN_PER_QUAD} per quadrant, farthest-point sampled). "
@@ -671,7 +713,7 @@ def _render_usage_view(data_dir: Path, year: int) -> None:
 
 
 @st.fragment
-def _render_demographic_view(data_dir: Path, year: int) -> None:
+def _render_demographic_view(data_dir: Path, year: int, highlight: str = "") -> None:
     st.caption(
         "Geographies placed by *who lives there* — ACS 2023 demographic profile. "
         "Colored by predominant service type in the selected year to test whether "
@@ -785,6 +827,7 @@ def _render_demographic_view(data_dir: Path, year: int) -> None:
     fig.update_yaxes(range=y_range)
     _add_quadrant_backgrounds(fig, x_mid, y_mid, x_range, y_range)
     _dedup_legend(fig)
+    _add_highlight_trace(fig, display_df, highlight)
     st.plotly_chart(fig, use_container_width=True)
     nsa_note = (
         f"~{round(_CSA_LABEL_FRAC * 100):.0f}% of tract NSA names labeled (min {_CSA_LABEL_MIN_PER_QUAD} per quadrant). "
@@ -838,9 +881,16 @@ def render_area_embedding(data_dir: Path, year: int) -> None:
         "have similar profiles. Large labeled bubbles = CSAs (community districts) · "
         "small dots = individual census tracts."
     )
+
+    highlight = st.text_input(
+        "Find a neighborhood",
+        value="",
+        placeholder="Type a CSA or neighborhood name to highlight it…",
+        key="area_emb_highlight",
+    )
     st.divider()
 
     if view == "usage":
-        _render_usage_view(data_dir, year)
+        _render_usage_view(data_dir, year, highlight=highlight)
     else:
-        _render_demographic_view(data_dir, year)
+        _render_demographic_view(data_dir, year, highlight=highlight)
