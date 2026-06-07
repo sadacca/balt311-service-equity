@@ -67,13 +67,14 @@ _DEMO_FEATURE_COLS = [
     "median_age",
 ]
 
-# Service metrics for coloring the demographic view — leading options are
-# continuous delivery metrics so the default shows service disparities directly.
+# Service metrics for coloring the demographic view — Predominant service type
+# is first so the default answer to "do demographic peers use 311 similarly?"
+# is immediately visible as a categorical colour.
 _SERVICE_COLOR_OPTIONS = {
+    "Predominant service type": "top_sr_type",
     "Median days to close": "median_days_to_close",
     "Closure rate": "closure_rate",
     "Requests per 1,000 residents": "requests_per_1k",
-    "Predominant service type": "top_sr_type",
 }
 
 _VIEWS = {
@@ -459,6 +460,7 @@ def _render_usage_view(
 
 @st.fragment
 def _render_demographic_view(
+    data_dir: Path,
     demographics: pd.DataFrame | None,
     geo_key: str,
     df: pd.DataFrame | None,
@@ -483,6 +485,11 @@ def _render_demographic_view(
         return
 
     embedding = embedding.copy()
+
+    # Cluster by position in demographic space (same KMeans approach as usage view)
+    cluster_df = _assign_clusters(embedding)
+    embedding = embedding.merge(cluster_df, on="geoid", how="left")
+
     color_options: dict[str, str] = {}
     if df is not None:
         for label, col in _SERVICE_COLOR_OPTIONS.items():
@@ -522,6 +529,7 @@ def _render_demographic_view(
     display_df = _scale_pct_cols(embedding, feature_cols)
     hover_labels: dict[str, str] = {
         "x": "PC1", "y": "PC2",
+        "cluster_label": "Cluster",
         **({color_col: color_label} if color_col else {}),
         **{c: _DEMO_HOVER_NAMES.get(c, c) for c in feature_cols},
     }
@@ -531,7 +539,7 @@ def _render_demographic_view(
         x="x", y="y",
         color=color_col,
         hover_name="geoid",
-        hover_data={c: True for c in feature_cols},
+        hover_data={"cluster_label": True, **{c: True for c in feature_cols}},
         labels=hover_labels,
         color_continuous_scale="RdYlGn_r" if not is_categorical else None,
     )
@@ -539,7 +547,35 @@ def _render_demographic_view(
     fig.update_layout(height=600, **_top_legend_layout(is_categorical))
     _dedup_legend(fig)
     st.plotly_chart(fig, use_container_width=True)
-    st.caption("Hover for geographic ID and demographic profile values.")
+    st.caption("Hover for cluster assignment and demographic profile values.")
+
+    # ── Cluster service-mix profiles ──────────────────────────────────────────
+    # Clusters are defined by demographic similarity; bars show what each cluster
+    # asks 311 for — revealing whether demographic peers use 311 similarly.
+    usage_embedding, usage_feature_cols, _ = compute_usage_embedding(data_dir, geo_key)
+    if not usage_embedding.empty and usage_feature_cols:
+        year_usage = (
+            usage_embedding[usage_embedding["year"] == year]
+            [["geoid"] + usage_feature_cols]
+            .copy()
+        )
+        year_usage["year"] = year
+        year_usage = year_usage.merge(
+            embedding[["geoid", "cluster_label"]], on="geoid", how="inner",
+        )
+        if not year_usage.empty:
+            st.subheader(f"Cluster Service Mix — {year}")
+            n_by_cluster = year_usage.groupby("cluster_label").size().to_dict()
+            summary = "  ·  ".join(
+                f"**{ltr}** {n_by_cluster.get(ltr, 0)} {geo_noun}"
+                for ltr in _CLUSTER_LETTERS[:_N_CLUSTERS]
+            )
+            st.caption(
+                f"Neighborhoods grouped by demographic similarity ({summary}). "
+                f"Bars show what each cluster asks 311 for in **{year}** — "
+                "do demographic peers use 311 similarly?"
+            )
+            _render_cluster_bar(year_usage, usage_feature_cols, year)
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -588,4 +624,4 @@ def render_area_embedding(
     if view == "usage":
         _render_usage_view(data_dir, demographics, geo_key, year)
     else:
-        _render_demographic_view(demographics, geo_key, df, year)
+        _render_demographic_view(data_dir, demographics, geo_key, df, year)
