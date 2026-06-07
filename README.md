@@ -77,11 +77,10 @@ Four light-filled **quadrant backgrounds** (NW / NE / SW / SE, divided at median
 
 **Demographic view** — geographies positioned by ACS 2023 demographic profile: race, income, poverty, age, education (RobustScaler + PCA). Colored by the predominant 311 service type for the selected year. No year animation — ACS demographics are a single snapshot. Cross-coloring answers: *do areas that look alike demographically call 311 for the same things?*
 
-Below the scatter, three additional panels appear for both views:
+Below the scatter, two additional panels appear for both views:
 
-- **Category-mix bar** — 100% stacked bar showing the top-5 high-level service category shares (e.g. Solid Waste, HCD) per quadrant, tracts only (CSAs are population-weighted aggregates; including both would double-count)
 - **Predominant-subtype bar** — for each quadrant, what % of tracts have each specific SRType (e.g. "SW-Dirty Street", "HCD-Rodents") as their single most-requested service. Only subtypes that dominate at least one tract appear; top 8 globally + Other
-- **Neighborhood list** — CSA names arranged in four columns by quadrant, for quick identification of which named neighborhoods fall in each group
+- **Neighborhood list** — CSA names in two columns by quadrant, for quick identification of which named neighborhoods fall in each group
 
 ---
 

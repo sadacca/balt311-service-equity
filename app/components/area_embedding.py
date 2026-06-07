@@ -14,13 +14,12 @@ import streamlit as st
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import QuantileTransformer, RobustScaler
 
-from components.srtype_shared import CATEGORY_NAMES, MIN_GEO_SRTYPE_N, load_geo_srtype_history
+from components.srtype_shared import MIN_GEO_SRTYPE_N, load_geo_srtype_history
 
 _MIN_GEO_YEAR_TOTAL = 200
 _TOP_K_CATEGORIES = 15
 _PSEUDOCOUNT = 1e-4
 _TOP_SRTYPE_SHOW = 12
-_BAR_TOP_N = 5
 _CSA_LABEL_FRAC         = 0.10  # fraction of CSA markers to label; farthest-point sampled
 _CSA_LABEL_MIN_PER_QUAD = 3     # guaranteed minimum CSA labels per quadrant
 _SRTYPE_BAR_TOP_N  = 8    # individual SRTypes to show in the predominant-subtype bar
@@ -443,66 +442,6 @@ def _add_hover_fmt(
     return df, col_map
 
 
-# ── Quadrant bar ──────────────────────────────────────────────────────────────
-
-def _render_quadrant_bar(
-    embedding: pd.DataFrame, feature_cols: list[str], year: int,
-) -> None:
-    """100% stacked bar — top-5 category share per quadrant, tracts only in `year`."""
-    year_df = embedding[embedding["year"] == year] if "year" in embedding.columns else embedding
-    if "geo_type" in year_df.columns:
-        year_df = year_df[year_df["geo_type"] == "Tract"]
-
-    if year_df.empty or "cluster_label" not in year_df.columns:
-        st.info(f"No tract data for {year}.")
-        return
-
-    quad_sizes  = year_df.groupby("cluster_label").size().to_dict()
-    quad_shares = year_df.groupby("cluster_label")[feature_cols].mean().reset_index()
-
-    global_mean  = year_df[feature_cols].mean()
-    top_cols     = global_mean.sort_values(ascending=False).head(_BAR_TOP_N).index.tolist()
-    other_cols   = [c for c in feature_cols if c not in top_cols]
-    if other_cols:
-        quad_shares["Other"] = quad_shares[other_cols].sum(axis=1)
-    display_cols = top_cols + (["Other"] if other_cols else [])
-
-    row_totals = quad_shares[display_cols].sum(axis=1).replace(0, np.nan)
-    quad_shares[display_cols] = quad_shares[display_cols].div(row_totals, axis=0)
-
-    dominant      = quad_shares.set_index("cluster_label")[top_cols].idxmax(axis=1)
-    dominant_name = dominant.map(lambda c: CATEGORY_NAMES.get(c, c))
-    quad_shares["Quadrant"] = quad_shares["cluster_label"].map(
-        lambda c: f"{c} · {dominant_name.get(c, '')}  (n={quad_sizes.get(c, 0)} tracts)"
-    )
-
-    melted = quad_shares.melt(
-        id_vars=["cluster_label", "Quadrant"],
-        value_vars=display_cols, var_name="category", value_name="share",
-    )
-    melted["Category"] = melted["category"].map(lambda c: CATEGORY_NAMES.get(c, c))
-    cat_order  = melted.groupby("Category")["share"].mean().sort_values(ascending=False).index.tolist()
-    quad_order = sorted(
-        quad_shares["Quadrant"].tolist(),
-        key=lambda s: next((i for i, q in enumerate(_QUADRANT_ORDER) if s.startswith(q)), 99),
-    )
-
-    fig = px.bar(
-        melted, x="Quadrant", y="share", color="Category",
-        category_orders={"Category": cat_order, "Quadrant": quad_order},
-        labels={"share": "", "Quadrant": ""},
-        color_discrete_sequence=px.colors.qualitative.Safe,
-    )
-    fig.update_yaxes(tickformat=".0%")
-    fig.update_layout(
-        barmode="stack", height=420,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-        margin=dict(l=10, r=10, t=10, b=10),
-        yaxis_title="Share of requests",
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-
 # ── Neighborhood list ─────────────────────────────────────────────────────────
 
 def _render_neighborhood_list(embedding: pd.DataFrame) -> None:
@@ -636,7 +575,7 @@ def _render_usage_view(data_dir: Path, year: int) -> None:
         f"combined **{pc1_pct + pc2_pct:.0f}%** — {n_tracts} tracts + {n_csas} CSAs"
     )
 
-    pad    = 0.08
+    pad    = 0.14
     x5, x95 = np.percentile(embedding["x"], [5, 95])
     y5, y95 = np.percentile(embedding["y"], [5, 95])
     x_range = [x5 - (x95 - x5) * pad, x95 + (x95 - x5) * pad]
@@ -715,20 +654,15 @@ def _render_usage_view(data_dir: Path, year: int) -> None:
     )
     st.caption(nsa_note)
 
-    # Quadrant service-mix bar (tracts only — avoids double-counting)
-    st.subheader(f"Quadrant Profiles — {year}")
+    st.subheader(f"Predominant Service Type by Quadrant — {year}")
     n_by_quad = (
         embedding[(embedding["year"] == year) & (embedding["geo_type"] == "Tract")]
         .groupby("cluster_label").size().to_dict()
     )
     summary = "  ·  ".join(f"**{q}** {n_by_quad.get(q, 0)}" for q in _QUADRANT_ORDER)
-    st.caption(f"Quadrant tract counts ({summary}). Bars show category mix for the selected year.")
-    _render_quadrant_bar(embedding, feature_cols, year)
-
-    st.subheader(f"Predominant Service Type by Quadrant — {year}")
     st.caption(
-        "For each quadrant: what % of tracts have each specific service type as their "
-        "most-called-upon service. Only service types that dominate at least one tract appear."
+        f"Tract counts by quadrant: {summary}. "
+        "Bars show the % of tracts in each quadrant whose top service call is each specific type."
     )
     _render_quadrant_srtype_bar(embedding, data_dir, year)
 
@@ -797,7 +731,7 @@ def _render_demographic_view(data_dir: Path, year: int) -> None:
         f"across {n_tracts} tracts + {n_csas} CSAs."
     )
 
-    pad    = 0.08
+    pad    = 0.14
     x5, x95 = np.percentile(embedding["x"], [5, 95])
     y5, y95 = np.percentile(embedding["y"], [5, 95])
     x_range = [x5 - (x95 - x5) * pad, x95 + (x95 - x5) * pad]
@@ -860,31 +794,15 @@ def _render_demographic_view(data_dir: Path, year: int) -> None:
     )
     st.caption(nsa_note)
 
-    # Quadrant service-mix bar (tracts, grouped by demographic quadrant)
-    usage_emb, usage_feat_cols, _ = compute_combined_usage_embedding(data_dir)
-    if not usage_emb.empty and usage_feat_cols:
-        year_usage = usage_emb[
-            (usage_emb["year"] == year) & (usage_emb["geo_type"] == "Tract")
-        ][["geoid", "geo_type"] + usage_feat_cols].copy()
-        year_usage["year"] = year
-        year_usage = year_usage.merge(
-            embedding[["geoid", "cluster_label"]].drop_duplicates("geoid"),
-            on="geoid", how="inner",
-        )
-        if not year_usage.empty:
-            st.subheader(f"Quadrant Service Mix — {year}")
-            n_by_quad = year_usage.groupby("cluster_label").size().to_dict()
-            summary = "  ·  ".join(f"**{q}** {n_by_quad.get(q, 0)}" for q in _QUADRANT_ORDER)
-            st.caption(
-                f"Grouped by demographic similarity ({summary}). "
-                f"Bars show what each quadrant asks 311 for in **{year}**."
-            )
-            _render_quadrant_bar(year_usage, usage_feat_cols, year)
-
     st.subheader(f"Predominant Service Type by Quadrant — {year}")
+    n_by_quad = (
+        embedding[embedding["geo_type"] == "Tract"]
+        .groupby("cluster_label").size().to_dict()
+    )
+    summary = "  ·  ".join(f"**{q}** {n_by_quad.get(q, 0)}" for q in _QUADRANT_ORDER)
     st.caption(
-        "For each demographic quadrant: % of tracts whose top 311 service type is each "
-        "specific subtype. Only subtypes that dominate at least one tract appear."
+        f"Tract counts by demographic quadrant: {summary}. "
+        "Bars show the % of tracts in each quadrant whose top service call is each specific type."
     )
     _render_quadrant_srtype_bar(embedding, data_dir, year)
 
