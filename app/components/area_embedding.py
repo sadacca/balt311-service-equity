@@ -536,8 +536,7 @@ def _render_quadrant_srtype_bar(
 def _render_usage_view(data_dir: Path, year: int) -> None:
     st.caption(
         "Every geography projected into a shared 2D space by service-request mix — "
-        "fit once across all years so movement between frames is real change. "
-        "Large labeled markers = CSAs · small dots = tracts. Press play."
+        "fit once across all years so movement between frames is real change. Press play."
     )
 
     embedding, feature_cols, var = compute_combined_usage_embedding(data_dir)
@@ -571,11 +570,12 @@ def _render_usage_view(data_dir: Path, year: int) -> None:
     n_tracts = embedding["geo_type"].eq("Tract").sum() // max(len(embedding["year"].unique()), 1)
     n_csas   = embedding["geo_type"].eq("CSA").sum()   // max(len(embedding["year"].unique()), 1)
     st.caption(
-        f"PC1 **{pc1_pct:.0f}%** · PC2 **{pc2_pct:.0f}%** · "
-        f"combined **{pc1_pct + pc2_pct:.0f}%** — {n_tracts} tracts + {n_csas} CSAs"
+        f"These two dimensions capture **{pc1_pct + pc2_pct:.0f}%** of the variation in how "
+        f"neighborhoods use 311 — so similar positions here usually reflect similar real-world patterns. "
+        f"({n_tracts} tracts · {n_csas} CSAs)"
     )
 
-    pad    = 0.14
+    pad    = 0.27
     x5, x95 = np.percentile(embedding["x"], [5, 95])
     y5, y95 = np.percentile(embedding["y"], [5, 95])
     x_range = [x5 - (x95 - x5) * pad, x95 + (x95 - x5) * pad]
@@ -675,8 +675,7 @@ def _render_demographic_view(data_dir: Path, year: int) -> None:
     st.caption(
         "Geographies placed by *who lives there* — ACS 2023 demographic profile. "
         "Colored by predominant service type in the selected year to test whether "
-        "demographic similarity predicts what 311 is used for. "
-        "Large labeled markers = CSAs · small dots = tracts."
+        "demographic similarity predicts what 311 is used for."
     )
 
     embedding, feature_cols, var = compute_combined_demographic_embedding(data_dir)
@@ -726,12 +725,13 @@ def _render_demographic_view(data_dir: Path, year: int) -> None:
     n_tracts = embedding["geo_type"].eq("Tract").sum()
     n_csas   = embedding["geo_type"].eq("CSA").sum()
     st.caption(
-        f"PC1 **{pc1_pct:.0f}%** · PC2 **{pc2_pct:.0f}%** · "
-        f"combined **{pc1_pct + pc2_pct:.0f}%** of variation in {feature_phrase} "
-        f"across {n_tracts} tracts + {n_csas} CSAs."
+        f"These two dimensions capture **{pc1_pct + pc2_pct:.0f}%** of the variation in "
+        f"{feature_phrase} across Baltimore neighborhoods — "
+        f"so similar positions here usually reflect similar real-world demographic profiles. "
+        f"({n_tracts} tracts · {n_csas} CSAs)"
     )
 
-    pad    = 0.14
+    pad    = 0.27
     x5, x95 = np.percentile(embedding["x"], [5, 95])
     y5, y95 = np.percentile(embedding["y"], [5, 95])
     x_range = [x5 - (x95 - x5) * pad, x95 + (x95 - x5) * pad]
@@ -815,10 +815,16 @@ def _render_demographic_view(data_dir: Path, year: int) -> None:
 def render_area_embedding(data_dir: Path, year: int) -> None:
     """Render Tab 3 — Area Embedding.  Loads all data from data_dir internally."""
     st.caption(
-        "Each geography embedded by demographic profile or by service-request mix. "
-        "Switch views and color by the opposite dimension to see how areas that differ "
-        "demographically request different 311 services."
+        "Do areas that look alike demographically also use 311 the same way?"
     )
+    with st.expander("What to look for"):
+        st.markdown(
+            "- Do neighborhoods that cluster together in the **service-usage** view also "
+            "cluster together in the **demographic profile** view?\n"
+            "- Are there areas that look demographically similar but use 311 very "
+            "differently — or vice versa?\n"
+            "- Try switching views and see which neighborhoods move the most."
+        )
 
     if "area_emb_view" not in st.session_state:
         st.session_state["area_emb_view"] = "Demographic profile"
@@ -827,6 +833,11 @@ def render_area_embedding(data_dir: Path, year: int) -> None:
         "View", list(_VIEWS.keys()), horizontal=True, key="area_emb_view",
     )
     view = _VIEWS[view_label]
+    st.caption(
+        "Position on this chart is not geography — neighborhoods placed close together "
+        "have similar profiles. Large labeled bubbles = CSAs (community districts) · "
+        "small dots = individual census tracts."
+    )
     st.divider()
 
     if view == "usage":

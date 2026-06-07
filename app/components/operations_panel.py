@@ -6,6 +6,7 @@ import streamlit as st
 
 from components.map_view import METRIC_OPTIONS, build_choropleth
 from components.srtype_shared import (
+    CATEGORY_NAMES,
     MIN_GEO_SRTYPE_N,
     category_pills,
     extract_categories,
@@ -121,8 +122,9 @@ def _scope_banner(data_dir: Path, year: int, equity_total: float | None = None) 
         c3.metric("Excluded from analysis", f"{excluded:,}",
                   delta=f"{1 - pct_in:.0%} of total", delta_color="off")
         st.caption(
-            "**Equity subset** = resident-initiated requests (Phone / API / Mail / Email) "
-            "that are geocoded and not ECC-prefix service types. "
+            "**Equity subset** = requests from residents (not automated systems) "
+            "that have a valid address and involve a real service delivery — "
+            "not information-only calls. "
             "Performance metrics below apply to this subset only."
         )
     elif all_total is not None:
@@ -233,6 +235,18 @@ def _timeseries_fig(
             ),
             hovertemplate=hover_fmt,
         ))
+        mean_val = valid[metric_col].mean()
+        if not pd.isna(mean_val):
+            fig.add_hline(
+                y=mean_val,
+                line_dash="dot",
+                line_color="#bbbbbb",
+                line_width=1,
+                annotation_text="period avg",
+                annotation_position="bottom right",
+                annotation_font_size=10,
+                annotation_font_color="#999999",
+            )
 
     if has_eq:
         eq_valid = eq_ts[eq_ts[metric_col].notna()].copy()
@@ -297,7 +311,15 @@ def _srtype_charts(data_dir: Path, year: int) -> tuple[str | None, str | None]:
     # ── Selectable performance table ──────────────────────────────────────────
     scope_label = f"**{selected_cat}** types" if selected_cat else "all types"
     st.markdown(f"**Performance by type** ({scope_label}) — click any row to drill into year-over-year trends")
-    display_cols = ["SRType", "total_requests", "closure_rate", "median_days_to_close", "on_time_rate"]
+    sr = sr.copy()
+    sr["_dept"] = (
+        sr["SRType"].str.split("-").str[0].str.strip()
+        .map(lambda x: CATEGORY_NAMES.get(x, x))
+    )
+    sr["_subtype"] = sr["SRType"].apply(
+        lambda t: t.split("-", 1)[1].strip() if isinstance(t, str) and "-" in t else t
+    )
+    display_cols = ["_dept", "_subtype", "total_requests", "closure_rate", "median_days_to_close", "on_time_rate"]
     if pct_col:
         display_cols.append(pct_col)
     fmt = {
@@ -309,7 +331,7 @@ def _srtype_charts(data_dir: Path, year: int) -> tuple[str | None, str | None]:
     if pct_col:
         fmt[pct_col] = "{:.0%}"
     rename = {
-        "SRType": "Type", "total_requests": "Requests",
+        "_dept": "Department", "_subtype": "Type", "total_requests": "Requests",
         "closure_rate": "Closure rate", "median_days_to_close": "Median days",
         "on_time_rate": "On-time rate", "pct_resident_initiated": "% Resident",
     }
@@ -415,11 +437,30 @@ def render_operations(
     mapbox_token: str,
 ) -> None:
     st.caption("A citywide health check: request volume and performance trends.")
+    with st.expander("What to look for"):
+        st.markdown(
+            "- Are response times (median days to close) improving or getting worse over the years?\n"
+            "- Which service types take the longest — and do they also close less reliably?\n"
+            "- Click any point on the trend chart to jump to that year, "
+            "or click a row in the table to see that type's full history."
+        )
 
     ts = _build_timeseries(data_dir)
     eq_ts = _build_equity_citywide_ts(data_dir)
 
     st.subheader("City-wide Performance")
+    with st.expander("How a 311 request is tracked"):
+        st.markdown(
+            "When a resident files a 311 request, the city logs it with a timestamp, "
+            "location, and service type. The request is routed to the responsible "
+            "department, which may be given an internal deadline. When the work is "
+            "completed — or the case is otherwise resolved — the request is marked **closed**.\n\n"
+            "The three key performance metrics on this page:\n"
+            "- **Closure rate** — what share of requests were eventually marked closed\n"
+            "- **Median days to close** — the typical time from filing to closure "
+            "(half of requests closed faster than this, half slower)\n"
+            "- **On-time rate** — what share were closed before the department's internal deadline"
+        )
     _kpi_bar(ts, year, eq_ts=eq_ts)
 
     # Inline metric selector for time series and geo map
