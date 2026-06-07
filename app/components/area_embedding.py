@@ -1,15 +1,8 @@
 """Area Embedding — Tab 3.
 
 Each geography embedded by demographic profile or by service-request mix.
-Switch views and color by the opposite dimension to see how areas that differ
-demographically request different 311 services.
-
-Both census tracts and CSAs are projected into the *same* 2D space — the PCA
-is fit once on the combined share matrix so tracts and their containing CSA
-occupy comparable positions.  CSAs naturally cluster near the centroid of their
-constituent tracts because their category shares are population-weighted
-aggregates.  This lets the scatter carry two layers of legibility at once:
-the granular tract point cloud and the coarser CSA labels.
+Both geo levels share one PCA coordinate space; the radio selects which level
+to display so the view stays uncluttered while coordinates remain consistent.
 """
 from pathlib import Path
 
@@ -17,7 +10,6 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import QuantileTransformer, RobustScaler
 
@@ -26,14 +18,22 @@ from components.srtype_shared import CATEGORY_NAMES, MIN_GEO_SRTYPE_N, load_geo_
 _MIN_GEO_YEAR_TOTAL = 200
 _TOP_K_CATEGORIES = 15
 _PSEUDOCOUNT = 1e-4
-_N_CLUSTERS = 3
 _TOP_SRTYPE_SHOW = 12
 _BAR_TOP_N = 5
+_CSA_LABEL_FRAC = 0.10   # fraction of CSA markers to label; farthest-point sampled
 
-# Marker area values passed to Plotly's size= parameter.
-# With size_max=16, CSA → ≈16 px diameter; Tract → ≈6 px diameter.
-_SZ_CSA = 200
-_SZ_TRACT = 30
+# Marker sizes (pixels) for each geo level.
+_SZ_CSA   = 10
+_SZ_TRACT = 5
+
+# Very light quadrant background fills.
+_QUADRANT_COLORS = {
+    "NW": "rgba(100, 149, 237, 0.08)",
+    "NE": "rgba(60,  179, 113, 0.08)",
+    "SW": "rgba(255, 165,   0, 0.08)",
+    "SE": "rgba(218, 112, 214, 0.08)",
+}
+_QUADRANT_ORDER = ["NW", "NE", "SW", "SE"]
 
 _PCT_COLS = {
     "pct_black", "pct_white", "pct_hispanic", "pct_poverty",
@@ -53,25 +53,22 @@ _DEMO_HOVER_NAMES: dict[str, str] = {
 }
 
 _DEMO_COLOR_OPTIONS = {
-    "% Black population": "pct_black",
-    "% White population": "pct_white",
+    "% Black population":      "pct_black",
+    "% White population":      "pct_white",
     "Median household income": "median_income",
 }
 
 _DEMO_FEATURE_COLS = [
-    "pct_black", "pct_white",
-    "pct_hispanic",
-    "median_income", "pct_poverty",
-    "pct_bachelors_plus",
-    "pct_under18", "pct_65plus",
-    "median_age",
+    "pct_black", "pct_white", "pct_hispanic",
+    "median_income", "pct_poverty", "pct_bachelors_plus",
+    "pct_under18", "pct_65plus", "median_age",
 ]
 
 _SERVICE_COLOR_OPTIONS = {
-    "Predominant service type": "top_sr_type",
-    "Median days to close":     "median_days_to_close",
-    "Closure rate":             "closure_rate",
-    "Requests per 1,000 residents": "requests_per_1k",
+    "Predominant service type":       "top_sr_type",
+    "Median days to close":           "median_days_to_close",
+    "Closure rate":                   "closure_rate",
+    "Requests per 1,000 residents":   "requests_per_1k",
 }
 
 _VIEWS = {
@@ -79,10 +76,8 @@ _VIEWS = {
     "Service usage":       "usage",
 }
 
-_CLUSTER_LETTERS = ["A", "B", "C"]
 
-
-# ── Data loaders (cached so fragments don't re-read disk) ─────────────────────
+# ── Data loaders ──────────────────────────────────────────────────────────────
 
 @st.cache_data
 def _load_demographics(data_dir: Path, geo_key: str) -> pd.DataFrame | None:
@@ -99,7 +94,6 @@ def _load_metrics(data_dir: Path, geo_key: str, year: int) -> pd.DataFrame | Non
 # ── Share-matrix & CLR helpers ────────────────────────────────────────────────
 
 def _usage_share_matrix(history: pd.DataFrame) -> pd.DataFrame:
-    """Wide (geoid, year) × category share matrix — each row sums to 1."""
     df = history[
         (history["total_requests"] >= MIN_GEO_SRTYPE_N)
         & history["SRType"].astype(str).str.contains("-")
@@ -116,7 +110,6 @@ def _usage_share_matrix(history: pd.DataFrame) -> pd.DataFrame:
 
 
 def _clr(shares: pd.DataFrame, top_k: int) -> tuple[np.ndarray, list[str]]:
-    """Centered log-ratio of the top-k highest-mean-share columns."""
     keep = shares.mean().sort_values(ascending=False).head(top_k).index.tolist()
     sub = shares[keep]
     renorm = sub.div(sub.sum(axis=1), axis=0)
@@ -125,7 +118,6 @@ def _clr(shares: pd.DataFrame, top_k: int) -> tuple[np.ndarray, list[str]]:
 
 
 def _geo_type(geoid: str) -> str:
-    """'Tract' if the geoid is an 11-digit census FIPS code, else 'CSA'."""
     s = str(geoid)
     return "Tract" if (s.isdigit() and len(s) == 11) else "CSA"
 
@@ -136,37 +128,26 @@ def _geo_type(geoid: str) -> str:
 def compute_combined_usage_embedding(
     data_dir: Path,
 ) -> tuple[pd.DataFrame, list[str], tuple[float, float]]:
-    """Embed tracts and CSAs in one shared 2D service-usage space.
-
-    The PCA is fit once on the union of both geo levels' share matrices so
-    both coordinate systems are identical — a CSA point sits near the centroid
-    of its constituent tracts because its category shares are their aggregate.
-
-    Returns (embedding, feature_cols, (pc1_var, pc2_var)).
-    embedding has columns: geoid, year, <feature_cols>, x, y, geo_type.
-    """
+    """Fit one PCA on tract + CSA share matrices so both share a coordinate system."""
     tract_hist = load_geo_srtype_history(data_dir, "tract")
-    csa_hist = load_geo_srtype_history(data_dir, "csa")
+    csa_hist   = load_geo_srtype_history(data_dir, "csa")
 
     tract_sh = _usage_share_matrix(tract_hist) if not tract_hist.empty else pd.DataFrame()
-    csa_sh = _usage_share_matrix(csa_hist) if not csa_hist.empty else pd.DataFrame()
+    csa_sh   = _usage_share_matrix(csa_hist)   if not csa_hist.empty   else pd.DataFrame()
 
     if tract_sh.empty and csa_sh.empty:
         return pd.DataFrame(), [], (float("nan"), float("nan"))
 
-    # Align to union of categories; rows already sum to 1 so fill=0 is correct
     all_cats = sorted(set(
         (tract_sh.columns.tolist() if not tract_sh.empty else []) +
-        (csa_sh.columns.tolist() if not csa_sh.empty else [])
+        (csa_sh.columns.tolist()   if not csa_sh.empty   else [])
     ))
     if not tract_sh.empty:
         tract_sh = tract_sh.reindex(columns=all_cats, fill_value=0.0)
     if not csa_sh.empty:
-        csa_sh = csa_sh.reindex(columns=all_cats, fill_value=0.0)
+        csa_sh   = csa_sh.reindex(columns=all_cats, fill_value=0.0)
 
-    combined = pd.concat(
-        [df for df in [tract_sh, csa_sh] if not df.empty], axis=0,
-    )
+    combined = pd.concat([df for df in [tract_sh, csa_sh] if not df.empty], axis=0)
     if combined.empty or combined.shape[1] < _TOP_K_CATEGORIES:
         return pd.DataFrame(), [], (float("nan"), float("nan"))
 
@@ -176,11 +157,11 @@ def compute_combined_usage_embedding(
         n_quantiles=n_q, output_distribution="normal", random_state=42,
     ).fit_transform(transformed)
     pca = PCA(n_components=2)
-    xy = pca.fit_transform(X)
+    xy  = pca.fit_transform(X)
 
     emb = combined[feature_cols].reset_index()
-    emb["x"] = xy[:, 0]
-    emb["y"] = xy[:, 1]
+    emb["x"]        = xy[:, 0]
+    emb["y"]        = xy[:, 1]
     emb["geo_type"] = emb["geoid"].map(_geo_type)
     var = (float(pca.explained_variance_ratio_[0]), float(pca.explained_variance_ratio_[1]))
     return emb, feature_cols, var
@@ -190,31 +171,26 @@ def compute_combined_usage_embedding(
 def compute_combined_demographic_embedding(
     data_dir: Path,
 ) -> tuple[pd.DataFrame, list[str], tuple[float, float]]:
-    """Embed tracts and CSAs in one shared 2D demographic space (ACS 2023).
-
-    Returns (embedding, feature_cols, (pc1_var, pc2_var)).
-    embedding has columns: geoid, geo_type, <feature_cols>, x, y.
-    """
     demo_tract = _load_demographics(data_dir, "tract")
-    demo_csa = _load_demographics(data_dir, "csa")
+    demo_csa   = _load_demographics(data_dir, "csa")
 
     dfs = []
     if demo_tract is not None:
         d = demo_tract.copy(); d["geo_type"] = "Tract"; dfs.append(d)
     if demo_csa is not None:
-        d = demo_csa.copy(); d["geo_type"] = "CSA"; dfs.append(d)
+        d = demo_csa.copy();   d["geo_type"] = "CSA";   dfs.append(d)
     if not dfs:
         return pd.DataFrame(), [], (float("nan"), float("nan"))
 
-    combined = pd.concat(dfs, ignore_index=True)
-    cols = [c for c in _DEMO_FEATURE_COLS if c in combined.columns]
-    df_clean = combined.dropna(subset=cols) if cols else combined.iloc[0:0]
+    combined  = pd.concat(dfs, ignore_index=True)
+    cols      = [c for c in _DEMO_FEATURE_COLS if c in combined.columns]
+    df_clean  = combined.dropna(subset=cols) if cols else combined.iloc[0:0]
     if len(cols) < 2 or len(df_clean) < 3:
         return pd.DataFrame(), [], (float("nan"), float("nan"))
 
-    X = RobustScaler().fit_transform(df_clean[cols].to_numpy())
+    X  = RobustScaler().fit_transform(df_clean[cols].to_numpy())
     pca = PCA(n_components=2)
-    xy = pca.fit_transform(X)
+    xy  = pca.fit_transform(X)
 
     emb = df_clean[["geoid", "geo_type"] + cols].reset_index(drop=True)
     emb["x"] = xy[:, 0]
@@ -225,7 +201,6 @@ def compute_combined_demographic_embedding(
 
 @st.cache_data
 def _top_srtype_combined(data_dir: Path) -> pd.DataFrame:
-    """Top individual SRType per (geoid, year) for both geo levels."""
     frames = []
     for geo_key in ("tract", "csa"):
         history = load_geo_srtype_history(data_dir, geo_key)
@@ -250,30 +225,62 @@ def _top_srtype_combined(data_dir: Path) -> pd.DataFrame:
     )
 
 
-# ── Cluster assignment ────────────────────────────────────────────────────────
+# ── Quadrant assignment ───────────────────────────────────────────────────────
 
-def _assign_clusters(embedding: pd.DataFrame, n_clusters: int = _N_CLUSTERS) -> pd.DataFrame:
-    """Assign each geoid to a cluster by its mean (x, y) across all years.
+def _assign_quadrants(
+    embedding: pd.DataFrame,
+) -> tuple[pd.DataFrame, float, float]:
+    """Divide 2D space at median x / median y → NW | NE | SW | SE per geoid.
 
-    Sorted left-to-right by mean x so letters (A/B/C) are consistent across runs.
-    Returns DataFrame with [geoid, cluster_label].
+    Uses mean position across years so each geoid gets one stable quadrant.
+    Returns (cluster_df[geoid, cluster_label], x_mid, y_mid).
     """
     mean_pos = embedding.groupby("geoid")[["x", "y"]].mean().reset_index()
-    km = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-    mean_pos["_cid"] = km.fit_predict(mean_pos[["x", "y"]])
-    order = mean_pos.groupby("_cid")["x"].mean().sort_values().index.tolist()
-    remap = {old: i for i, old in enumerate(order)}
-    mean_pos["_cid"] = mean_pos["_cid"].map(remap)
-    mean_pos["cluster_label"] = mean_pos["_cid"].map(
-        {i: ltr for i, ltr in enumerate(_CLUSTER_LETTERS[:n_clusters])}
-    )
-    return mean_pos[["geoid", "cluster_label"]]
+    x_mid    = float(mean_pos["x"].median())
+    y_mid    = float(mean_pos["y"].median())
+
+    conds   = [
+        (mean_pos["x"] <  x_mid) & (mean_pos["y"] >= y_mid),  # NW
+        (mean_pos["x"] >= x_mid) & (mean_pos["y"] >= y_mid),  # NE
+        (mean_pos["x"] <  x_mid) & (mean_pos["y"] <  y_mid),  # SW
+    ]
+    mean_pos["cluster_label"] = np.select(conds, ["NW", "NE", "SW"], default="SE")
+    return mean_pos[["geoid", "cluster_label"]], x_mid, y_mid
 
 
 # ── Chart helpers ─────────────────────────────────────────────────────────────
 
+def _subsample_csa_labels(emb: pd.DataFrame, frac: float = _CSA_LABEL_FRAC) -> set:
+    """Farthest-point sample of CSA geoids for text labels (maximises spatial spread)."""
+    csa_rows = emb[emb["geo_type"] == "CSA"]
+    if csa_rows.empty:
+        return set()
+
+    mean_pos = (
+        csa_rows.groupby("geoid")[["x", "y"]].mean().reset_index()
+        if "year" in csa_rows.columns
+        else csa_rows[["geoid", "x", "y"]].drop_duplicates("geoid")
+    )
+    n = max(1, round(len(mean_pos) * frac))
+    if n >= len(mean_pos):
+        return set(mean_pos["geoid"])
+
+    pts    = mean_pos[["x", "y"]].to_numpy()
+    geoids = mean_pos["geoid"].tolist()
+    centroid = pts.mean(axis=0)
+    dists    = np.linalg.norm(pts - centroid, axis=1)
+    selected = [int(dists.argmax())]
+
+    for _ in range(n - 1):
+        dist_to_nearest = np.min(
+            np.linalg.norm(pts[:, None] - pts[selected][None], axis=2), axis=1,
+        )
+        selected.append(int(dist_to_nearest.argmax()))
+
+    return {geoids[i] for i in selected}
+
+
 def _dedup_legend(fig) -> None:
-    """Hide duplicate legend entries (animated scatter creates one per frame)."""
     seen: set[str] = set()
     for trace in fig.data:
         name = trace.name or ""
@@ -284,7 +291,6 @@ def _dedup_legend(fig) -> None:
 
 
 def _top_legend_layout(is_categorical: bool) -> dict:
-    """Pin legend/colorbar to the top of the chart in all colour modes."""
     if is_categorical:
         return dict(
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
@@ -300,8 +306,30 @@ def _top_legend_layout(is_categorical: bool) -> dict:
     )
 
 
+def _add_quadrant_backgrounds(
+    fig, x_mid: float, y_mid: float,
+    x_range: list[float], y_range: list[float],
+) -> None:
+    """Draw light-filled rectangles and faint quadrant labels behind the scatter."""
+    quads = {
+        "NW": (x_range[0], x_mid,      y_mid,      y_range[1]),
+        "NE": (x_mid,      x_range[1], y_mid,      y_range[1]),
+        "SW": (x_range[0], x_mid,      y_range[0], y_mid),
+        "SE": (x_mid,      x_range[1], y_range[0], y_mid),
+    }
+    for name, (x0, x1, y0, y1) in quads.items():
+        fig.add_shape(
+            type="rect", x0=x0, x1=x1, y0=y0, y1=y1,
+            fillcolor=_QUADRANT_COLORS[name], line_width=0, layer="below",
+        )
+        fig.add_annotation(
+            x=(x0 + x1) / 2, y=(y0 + y1) / 2,
+            text=name, showarrow=False,
+            font=dict(size=13, color="rgba(0,0,0,0.15)"),
+        )
+
+
 def _scale_pct_cols(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
-    """Return a copy of df with fraction (0–1) columns scaled to 0–100."""
     df = df.copy()
     for col in cols:
         if col in _PCT_COLS and col in df.columns:
@@ -312,11 +340,6 @@ def _scale_pct_cols(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
 def _add_hover_fmt(
     df: pd.DataFrame, cols: list[str],
 ) -> tuple[pd.DataFrame, dict[str, str]]:
-    """Add pre-formatted string columns for hover; return {original: hover_col}.
-
-    Call after _scale_pct_cols() so pct values are already 0–100.
-    Pct → "52.4%"; income → "$45,000".  % appears in the value, not the label.
-    """
     df = df.copy()
     col_map: dict[str, str] = {}
     for col in cols:
@@ -335,54 +358,61 @@ def _add_hover_fmt(
     return df, col_map
 
 
-def _add_viz_cols(emb: pd.DataFrame) -> pd.DataFrame:
-    """Add _sz (bubble area) and _text (CSA label, blank for tracts)."""
+def _add_text_col(
+    emb: pd.DataFrame, geo_type_str: str, labeled_csas: set | None = None,
+) -> pd.DataFrame:
+    """Add _text label column: blank for tracts; sampled subset label for CSAs."""
     emb = emb.copy()
-    is_csa = emb["geo_type"] == "CSA"
-    emb["_sz"] = np.where(is_csa, _SZ_CSA, _SZ_TRACT)
-    emb["_text"] = emb["geoid"].where(is_csa, "")
+    if geo_type_str == "Tract":
+        emb["_text"] = ""
+    else:
+        if labeled_csas is not None:
+            emb["_text"] = emb["geoid"].where(emb["geoid"].isin(labeled_csas), "")
+        else:
+            emb["_text"] = emb["geoid"]
     return emb
 
 
-# ── Cluster bar ───────────────────────────────────────────────────────────────
+# ── Quadrant bar ──────────────────────────────────────────────────────────────
 
-def _render_cluster_bar(
-    embedding: pd.DataFrame, feature_cols: list[str], year: int,
+def _render_quadrant_bar(
+    embedding: pd.DataFrame, feature_cols: list[str], year: int, geo_type_str: str,
 ) -> None:
-    """100% stacked bar — top-5 category share per cluster for tracts in `year`.
+    """100% stacked bar — top-5 category share per quadrant for `geo_type_str` in `year`."""
+    if "year" in embedding.columns:
+        year_df = embedding[embedding["year"] == year]
+    else:
+        year_df = embedding
 
-    Uses tract rows only (CSAs are aggregates of tracts; excluding avoids
-    double-counting and gives a more granular per-cluster profile).
-    """
-    year_df = embedding[
-        (embedding["year"] == year) & (embedding["geo_type"] == "Tract")
-    ] if "geo_type" in embedding.columns else embedding[embedding["year"] == year]
+    if "geo_type" in year_df.columns:
+        year_df = year_df[year_df["geo_type"] == geo_type_str]
 
     if year_df.empty or "cluster_label" not in year_df.columns:
-        st.info(f"No tract data for {year}.")
+        st.info(f"No {geo_type_str.lower()} data for {year}.")
         return
 
-    cluster_sizes = year_df.groupby("cluster_label").size().to_dict()
-    cluster_shares = year_df.groupby("cluster_label")[feature_cols].mean().reset_index()
+    geo_label  = "tracts" if geo_type_str == "Tract" else "CSAs"
+    quad_sizes = year_df.groupby("cluster_label").size().to_dict()
+    quad_shares = year_df.groupby("cluster_label")[feature_cols].mean().reset_index()
 
     global_mean = year_df[feature_cols].mean()
-    top_cols = global_mean.sort_values(ascending=False).head(_BAR_TOP_N).index.tolist()
-    other_cols = [c for c in feature_cols if c not in top_cols]
+    top_cols    = global_mean.sort_values(ascending=False).head(_BAR_TOP_N).index.tolist()
+    other_cols  = [c for c in feature_cols if c not in top_cols]
     if other_cols:
-        cluster_shares["Other"] = cluster_shares[other_cols].sum(axis=1)
+        quad_shares["Other"] = quad_shares[other_cols].sum(axis=1)
     display_cols = top_cols + (["Other"] if other_cols else [])
 
-    row_totals = cluster_shares[display_cols].sum(axis=1).replace(0, np.nan)
-    cluster_shares[display_cols] = cluster_shares[display_cols].div(row_totals, axis=0)
+    row_totals = quad_shares[display_cols].sum(axis=1).replace(0, np.nan)
+    quad_shares[display_cols] = quad_shares[display_cols].div(row_totals, axis=0)
 
-    dominant = cluster_shares.set_index("cluster_label")[top_cols].idxmax(axis=1)
+    dominant      = quad_shares.set_index("cluster_label")[top_cols].idxmax(axis=1)
     dominant_name = dominant.map(lambda c: CATEGORY_NAMES.get(c, c))
-    cluster_shares["Cluster"] = cluster_shares["cluster_label"].map(
-        lambda c: f"Cluster {c} · {dominant_name.get(c, '')}  (n={cluster_sizes.get(c, 0)} tracts)"
+    quad_shares["Quadrant"] = quad_shares["cluster_label"].map(
+        lambda c: f"{c} · {dominant_name.get(c, '')}  (n={quad_sizes.get(c, 0)} {geo_label})"
     )
 
-    melted = cluster_shares.melt(
-        id_vars=["cluster_label", "Cluster"],
+    melted = quad_shares.melt(
+        id_vars=["cluster_label", "Quadrant"],
         value_vars=display_cols, var_name="category", value_name="share",
     )
     melted["Category"] = melted["category"].map(lambda c: CATEGORY_NAMES.get(c, c))
@@ -390,14 +420,17 @@ def _render_cluster_bar(
         melted.groupby("Category")["share"].mean()
         .sort_values(ascending=False).index.tolist()
     )
-    cluster_order = sorted(
-        cluster_shares["Cluster"].tolist(), key=lambda s: s.split("·")[0].strip(),
+    quad_order = sorted(
+        quad_shares["Quadrant"].tolist(),
+        key=lambda s: next(
+            (i for i, q in enumerate(_QUADRANT_ORDER) if s.startswith(q)), 99
+        ),
     )
 
     fig = px.bar(
-        melted, x="Cluster", y="share", color="Category",
-        category_orders={"Category": cat_order, "Cluster": cluster_order},
-        labels={"share": "", "Cluster": ""},
+        melted, x="Quadrant", y="share", color="Category",
+        category_orders={"Category": cat_order, "Quadrant": quad_order},
+        labels={"share": "", "Quadrant": ""},
         color_discrete_sequence=px.colors.qualitative.Safe,
     )
     fig.update_yaxes(tickformat=".0%")
@@ -413,11 +446,12 @@ def _render_cluster_bar(
 # ── View renderers ────────────────────────────────────────────────────────────
 
 @st.fragment
-def _render_usage_view(data_dir: Path, year: int) -> None:
+def _render_usage_view(data_dir: Path, year: int, geo_filter: str) -> None:
+    geo_type_str = "Tract" if geo_filter == "Tracts" else "CSA"
+
     st.caption(
-        "Every tract and CSA projected into a single shared 2D space by service-request "
-        "mix — fit once across all years so movement between frames reflects real "
-        "change. CSAs (large labeled markers) sit near the centroid of their tracts. "
+        "Each geography projected into a shared 2D space by service-request mix — "
+        "fit once across all years so movement between frames is real change. "
         "Press play to trace trajectories."
     )
 
@@ -427,24 +461,24 @@ def _render_usage_view(data_dir: Path, year: int) -> None:
         return
 
     embedding = embedding.copy()
-    cluster_df = _assign_clusters(embedding)
+    cluster_df, x_mid, y_mid = _assign_quadrants(embedding)
     embedding = embedding.merge(cluster_df, on="geoid", how="left")
 
     top_srtype_df = _top_srtype_combined(data_dir)
     embedding = embedding.merge(top_srtype_df, on=["geoid", "year"], how="left")
 
-    srtype_freq = embedding["top_srtype"].value_counts()
-    top_n = srtype_freq.head(_TOP_SRTYPE_SHOW).index.tolist()
+    srtype_freq  = embedding["top_srtype"].value_counts()
+    top_n        = srtype_freq.head(_TOP_SRTYPE_SHOW).index.tolist()
     embedding["srtype_color"] = embedding["top_srtype"].where(
         embedding["top_srtype"].isin(top_n), "Other"
     )
-    has_other = embedding["srtype_color"].eq("Other").any()
+    has_other   = embedding["srtype_color"].eq("Other").any()
     srtype_order = top_n + (["Other"] if has_other else [])
 
-    # Demographic colour options — combine both levels
-    demo_tract = _load_demographics(data_dir, "tract")
-    demo_csa = _load_demographics(data_dir, "csa")
-    demo_frames = [d for d in [demo_tract, demo_csa] if d is not None]
+    # Demographic colour options
+    demo_tract   = _load_demographics(data_dir, "tract")
+    demo_csa     = _load_demographics(data_dir, "csa")
+    demo_frames  = [d for d in [demo_tract, demo_csa] if d is not None]
     demo_combined = pd.concat(demo_frames, ignore_index=True) if demo_frames else None
 
     color_options: dict[str, str] = {"Top service type": "srtype_color"}
@@ -460,50 +494,62 @@ def _render_usage_view(data_dir: Path, year: int) -> None:
                     color_options[label] = col
 
     color_label = st.selectbox("Color by", list(color_options.keys()), key="area_emb_color")
-    color_col = color_options[color_label]
+    color_col   = color_options[color_label]
     is_categorical = color_col == "srtype_color"
 
+    # Filter to selected geo level (axes computed on full embedding for consistency)
+    display_embedding = embedding[embedding["geo_type"] == geo_type_str].copy()
+    if display_embedding.empty:
+        st.info(f"No {geo_filter.lower()} data available.")
+        return
+
     pc1_pct, pc2_pct = var[0] * 100, var[1] * 100
+    n_shown = len(display_embedding["geoid"].unique()) if "year" not in display_embedding.columns \
+        else len(display_embedding.drop_duplicates("geoid"))
     st.caption(
-        f"High-level service categories · PC1 **{pc1_pct:.0f}%** · "
-        f"PC2 **{pc2_pct:.0f}%** · combined **{pc1_pct + pc2_pct:.0f}%** — "
-        f"{embedding['geo_type'].eq('Tract').sum() // len(embedding['year'].unique())} tracts "
-        f"+ {embedding['geo_type'].eq('CSA').sum() // len(embedding['year'].unique())} CSAs"
+        f"PC1 **{pc1_pct:.0f}%** · PC2 **{pc2_pct:.0f}%** · "
+        f"combined **{pc1_pct + pc2_pct:.0f}%** — {len(display_embedding['geoid'].unique())} {geo_filter.lower()}"
     )
 
-    years_sorted = sorted(int(y) for y in embedding["year"].unique())
-    display_df = _scale_pct_cols(embedding, demo_cols)
+    pad  = 0.08
+    x5,  x95 = np.percentile(embedding["x"], [5, 95])
+    y5,  y95 = np.percentile(embedding["y"], [5, 95])
+    x_range  = [x5 - (x95 - x5) * pad, x95 + (x95 - x5) * pad]
+    y_range  = [y5 - (y95 - y5) * pad, y95 + (y95 - y5) * pad]
+
+    labeled_csas: set = (
+        _subsample_csa_labels(display_embedding) if geo_type_str == "CSA" else set()
+    )
+
+    years_sorted = sorted(int(y) for y in display_embedding["year"].unique())
+    display_df   = _scale_pct_cols(display_embedding, demo_cols)
     display_df, demo_hover_map = _add_hover_fmt(display_df, demo_cols)
-    display_df = _add_viz_cols(display_df)
+    display_df   = _add_text_col(display_df, geo_type_str, labeled_csas)
 
     hover_labels: dict[str, str] = {
         "x": "PC1", "y": "PC2",
-        color_col: color_label,
-        "cluster_label": "Cluster",
-        "top_srtype": "Top type",
-        "geo_type": "Level",
-        "_sz": "", "_text": "",  # suppress display columns from hover
+        color_col:       color_label,
+        "cluster_label": "Quadrant",
+        "top_srtype":    "Top type",
+        "_text":         "",
         **{hcol: _DEMO_HOVER_NAMES.get(orig, orig) for orig, hcol in demo_hover_map.items()},
     }
-
     hover_data: dict[str, bool] = {
         "cluster_label": True,
-        "top_srtype": True,
-        "geo_type": True,
-        "srtype_color": False,
-        "_sz": False,
-        "_text": False,
+        "top_srtype":    True,
+        "srtype_color":  False,
+        "_text":         False,
         **{hcol: True for hcol in demo_hover_map.values()},
     }
 
+    marker_size = _SZ_CSA if geo_type_str == "CSA" else _SZ_TRACT
+
     fig = px.scatter(
-        display_df.sort_values(["geo_type", "year"]),  # tracts first → CSAs on top
+        display_df.sort_values("year"),
         x="x", y="y",
         animation_frame="year",
         animation_group="geoid",
         color=color_col,
-        size="_sz",
-        size_max=16,
         text="_text",
         hover_name="geoid",
         hover_data=hover_data,
@@ -517,15 +563,12 @@ def _render_usage_view(data_dir: Path, year: int) -> None:
     fig.update_traces(
         textposition="top center",
         textfont=dict(size=8),
-        marker=dict(opacity=0.8, line=dict(width=0.5, color="white")),
+        marker=dict(size=marker_size, opacity=0.8, line=dict(width=0.5, color="white")),
     )
     fig.update_layout(height=660, **_top_legend_layout(is_categorical))
-
-    pad = 0.08
-    x5, x95 = np.percentile(embedding["x"], [5, 95])
-    y5, y95 = np.percentile(embedding["y"], [5, 95])
-    fig.update_xaxes(range=[x5 - (x95 - x5) * pad, x95 + (x95 - x5) * pad])
-    fig.update_yaxes(range=[y5 - (y95 - y5) * pad, y95 + (y95 - y5) * pad])
+    fig.update_xaxes(range=x_range)
+    fig.update_yaxes(range=y_range)
+    _add_quadrant_backgrounds(fig, x_mid, y_mid, x_range, y_range)
 
     if year in years_sorted and fig.frames:
         active_idx = years_sorted.index(year)
@@ -541,32 +584,29 @@ def _render_usage_view(data_dir: Path, year: int) -> None:
 
     _dedup_legend(fig)
     st.plotly_chart(fig, use_container_width=True)
-    st.caption(
-        "Large labeled markers = CSAs · small dots = tracts. "
-        "Hover for cluster, level, and top service type."
-    )
+    if geo_type_str == "CSA":
+        st.caption(f"~{round(_CSA_LABEL_FRAC * 100):.0f}% of CSA names shown (farthest-point sampled). Hover any marker for details.")
 
-    # ── Cluster profiles ──────────────────────────────────────────────────────
-    st.subheader(f"Cluster Profiles — {year}")
-    year_tract_df = embedding[
-        (embedding["year"] == year) & (embedding["geo_type"] == "Tract")
-    ]
-    n_by_cluster = year_tract_df.groupby("cluster_label").size().to_dict() if not year_tract_df.empty else {}
+    st.subheader(f"Quadrant Profiles — {year}")
+    n_by_quad = (
+        display_embedding[display_embedding["year"] == year]
+        .groupby("cluster_label").size().to_dict()
+        if "year" in display_embedding.columns
+        else display_embedding.groupby("cluster_label").size().to_dict()
+    )
     summary = "  ·  ".join(
-        f"**{ltr}** {n_by_cluster.get(ltr, 0)} tracts"
-        for ltr in _CLUSTER_LETTERS[:_N_CLUSTERS]
+        f"**{q}** {n_by_quad.get(q, 0)}" for q in _QUADRANT_ORDER
     )
-    st.caption(
-        f"Clusters by mean position across all years ({summary}). "
-        "Bars show tract-level category mix per cluster in the selected year."
-    )
-    _render_cluster_bar(embedding, feature_cols, year)
+    st.caption(f"Quadrant counts ({summary}). Bars show category mix for the selected year.")
+    _render_quadrant_bar(display_embedding, feature_cols, year, geo_type_str)
 
 
 @st.fragment
-def _render_demographic_view(data_dir: Path, year: int) -> None:
+def _render_demographic_view(data_dir: Path, year: int, geo_filter: str) -> None:
+    geo_type_str = "Tract" if geo_filter == "Tracts" else "CSA"
+
     st.caption(
-        "Tracts and CSAs placed by *who lives there* — ACS 2023 demographic profile. "
+        "Geographies placed by *who lives there* — ACS 2023 demographic profile. "
         f"Color by a **{year}** service metric to test whether demographic similarity "
         "predicts service experience."
     )
@@ -580,12 +620,11 @@ def _render_demographic_view(data_dir: Path, year: int) -> None:
         return
 
     embedding = embedding.copy()
-    cluster_df = _assign_clusters(embedding)
+    cluster_df, x_mid, y_mid = _assign_quadrants(embedding)
     embedding = embedding.merge(cluster_df, on="geoid", how="left")
 
-    # Load service metrics for both levels for colour options
-    df_tract = _load_metrics(data_dir, "tract", year)
-    df_csa = _load_metrics(data_dir, "csa", year)
+    df_tract   = _load_metrics(data_dir, "tract", year)
+    df_csa     = _load_metrics(data_dir, "csa",   year)
     df_combined = pd.concat(
         [d for d in [df_tract, df_csa] if d is not None], ignore_index=True,
     ) if (df_tract is not None or df_csa is not None) else None
@@ -610,6 +649,12 @@ def _render_demographic_view(data_dir: Path, year: int) -> None:
             )
         is_categorical = color_col == "top_sr_type"
 
+    # Filter to selected geo level
+    display_embedding = embedding[embedding["geo_type"] == geo_type_str].copy()
+    if display_embedding.empty:
+        st.info(f"No {geo_filter.lower()} data available.")
+        return
+
     pc1_pct, pc2_pct = var[0] * 100, var[1] * 100
     _topic = {
         "pct_black": "race", "pct_white": "race", "pct_hispanic": "ethnicity",
@@ -618,39 +663,45 @@ def _render_demographic_view(data_dir: Path, year: int) -> None:
         "pct_under18": "age", "pct_65plus": "age", "median_age": "age",
     }
     feature_phrase = " and ".join(dict.fromkeys(_topic.get(c, c) for c in feature_cols))
-    n_tracts = embedding["geo_type"].eq("Tract").sum()
-    n_csas = embedding["geo_type"].eq("CSA").sum()
     st.caption(
         f"PC1 **{pc1_pct:.0f}%** · PC2 **{pc2_pct:.0f}%** · "
         f"combined **{pc1_pct + pc2_pct:.0f}%** of variation in {feature_phrase} "
-        f"across {n_tracts} tracts + {n_csas} CSAs."
+        f"across {len(display_embedding['geoid'].unique())} {geo_filter.lower()}."
     )
 
-    display_df = _scale_pct_cols(embedding, feature_cols)
+    pad  = 0.08
+    x5,  x95 = np.percentile(embedding["x"], [5, 95])
+    y5,  y95 = np.percentile(embedding["y"], [5, 95])
+    x_range  = [x5 - (x95 - x5) * pad, x95 + (x95 - x5) * pad]
+    y_range  = [y5 - (y95 - y5) * pad, y95 + (y95 - y5) * pad]
+
+    labeled_csas: set = (
+        _subsample_csa_labels(display_embedding) if geo_type_str == "CSA" else set()
+    )
+
+    display_df = _scale_pct_cols(display_embedding, feature_cols)
     display_df, feat_hover_map = _add_hover_fmt(display_df, feature_cols)
-    display_df = _add_viz_cols(display_df)
+    display_df = _add_text_col(display_df, geo_type_str, labeled_csas)
 
     hover_labels: dict[str, str] = {
         "x": "PC1", "y": "PC2",
-        "cluster_label": "Cluster",
-        "geo_type": "Level",
-        "_sz": "", "_text": "",
+        "cluster_label": "Quadrant",
+        "_text":         "",
         **({color_col: color_label} if color_col else {}),
         **{hcol: _DEMO_HOVER_NAMES.get(orig, orig) for orig, hcol in feat_hover_map.items()},
     }
 
+    marker_size = _SZ_CSA if geo_type_str == "CSA" else _SZ_TRACT
+
     fig = px.scatter(
-        display_df.sort_values("geo_type"),  # tracts first → CSAs on top
+        display_df.sort_values("geoid"),
         x="x", y="y",
         color=color_col,
-        size="_sz",
-        size_max=16,
         text="_text",
         hover_name="geoid",
         hover_data={
             "cluster_label": True,
-            "geo_type": True,
-            "_sz": False, "_text": False,
+            "_text":         False,
             **{hcol: True for hcol in feat_hover_map.values()},
         },
         labels=hover_labels,
@@ -659,39 +710,38 @@ def _render_demographic_view(data_dir: Path, year: int) -> None:
     fig.update_traces(
         textposition="top center",
         textfont=dict(size=8),
-        marker=dict(opacity=0.85, line=dict(width=0.5, color="white")),
+        marker=dict(size=marker_size, opacity=0.85, line=dict(width=0.5, color="white")),
     )
     fig.update_layout(height=620, **_top_legend_layout(is_categorical))
+    fig.update_xaxes(range=x_range)
+    fig.update_yaxes(range=y_range)
+    _add_quadrant_backgrounds(fig, x_mid, y_mid, x_range, y_range)
     _dedup_legend(fig)
     st.plotly_chart(fig, use_container_width=True)
-    st.caption("Large labeled markers = CSAs · small dots = tracts. Hover for cluster and demographic values.")
+    if geo_type_str == "CSA":
+        st.caption(f"~{round(_CSA_LABEL_FRAC * 100):.0f}% of CSA names shown. Hover any marker for details.")
 
-    # ── Cluster service-mix bar ───────────────────────────────────────────────
+    # Quadrant service-mix bar
     usage_emb, usage_feat_cols, _ = compute_combined_usage_embedding(data_dir)
     if not usage_emb.empty and usage_feat_cols:
-        year_usage = (
-            usage_emb[usage_emb["year"] == year]
-            [["geoid", "geo_type"] + usage_feat_cols].copy()
-        )
+        year_usage = usage_emb[
+            (usage_emb["year"] == year) & (usage_emb["geo_type"] == geo_type_str)
+        ][["geoid", "geo_type"] + usage_feat_cols].copy()
         year_usage["year"] = year
         year_usage = year_usage.merge(
-            embedding[["geoid", "cluster_label"]], on="geoid", how="inner",
+            display_embedding[["geoid", "cluster_label"]], on="geoid", how="inner",
         )
         if not year_usage.empty:
-            st.subheader(f"Cluster Service Mix — {year}")
-            n_by_cluster = (
-                year_usage[year_usage["geo_type"] == "Tract"]
-                .groupby("cluster_label").size().to_dict()
-            )
+            st.subheader(f"Quadrant Service Mix — {year}")
+            n_by_quad = year_usage.groupby("cluster_label").size().to_dict()
             summary = "  ·  ".join(
-                f"**{ltr}** {n_by_cluster.get(ltr, 0)} tracts"
-                for ltr in _CLUSTER_LETTERS[:_N_CLUSTERS]
+                f"**{q}** {n_by_quad.get(q, 0)}" for q in _QUADRANT_ORDER
             )
             st.caption(
-                f"Neighborhoods grouped by demographic similarity ({summary}). "
-                f"Bars show what each cluster asks 311 for in **{year}**."
+                f"Grouped by demographic similarity ({summary}). "
+                f"Bars show what each quadrant asks 311 for in **{year}**."
             )
-            _render_cluster_bar(year_usage, usage_feat_cols, year)
+            _render_quadrant_bar(year_usage, usage_feat_cols, year, geo_type_str)
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -704,17 +754,20 @@ def render_area_embedding(data_dir: Path, year: int) -> None:
         "demographically request different 311 services."
     )
 
-    if "area_emb_view" not in st.session_state:
-        st.session_state["area_emb_view"] = "Demographic profile"
+    c_view, c_geo = st.columns([3, 2])
+    with c_view:
+        if "area_emb_view" not in st.session_state:
+            st.session_state["area_emb_view"] = "Demographic profile"
+        view_label = st.radio(
+            "View", list(_VIEWS.keys()), horizontal=True, key="area_emb_view",
+        )
+    with c_geo:
+        geo_filter = st.radio("Show", ["Tracts", "CSAs"], horizontal=True, key="area_emb_geo")
 
-    view_label = st.radio(
-        "View", list(_VIEWS.keys()), horizontal=True, key="area_emb_view",
-    )
     view = _VIEWS[view_label]
-
     st.divider()
 
     if view == "usage":
-        _render_usage_view(data_dir, year)
+        _render_usage_view(data_dir, year, geo_filter)
     else:
-        _render_demographic_view(data_dir, year)
+        _render_demographic_view(data_dir, year, geo_filter)
