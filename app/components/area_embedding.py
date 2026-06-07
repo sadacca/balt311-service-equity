@@ -39,17 +39,18 @@ _PCT_COLS = {
     "pct_bachelors_plus", "pct_under18", "pct_65plus",
 }
 
-# Clean hover/axis labels for demographic columns
+# Clean hover labels for demographic columns.  % lives in the formatted value
+# ("52.4%"), not the label, so tooltip reads "Black pop.=52.4%" not "Black pop. %=52.4".
 _DEMO_HOVER_NAMES: dict[str, str] = {
-    "pct_black":       "Black pop. %",
-    "pct_white":       "White pop. %",
-    "pct_hispanic":    "Hispanic pop. %",
-    "pct_poverty":     "Poverty rate %",
-    "pct_bachelors_plus": "Bachelor's+ %",
-    "pct_under18":     "Under 18 %",
-    "pct_65plus":      "Age 65+ %",
-    "median_income":   "Median income ($)",
-    "median_age":      "Median age",
+    "pct_black":          "Black pop.",
+    "pct_white":          "White pop.",
+    "pct_hispanic":       "Hispanic pop.",
+    "pct_poverty":        "Poverty rate",
+    "pct_bachelors_plus": "Bachelor's+",
+    "pct_under18":        "Under 18",
+    "pct_65plus":         "Age 65+",
+    "median_income":      "Median income",
+    "median_age":         "Median age",
 }
 
 _DEMO_COLOR_OPTIONS = {
@@ -248,6 +249,34 @@ def _scale_pct_cols(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
     return df
 
 
+def _add_hover_fmt(
+    df: pd.DataFrame, cols: list[str],
+) -> tuple[pd.DataFrame, dict[str, str]]:
+    """Append pre-formatted string columns and return {original_col: hover_col}.
+
+    Pct columns (already scaled 0–100) become "_fmt_{col}" with "%" appended so
+    the tooltip reads "Black pop.=52.4%" instead of "Black pop. %=52.4".
+    Income becomes "$45,000". Other columns pass through unchanged.
+    Call after _scale_pct_cols() so pct values are already 0–100.
+    """
+    df = df.copy()
+    col_map: dict[str, str] = {}
+    for col in cols:
+        if col not in df.columns:
+            continue
+        if col in _PCT_COLS:
+            hcol = f"_fmt_{col}"
+            df[hcol] = df[col].round(1).astype(str) + "%"
+            col_map[col] = hcol
+        elif col == "median_income":
+            hcol = f"_fmt_{col}"
+            df[hcol] = df[col].apply(lambda x: f"${int(x):,}" if pd.notna(x) else "—")
+            col_map[col] = hcol
+        else:
+            col_map[col] = col
+    return df, col_map
+
+
 # ── Cluster bar chart ─────────────────────────────────────────────────────────
 
 def _render_cluster_bar(
@@ -382,24 +411,24 @@ def _render_usage_view(
 
     years_sorted = sorted(int(y) for y in embedding["year"].unique())
 
-    # Scale pct demographic columns to 0–100 for colour bar and hover readability
+    # Scale pct demographic columns to 0–100 for colour bar, then add formatted
+    # string columns for hover so "%" appears after the value, not in the label.
     display_df = _scale_pct_cols(embedding, demo_cols)
+    display_df, demo_hover_map = _add_hover_fmt(display_df, demo_cols)
 
-    # Build hover label map
     hover_labels: dict[str, str] = {
         "x": "PC1", "y": "PC2",
         color_col: color_label,
         "cluster_label": "Cluster",
         "top_srtype": "Top type",
-        **{c: _DEMO_HOVER_NAMES.get(c, c) for c in demo_cols},
+        **{hcol: _DEMO_HOVER_NAMES.get(orig, orig) for orig, hcol in demo_hover_map.items()},
     }
 
-    # Include demo cols in hover so context is visible regardless of colour choice
     hover_data: dict[str, bool] = {
         "cluster_label": True,
         "top_srtype": True,
         "srtype_color": False,
-        **{c: True for c in demo_cols if c in display_df.columns},
+        **{hcol: True for hcol in demo_hover_map.values()},
     }
 
     fig = px.scatter(
@@ -525,13 +554,16 @@ def _render_demographic_view(
         f"across {geo_count} {geo_noun}."
     )
 
-    # Scale pct cols to 0–100 for display; build clean hover labels
+    # Scale pct cols to 0–100 for display, then add formatted string columns so
+    # hover reads "Black pop.=52.4%" rather than "Black pop. %=52.4".
     display_df = _scale_pct_cols(embedding, feature_cols)
+    display_df, feat_hover_map = _add_hover_fmt(display_df, feature_cols)
+
     hover_labels: dict[str, str] = {
         "x": "PC1", "y": "PC2",
         "cluster_label": "Cluster",
         **({color_col: color_label} if color_col else {}),
-        **{c: _DEMO_HOVER_NAMES.get(c, c) for c in feature_cols},
+        **{hcol: _DEMO_HOVER_NAMES.get(orig, orig) for orig, hcol in feat_hover_map.items()},
     }
 
     fig = px.scatter(
@@ -539,7 +571,7 @@ def _render_demographic_view(
         x="x", y="y",
         color=color_col,
         hover_name="geoid",
-        hover_data={"cluster_label": True, **{c: True for c in feature_cols}},
+        hover_data={"cluster_label": True, **{hcol: True for hcol in feat_hover_map.values()}},
         labels=hover_labels,
         color_continuous_scale="RdYlGn_r" if not is_categorical else None,
     )
@@ -588,9 +620,9 @@ def render_area_embedding(
     df: pd.DataFrame | None = None,
 ) -> None:
     st.caption(
-        "Each geography embedded by *demographic profile* or by *service-request mix* — "
-        "switch views and color by the opposite dimension to ask whether areas that "
-        "look alike demographically receive similar 311 service."
+        "Each geography embedded by demographic profile or by service-request mix. "
+        "Switch views and color by the opposite dimension to see how areas that differ "
+        "demographically request different 311 services."
     )
 
     # Default to the demographic view (most immediately actionable for equity readers)
