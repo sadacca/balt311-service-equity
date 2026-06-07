@@ -52,24 +52,11 @@ _DEMO_HOVER_NAMES: dict[str, str] = {
     "median_age":         "Median age",
 }
 
-_DEMO_COLOR_OPTIONS = {
-    "% Black population":      "pct_black",
-    "% White population":      "pct_white",
-    "Median household income": "median_income",
-}
-
 _DEMO_FEATURE_COLS = [
     "pct_black", "pct_white", "pct_hispanic",
     "median_income", "pct_poverty", "pct_bachelors_plus",
     "pct_under18", "pct_65plus", "median_age",
 ]
-
-_SERVICE_COLOR_OPTIONS = {
-    "Predominant service type":       "top_sr_type",
-    "Median days to close":           "median_days_to_close",
-    "Closure rate":                   "closure_rate",
-    "Requests per 1,000 residents":   "requests_per_1k",
-}
 
 _VIEWS = {
     "Demographic profile": "demographic",
@@ -467,35 +454,20 @@ def _render_usage_view(data_dir: Path, year: int, geo_filter: str) -> None:
     top_srtype_df = _top_srtype_combined(data_dir)
     embedding = embedding.merge(top_srtype_df, on=["geoid", "year"], how="left")
 
-    srtype_freq  = embedding["top_srtype"].value_counts()
-    top_n        = srtype_freq.head(_TOP_SRTYPE_SHOW).index.tolist()
-    embedding["srtype_color"] = embedding["top_srtype"].where(
-        embedding["top_srtype"].isin(top_n), "Other"
-    )
-    has_other   = embedding["srtype_color"].eq("Other").any()
-    srtype_order = top_n + (["Other"] if has_other else [])
-
-    # Demographic colour options
-    demo_tract   = _load_demographics(data_dir, "tract")
-    demo_csa     = _load_demographics(data_dir, "csa")
-    demo_frames  = [d for d in [demo_tract, demo_csa] if d is not None]
-    demo_combined = pd.concat(demo_frames, ignore_index=True) if demo_frames else None
-
-    color_options: dict[str, str] = {"Top service type": "srtype_color"}
+    # Color by median income (fixed — no dropdown)
+    color_col      = "median_income"
+    color_label    = "Median income"
+    is_categorical = False
     demo_cols: list[str] = []
-    if demo_combined is not None:
-        demo_cols = [c for c in _DEMO_COLOR_OPTIONS.values() if c in demo_combined.columns]
-        if demo_cols:
-            embedding = embedding.merge(
-                demo_combined[["geoid"] + demo_cols], on="geoid", how="left",
-            )
-            for label, col in _DEMO_COLOR_OPTIONS.items():
-                if col in demo_cols:
-                    color_options[label] = col
-
-    color_label = st.selectbox("Color by", list(color_options.keys()), key="area_emb_color")
-    color_col   = color_options[color_label]
-    is_categorical = color_col == "srtype_color"
+    demo_tract    = _load_demographics(data_dir, "tract")
+    demo_csa      = _load_demographics(data_dir, "csa")
+    demo_frames   = [d for d in [demo_tract, demo_csa] if d is not None]
+    demo_combined = pd.concat(demo_frames, ignore_index=True) if demo_frames else None
+    if demo_combined is not None and color_col in demo_combined.columns:
+        demo_cols = [color_col]
+        embedding = embedding.merge(
+            demo_combined[["geoid", color_col]], on="geoid", how="left",
+        )
 
     # Filter to selected geo level (axes computed on full embedding for consistency)
     display_embedding = embedding[embedding["geo_type"] == geo_type_str].copy()
@@ -537,7 +509,6 @@ def _render_usage_view(data_dir: Path, year: int, geo_filter: str) -> None:
     hover_data: dict[str, bool] = {
         "cluster_label": True,
         "top_srtype":    True,
-        "srtype_color":  False,
         "_text":         False,
         **{hcol: True for hcol in demo_hover_map.values()},
     }
@@ -554,11 +525,8 @@ def _render_usage_view(data_dir: Path, year: int, geo_filter: str) -> None:
         hover_name="geoid",
         hover_data=hover_data,
         labels=hover_labels,
-        category_orders=(
-            {"year": years_sorted, color_col: srtype_order}
-            if is_categorical else {"year": years_sorted}
-        ),
-        color_continuous_scale="Viridis" if not is_categorical else None,
+        category_orders={"year": years_sorted},
+        color_continuous_scale="Viridis",
     )
     fig.update_traces(
         textposition="top center",
@@ -607,8 +575,8 @@ def _render_demographic_view(data_dir: Path, year: int, geo_filter: str) -> None
 
     st.caption(
         "Geographies placed by *who lives there* — ACS 2023 demographic profile. "
-        f"Color by a **{year}** service metric to test whether demographic similarity "
-        "predicts service experience."
+        f"Colored by predominant service type in **{year}** to test whether "
+        "demographic similarity predicts what 311 is used for."
     )
 
     embedding, feature_cols, var = compute_combined_demographic_embedding(data_dir)
@@ -629,25 +597,22 @@ def _render_demographic_view(data_dir: Path, year: int, geo_filter: str) -> None
         [d for d in [df_tract, df_csa] if d is not None], ignore_index=True,
     ) if (df_tract is not None or df_csa is not None) else None
 
-    color_options: dict[str, str] = {}
-    if df_combined is not None:
-        for label, col in _SERVICE_COLOR_OPTIONS.items():
-            if col in df_combined.columns:
-                color_options[label] = col
-
-    color_col = color_label = None
-    is_categorical = False
-    if color_options:
-        color_label = st.selectbox(
-            "Color by (service metric)", list(color_options.keys()),
-            key="area_emb_demo_color",
+    # Color by predominant service type (fixed — no dropdown)
+    color_label    = "Predominant service type"
+    is_categorical = True
+    if df_combined is not None and "top_sr_type" in df_combined.columns:
+        embedding = embedding.merge(
+            df_combined[["geoid", "top_sr_type"]], on="geoid", how="left",
         )
-        color_col = color_options[color_label]
-        if df_combined is not None and color_col in df_combined.columns:
-            embedding = embedding.merge(
-                df_combined[["geoid", color_col]], on="geoid", how="left",
-            )
-        is_categorical = color_col == "top_sr_type"
+    srtype_freq  = embedding["top_sr_type"].value_counts() if "top_sr_type" in embedding.columns else pd.Series(dtype=int)
+    top_n        = srtype_freq.head(_TOP_SRTYPE_SHOW).index.tolist()
+    embedding["srtype_color"] = (
+        embedding["top_sr_type"].where(embedding["top_sr_type"].isin(top_n), "Other")
+        if "top_sr_type" in embedding.columns else "Unknown"
+    )
+    has_other   = embedding["srtype_color"].eq("Other").any()
+    srtype_order = top_n + (["Other"] if has_other else [])
+    color_col    = "srtype_color"
 
     # Filter to selected geo level
     display_embedding = embedding[embedding["geo_type"] == geo_type_str].copy()
@@ -687,7 +652,8 @@ def _render_demographic_view(data_dir: Path, year: int, geo_filter: str) -> None
         "x": "PC1", "y": "PC2",
         "cluster_label": "Quadrant",
         "_text":         "",
-        **({color_col: color_label} if color_col else {}),
+        color_col:       color_label,
+        "top_sr_type":   "Top type",
         **{hcol: _DEMO_HOVER_NAMES.get(orig, orig) for orig, hcol in feat_hover_map.items()},
     }
 
@@ -701,11 +667,13 @@ def _render_demographic_view(data_dir: Path, year: int, geo_filter: str) -> None
         hover_name="geoid",
         hover_data={
             "cluster_label": True,
+            "top_sr_type":   True,
+            "srtype_color":  False,
             "_text":         False,
             **{hcol: True for hcol in feat_hover_map.values()},
         },
         labels=hover_labels,
-        color_continuous_scale="RdYlGn_r" if not is_categorical else None,
+        category_orders={color_col: srtype_order},
     )
     fig.update_traces(
         textposition="top center",
