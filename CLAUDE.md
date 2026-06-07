@@ -36,11 +36,10 @@ Five-tab Streamlit app at `app/app.py`. Year selector is inline above the tabs a
 
 ### Areas tab (`app/components/area_embedding.py`)
 - **View toggle** — "Demographic profile" / "Service usage" (horizontal radio); both views share one PCA coordinate space fit once on the union of tract and CSA data so both geo levels are directly comparable
-- **Scatter plot** — tracts (small dots) and CSAs (large labeled bubbles) displayed together; ~10% of CSA names labeled via farthest-point sampling (min 3 per quadrant). Light-filled quadrant rectangles (UL / UR / LL / LR — upper-left, upper-right, lower-left, lower-right; divided at median x and median y) sit behind the points
+- **Scatter plot** — tracts (small dots) and CSAs (large labeled bubbles) displayed together; ~10% of tract dots labeled with their NSA neighborhood name (min 3 per quadrant, farthest-point sampled); hover title shows "Neighborhood · Tract XXXX.XX". Light-filled quadrant rectangles (UL / UR / LL / LR — upper-left, upper-right, lower-left, lower-right; divided at median x and median y) sit behind the points
 - **Service-usage view** — positions geographies by service-request mix (CLR-transformed high-level category shares + QuantileTransformer + PCA); colored by median household income. Animated year slider traces trajectories in a single stable coordinate system across all available years
 - **Demographic view** — positions geographies by ACS 2023 demographic profile (race, income, age, education — RobustScaler + PCA); colored by predominant 311 service type for the selected year. No year animation (ACS is a single snapshot)
 - **Quadrant assignment** — each geoid's mean (x, y) across all years determines its quadrant (UL / UR / LL / LR); stable even as individual year-points shift. Labels are positional, not geographic compass bearings
-- **Category-mix bar** — 100% stacked bar: top-5 high-level category shares per quadrant, tracts only (CSAs are population-weighted aggregates of their tracts; including both would double-count)
 - **Predominant-subtype bar** — for each quadrant, % of tracts whose #1 SRType is each specific service subtype (e.g. "SW-Dirty Street"). Only subtypes that dominate at least one tract appear; top 8 globally + Other
 - **Neighborhood list** — two-column table of CSA names grouped by quadrant (UL+UR left, LL+LR right); small text; updates with the active embedding view
 

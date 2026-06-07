@@ -61,8 +61,9 @@ with st.sidebar:
         "*Which neighborhoods use 311 similarly — and which look alike "
         "demographically?* Two complementary 2D embeddings in a shared "
         "coordinate space. Cross-color them to see whether demographic "
-        "similarity predicts 311-usage similarity. Quadrant groupings and "
-        "a neighborhood list make peer comparisons concrete."
+        "similarity predicts 311-usage similarity. Tract dots labeled with "
+        "NSA neighborhood names; a service-type bar and neighborhood list "
+        "by quadrant sit below the scatter."
     )
     st.markdown(
         "**Equity** — then, citywide\n\n"
