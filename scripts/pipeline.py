@@ -88,6 +88,18 @@ CSA_CROSSWALK_URL = (
     "https://raw.githubusercontent.com/BNIA/VitalSigns/main/CSA2020.csv"
 )
 
+# Baltimore City Neighborhood Statistical Areas (NSA) — ~278 official named
+# neighborhoods, more granular than the 55 BNIA CSAs.
+# Source: Open Baltimore ArcGIS Hub (data.baltimorecity.gov)
+# Item ID 8112521d3e284518b9fa497a188bfb45 / dataset slug: neighborhood-1
+NSA_GEOJSON_URLS = [
+    "https://opendata.arcgis.com/datasets/8112521d3e284518b9fa497a188bfb45_0.geojson",
+    "https://data.baltimorecity.gov/api/download/v1/items/"
+    "8112521d3e284518b9fa497a188bfb45/geojson?redirect=true&layers=0",
+]
+# Candidate field names for the NSA name in the downloaded GeoJSON.
+_NSA_NAME_CANDIDATES = ["Name", "NAME", "NBRDESC", "LABEL", "Label", "label", "Neighborhood"]
+
 
 def log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
@@ -313,6 +325,92 @@ def _build_csa_boundaries(tracts_path: Path, crosswalk_path: Path, dest: Path) -
     )
     csas.to_file(dest, driver="GeoJSON")
     log(f"  {len(csas)} CSA polygons → {dest.name}")
+
+
+def _fetch_nsa_crosswalk(tracts_path: Path, dest: Path) -> None:
+    """Download Baltimore NSA boundaries, spatial-join tract centroids, write crosswalk.
+
+    Writes data/processed/tract_to_nsa.csv with columns (geoid, nsa_name).
+    Tracts whose centroid falls outside all NSA polygons get nsa_name = ''.
+    """
+    import geopandas as gpd
+
+    log("Downloading Baltimore NSA (Neighborhood Statistical Area) boundaries ...")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        nsa_path = Path(tmp) / "nsa.geojson"
+        last_exc: Exception | None = None
+        for url in NSA_GEOJSON_URLS:
+            try:
+                download_with_retry(url, nsa_path)
+                nsa_gdf = gpd.read_file(nsa_path).to_crs("EPSG:4326")
+                log(f"  Fetched {len(nsa_gdf)} NSA polygons from {url.split('/')[2]}")
+                break
+            except Exception as exc:
+                last_exc = exc
+                log(f"  Download failed ({url.split('/')[2]}): {exc}")
+        else:
+            raise RuntimeError("NSA boundary download failed from all sources") from last_exc
+
+    # Identify the neighborhood name field
+    name_col = next((c for c in _NSA_NAME_CANDIDATES if c in nsa_gdf.columns), None)
+    if name_col is None:
+        str_cols = [c for c in nsa_gdf.columns if nsa_gdf[c].dtype == object and c != "geometry"]
+        if not str_cols:
+            raise ValueError(f"No string columns found in NSA GeoJSON; columns: {list(nsa_gdf.columns)}")
+        name_col = str_cols[0]
+        log(f"  WARNING: guessing name field '{name_col}'. Available: {list(nsa_gdf.columns)}")
+    else:
+        log(f"  Using name field '{name_col}' ({nsa_gdf[name_col].nunique()} unique values)")
+
+    # Compute tract centroids and spatially join to NSA polygons
+    tracts = gpd.read_file(tracts_path).to_crs("EPSG:4326")
+    centroids = tracts[["GEOID", "geometry"]].copy()
+    centroids["geometry"] = centroids.geometry.centroid
+
+    joined = gpd.sjoin(
+        centroids,
+        nsa_gdf[[name_col, "geometry"]].rename(columns={name_col: "nsa_name"}),
+        how="left",
+        predicate="within",
+    )
+    # Deduplicate: a centroid at a boundary may match multiple polygons — keep first
+    joined = joined[~joined.index.duplicated(keep="first")]
+
+    crosswalk = (
+        joined[["GEOID", "nsa_name"]]
+        .rename(columns={"GEOID": "geoid"})
+        .fillna({"nsa_name": ""})
+    )
+    crosswalk.to_csv(dest, index=False)
+
+    matched = (crosswalk["nsa_name"] != "").sum()
+    log(f"  {matched}/{len(crosswalk)} tracts matched to an NSA → {dest.name}")
+
+
+def stage_nsa() -> None:
+    """Fetch Baltimore NSA boundaries and build the tract→NSA name crosswalk.
+
+    Writes data/processed/tract_to_nsa.csv (geoid, nsa_name). Year-independent
+    — run once, or after NSA boundary updates. Reads tract_boundaries.geojson
+    from data/processed/ (produced by stage_process); falls back to data/raw/.
+    """
+    for d in (RAW_DIR, INTERIM, PROC):
+        d.mkdir(parents=True, exist_ok=True)
+
+    log("=== Stage: NSA crosswalk ===")
+
+    tracts_path = PROC / "tract_boundaries.geojson"
+    if not tracts_path.exists():
+        tracts_path = RAW_DIR / "baltimore_tracts.geojson"
+    if not tracts_path.exists():
+        raise FileNotFoundError(
+            "tract_boundaries.geojson not found in data/processed/ or data/raw/. "
+            "Run --stage process first to generate it."
+        )
+
+    _fetch_nsa_crosswalk(tracts_path, PROC / "tract_to_nsa.csv")
+    log("NSA stage complete.")
 
 
 def stage_ingest(year: int) -> None:
@@ -634,12 +732,13 @@ if __name__ == "__main__":
     parser.add_argument("--year", type=int, help="Year to process (not required for --stage demographics)")
     parser.add_argument(
         "--stage",
-        choices=["ingest", "process", "demographics", "srtype", "all"],
+        choices=["ingest", "process", "demographics", "srtype", "nsa", "all"],
         default="all",
         help=(
             "ingest=Stage 1 only; process=Stages 2+3 only; "
             "demographics=fetch ACS race+income CSVs (year-independent); "
             "srtype=per-SRType aggregate metrics (requires process output); "
+            "nsa=build tract→NSA name crosswalk (year-independent, requires tract_boundaries.geojson); "
             "all=full pipeline (default)"
         ),
     )
@@ -652,6 +751,8 @@ if __name__ == "__main__":
 
     if args.stage == "demographics":
         stage_demographics()
+    elif args.stage == "nsa":
+        stage_nsa()
     else:
         if not args.year:
             parser.error("--year is required for stages: ingest, process, srtype, all")
