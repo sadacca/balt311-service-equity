@@ -21,21 +21,23 @@ _TOP_K_CATEGORIES = 15
 _PSEUDOCOUNT = 1e-4
 _TOP_SRTYPE_SHOW = 12
 _BAR_TOP_N = 5
-_CSA_LABEL_FRAC    = 0.10  # fraction of CSA markers to label; farthest-point sampled
+_CSA_LABEL_FRAC         = 0.10  # fraction of CSA markers to label; farthest-point sampled
+_CSA_LABEL_MIN_PER_QUAD = 3     # guaranteed minimum CSA labels per quadrant
 _SRTYPE_BAR_TOP_N  = 8    # individual SRTypes to show in the predominant-subtype bar
 
 # Plotly bubble area values — with size_max=16, CSA → ~16px, Tract → ~6px.
 _SZ_CSA   = 200
 _SZ_TRACT = 30
 
-# Very light quadrant background fills.
+# Quadrant labels: UL/UR/LL/LR (upper-left, upper-right, lower-left, lower-right).
+# Avoids geographic cardinal-direction confounds — these are embedding dimensions, not compass bearings.
 _QUADRANT_COLORS = {
-    "NW": "rgba(100, 149, 237, 0.08)",
-    "NE": "rgba(60,  179, 113, 0.08)",
-    "SW": "rgba(255, 165,   0, 0.08)",
-    "SE": "rgba(218, 112, 214, 0.08)",
+    "UL": "rgba(100, 149, 237, 0.08)",
+    "UR": "rgba(60,  179, 113, 0.08)",
+    "LL": "rgba(255, 165,   0, 0.08)",
+    "LR": "rgba(218, 112, 214, 0.08)",
 }
-_QUADRANT_ORDER = ["NW", "NE", "SW", "SE"]
+_QUADRANT_ORDER = ["UL", "UR", "LL", "LR"]
 
 _PCT_COLS = {
     "pct_black", "pct_white", "pct_hispanic", "pct_poverty",
@@ -219,7 +221,7 @@ def _top_srtype_combined(data_dir: Path) -> pd.DataFrame:
 def _assign_quadrants(
     embedding: pd.DataFrame,
 ) -> tuple[pd.DataFrame, float, float]:
-    """Divide 2D space at median x / median y → NW | NE | SW | SE per geoid."""
+    """Divide 2D space at median x / median y → UL | UR | LL | LR per geoid."""
     mean_pos = embedding.groupby("geoid")[["x", "y"]].mean().reset_index()
     x_mid    = float(mean_pos["x"].median())
     y_mid    = float(mean_pos["y"].median())
@@ -229,14 +231,18 @@ def _assign_quadrants(
         (mean_pos["x"] >= x_mid) & (mean_pos["y"] >= y_mid),
         (mean_pos["x"] <  x_mid) & (mean_pos["y"] <  y_mid),
     ]
-    mean_pos["cluster_label"] = np.select(conds, ["NW", "NE", "SW"], default="SE")
+    mean_pos["cluster_label"] = np.select(conds, ["UL", "UR", "LL"], default="LR")
     return mean_pos[["geoid", "cluster_label"]], x_mid, y_mid
 
 
 # ── Chart helpers ─────────────────────────────────────────────────────────────
 
-def _subsample_csa_labels(emb: pd.DataFrame, frac: float = _CSA_LABEL_FRAC) -> set:
-    """Farthest-point sample of CSA geoids for text labels (maximises spatial spread)."""
+def _subsample_csa_labels(
+    emb: pd.DataFrame,
+    frac: float = _CSA_LABEL_FRAC,
+    min_per_quad: int = _CSA_LABEL_MIN_PER_QUAD,
+) -> set:
+    """Farthest-point sample CSA labels with at least min_per_quad guaranteed per quadrant."""
     csa_rows = emb[emb["geo_type"] == "CSA"]
     if csa_rows.empty:
         return set()
@@ -245,24 +251,59 @@ def _subsample_csa_labels(emb: pd.DataFrame, frac: float = _CSA_LABEL_FRAC) -> s
         csa_rows.groupby("geoid")[["x", "y"]].mean().reset_index()
         if "year" in csa_rows.columns
         else csa_rows[["geoid", "x", "y"]].drop_duplicates("geoid")
+    ).reset_index(drop=True)
+
+    if "cluster_label" in csa_rows.columns:
+        mean_pos = mean_pos.merge(
+            csa_rows[["geoid", "cluster_label"]].drop_duplicates("geoid"),
+            on="geoid", how="left",
+        ).reset_index(drop=True)
+
+    n_target = min(
+        len(mean_pos),
+        max(round(len(mean_pos) * frac), min_per_quad * len(_QUADRANT_ORDER)),
     )
-    n = max(1, round(len(mean_pos) * frac))
-    if n >= len(mean_pos):
-        return set(mean_pos["geoid"])
 
     pts      = mean_pos[["x", "y"]].to_numpy()
     geoids   = mean_pos["geoid"].tolist()
-    centroid = pts.mean(axis=0)
-    dists    = np.linalg.norm(pts - centroid, axis=1)
-    selected = [int(dists.argmax())]
+    sel_set: set[str]  = set()
+    sel_idx: list[int] = []
 
-    for _ in range(n - 1):
-        dist_to_nearest = np.min(
-            np.linalg.norm(pts[:, None] - pts[selected][None], axis=2), axis=1,
-        )
-        selected.append(int(dist_to_nearest.argmax()))
+    def _pick_farthest(candidate_idx: list[int]) -> int | None:
+        """Return the candidate index farthest from already-selected points."""
+        avail = [i for i in candidate_idx if geoids[i] not in sel_set]
+        if not avail:
+            return None
+        if not sel_idx:
+            centroid = pts[avail].mean(axis=0)
+            scores = np.linalg.norm(pts[avail] - centroid, axis=1)
+        else:
+            scores = np.min(
+                np.linalg.norm(pts[avail][:, None] - pts[sel_idx][None], axis=2), axis=1,
+            )
+        return avail[int(np.argmax(scores))]
 
-    return {geoids[i] for i in selected}
+    # Phase 1: guarantee min_per_quad from each quadrant
+    if "cluster_label" in mean_pos.columns:
+        for q in _QUADRANT_ORDER:
+            q_idx = mean_pos.index[mean_pos["cluster_label"] == q].tolist()
+            for _ in range(min(min_per_quad, len(q_idx))):
+                best = _pick_farthest(q_idx)
+                if best is None:
+                    break
+                sel_set.add(geoids[best])
+                sel_idx.append(best)
+
+    # Phase 2: fill remaining slots with global farthest-point
+    all_idx = list(range(len(mean_pos)))
+    while len(sel_set) < n_target:
+        best = _pick_farthest(all_idx)
+        if best is None:
+            break
+        sel_set.add(geoids[best])
+        sel_idx.append(best)
+
+    return sel_set
 
 
 def _add_viz_cols(emb: pd.DataFrame, labeled_csas: set | None = None) -> pd.DataFrame:
@@ -308,10 +349,10 @@ def _add_quadrant_backgrounds(
     x_range: list[float], y_range: list[float],
 ) -> None:
     quads = {
-        "NW": (x_range[0], x_mid,      y_mid,      y_range[1]),
-        "NE": (x_mid,      x_range[1], y_mid,      y_range[1]),
-        "SW": (x_range[0], x_mid,      y_range[0], y_mid),
-        "SE": (x_mid,      x_range[1], y_range[0], y_mid),
+        "UL": (x_range[0], x_mid,      y_mid,      y_range[1]),
+        "UR": (x_mid,      x_range[1], y_mid,      y_range[1]),
+        "LL": (x_range[0], x_mid,      y_range[0], y_mid),
+        "LR": (x_mid,      x_range[1], y_range[0], y_mid),
     }
     for name, (x0, x1, y0, y1) in quads.items():
         fig.add_shape(
@@ -417,7 +458,7 @@ def _render_quadrant_bar(
 # ── Neighborhood list ─────────────────────────────────────────────────────────
 
 def _render_neighborhood_list(embedding: pd.DataFrame) -> None:
-    """Four-column table of CSA names by quadrant affiliation."""
+    """Two-column table of CSA names by quadrant affiliation, small text."""
     if "cluster_label" not in embedding.columns or "geo_type" not in embedding.columns:
         return
     unique = (
@@ -429,13 +470,20 @@ def _render_neighborhood_list(embedding: pd.DataFrame) -> None:
         return
 
     st.subheader("Neighborhoods by Quadrant")
-    cols = st.columns(len(_QUADRANT_ORDER))
-    for i, q in enumerate(_QUADRANT_ORDER):
-        names = csas[csas["cluster_label"] == q]["geoid"].tolist()
-        with cols[i]:
-            st.markdown(f"**{q}** ({len(names)})")
-            for name in names:
-                st.markdown(f"- {name}")
+    # Two columns, two quadrants each: (UL, UR) left / (LL, LR) right
+    col_left, col_right = st.columns(2)
+    pairs = [(_QUADRANT_ORDER[0], _QUADRANT_ORDER[1]), (_QUADRANT_ORDER[2], _QUADRANT_ORDER[3])]
+    for col, (q1, q2) in zip([col_left, col_right], pairs):
+        with col:
+            for q in (q1, q2):
+                names = csas[csas["cluster_label"] == q]["geoid"].tolist()
+                items = "".join(f"<li>{n}</li>" for n in names)
+                st.markdown(
+                    f"<p style='margin-bottom:2px'><strong>{q}</strong> ({len(names)})</p>"
+                    f'<ul style="font-size:0.78em; margin-top:0; margin-bottom:12px; '
+                    f'padding-left:1.4em; line-height:1.5;">{items}</ul>',
+                    unsafe_allow_html=True,
+                )
 
 
 # ── Predominant subtype bar ───────────────────────────────────────────────────
