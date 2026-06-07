@@ -21,7 +21,8 @@ _TOP_K_CATEGORIES = 15
 _PSEUDOCOUNT = 1e-4
 _TOP_SRTYPE_SHOW = 12
 _BAR_TOP_N = 5
-_CSA_LABEL_FRAC = 0.10   # fraction of CSA markers to label; farthest-point sampled
+_CSA_LABEL_FRAC    = 0.10  # fraction of CSA markers to label; farthest-point sampled
+_SRTYPE_BAR_TOP_N  = 8    # individual SRTypes to show in the predominant-subtype bar
 
 # Plotly bubble area values — with size_max=16, CSA → ~16px, Tract → ~6px.
 _SZ_CSA   = 200
@@ -437,6 +438,63 @@ def _render_neighborhood_list(embedding: pd.DataFrame) -> None:
                 st.markdown(f"- {name}")
 
 
+# ── Predominant subtype bar ───────────────────────────────────────────────────
+
+def _render_quadrant_srtype_bar(
+    embedding: pd.DataFrame, data_dir: Path, year: int,
+) -> None:
+    """Stacked bar: % of tracts per quadrant whose top service call is each specific SRType.
+
+    Only SRTypes that appear as the predominant type for at least one tract are
+    included — so the segments are drawn from the universe of 'dominant' subtypes
+    rather than every SRType that exists in the dataset.
+    """
+    if "cluster_label" not in embedding.columns or "geo_type" not in embedding.columns:
+        return
+
+    top_df   = _top_srtype_combined(data_dir)
+    top_year = top_df[top_df["year"] == year] if "year" in top_df.columns else pd.DataFrame()
+    if top_year.empty:
+        return
+
+    unique = embedding[["geoid", "geo_type", "cluster_label"]].drop_duplicates("geoid")
+    tracts = unique[unique["geo_type"] == "Tract"]
+    df     = tracts.merge(top_year[["geoid", "top_srtype"]], on="geoid", how="left")
+    df     = df.dropna(subset=["top_srtype", "cluster_label"])
+    if df.empty:
+        return
+
+    # Distribution of top_srtype within each quadrant
+    counts = df.groupby(["cluster_label", "top_srtype"]).size().reset_index(name="n")
+    totals = df.groupby("cluster_label").size().reset_index(name="total")
+    counts = counts.merge(totals, on="cluster_label")
+    counts["pct"] = counts["n"] / counts["total"]
+
+    # Top N by global tract count, rest → Other
+    global_rank = df["top_srtype"].value_counts()
+    top_types   = global_rank.head(_SRTYPE_BAR_TOP_N).index.tolist()
+    counts["SRType"] = counts["top_srtype"].where(counts["top_srtype"].isin(top_types), "Other")
+    plot_df = counts.groupby(["cluster_label", "SRType"])["pct"].sum().reset_index()
+
+    srtype_order = top_types + (["Other"] if plot_df["SRType"].eq("Other").any() else [])
+    quad_order   = [q for q in _QUADRANT_ORDER if q in plot_df["cluster_label"].values]
+
+    fig = px.bar(
+        plot_df, x="cluster_label", y="pct", color="SRType",
+        category_orders={"cluster_label": quad_order, "SRType": srtype_order},
+        labels={"pct": "", "cluster_label": "", "SRType": ""},
+        color_discrete_sequence=px.colors.qualitative.Bold,
+    )
+    fig.update_yaxes(tickformat=".0%")
+    fig.update_layout(
+        barmode="stack", height=440,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        margin=dict(l=10, r=10, t=10, b=10),
+        yaxis_title="% of tracts",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
 # ── View renderers ────────────────────────────────────────────────────────────
 
 @st.fragment
@@ -560,6 +618,13 @@ def _render_usage_view(data_dir: Path, year: int) -> None:
     summary = "  ·  ".join(f"**{q}** {n_by_quad.get(q, 0)}" for q in _QUADRANT_ORDER)
     st.caption(f"Quadrant tract counts ({summary}). Bars show category mix for the selected year.")
     _render_quadrant_bar(embedding, feature_cols, year)
+
+    st.subheader(f"Predominant Service Type by Quadrant — {year}")
+    st.caption(
+        "For each quadrant: what % of tracts have each specific service type as their "
+        "most-called-upon service. Only service types that dominate at least one tract appear."
+    )
+    _render_quadrant_srtype_bar(embedding, data_dir, year)
 
     st.divider()
     _render_neighborhood_list(embedding)
@@ -699,6 +764,13 @@ def _render_demographic_view(data_dir: Path, year: int) -> None:
                 f"Bars show what each quadrant asks 311 for in **{year}**."
             )
             _render_quadrant_bar(year_usage, usage_feat_cols, year)
+
+    st.subheader(f"Predominant Service Type by Quadrant — {year}")
+    st.caption(
+        "For each demographic quadrant: % of tracts whose top 311 service type is each "
+        "specific subtype. Only subtypes that dominate at least one tract appear."
+    )
+    _render_quadrant_srtype_bar(embedding, data_dir, year)
 
     st.divider()
     _render_neighborhood_list(embedding)
