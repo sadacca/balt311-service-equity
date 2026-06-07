@@ -58,10 +58,11 @@ with st.sidebar:
     )
     st.markdown(
         "**Areas** — then, by neighborhood pattern\n\n"
-        "*Which neighborhoods ask 311 for similar things, and how does that "
-        "shift year to year?* A 2D map of tracts/CSAs by service-usage mix, "
-        "fit once across all years so movement traces real change rather than "
-        "the coordinate system drifting underneath it."
+        "*Which neighborhoods use 311 similarly — and which look alike "
+        "demographically?* Two complementary 2D embeddings in a shared "
+        "coordinate space. Cross-color them to see whether demographic "
+        "similarity predicts 311-usage similarity. Quadrant groupings and "
+        "a neighborhood list make peer comparisons concrete."
     )
     st.markdown(
         "**Equity** — then, citywide\n\n"
