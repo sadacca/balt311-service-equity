@@ -25,7 +25,7 @@ All current development is on `claude/review-requirements-AlGBm`. Push only to t
 
 ## App Structure
 
-Two-tab Streamlit app at `app/app.py`. Sidebar filters (geo level, metric, SRType) are shared across tabs. Year selector is inline above the tabs as a horizontal radio.
+Five-tab Streamlit app at `app/app.py`. Year selector is inline above the tabs as a horizontal radio. The Areas tab manages its own data loading internally; all other tabs share `geo_level` session state (Census Tract / CSA) set via the Equity tab's inline radio.
 
 ### Operations tab (`app/components/operations_panel.py`)
 - **Scope banner** — All requests received / Equity subset / Excluded; makes the filter explicit
@@ -33,6 +33,16 @@ Two-tab Streamlit app at `app/app.py`. Sidebar filters (geo level, metric, SRTyp
 - **Time series** — selected metric across all available years; clicking a point navigates to that year
 - **SRType breakdown** — category pills (hyphen-prefix, e.g. SW-, HCD-) filter a selectable performance table; clicking a row shows two year-over-year bar charts (volume + median days to close) for that type
 - **Geographic map** — request volume choropleth, filtered to selected SRType when a table row is active
+
+### Areas tab (`app/components/area_embedding.py`)
+- **View toggle** — "Demographic profile" / "Service usage" (horizontal radio); both views share one PCA coordinate space fit once on the union of tract and CSA data so both geo levels are directly comparable
+- **Scatter plot** — tracts (small dots) and CSAs (large labeled bubbles) displayed together; ~10% of CSA names labeled via farthest-point sampling. Light-filled quadrant rectangles (NW / NE / SW / SE, divided at median x and median y) sit behind the points
+- **Service-usage view** — positions geographies by service-request mix (CLR-transformed high-level category shares + QuantileTransformer + PCA); colored by median household income. Animated year slider traces trajectories in a single stable coordinate system across all available years
+- **Demographic view** — positions geographies by ACS 2023 demographic profile (race, income, age, education — RobustScaler + PCA); colored by predominant 311 service type for the selected year. No year animation (ACS is a single snapshot)
+- **Quadrant assignment** — each geoid's mean (x, y) across all years determines its quadrant (NW / NE / SW / SE); stable even as individual year-points shift
+- **Category-mix bar** — 100% stacked bar: top-5 high-level category shares per quadrant, tracts only (CSAs are population-weighted aggregates of their tracts; including both would double-count)
+- **Predominant-subtype bar** — for each quadrant, % of tracts whose #1 SRType is each specific service subtype (e.g. "SW-Dirty Street"). Only subtypes that dominate at least one tract appear; top 8 globally + Other
+- **Neighborhood list** — four-column table of CSA names grouped by quadrant
 
 ### Equity tab (`app/app.py` → component calls)
 - Choropleth map colored by selected metric; click a tract/CSA to see its summary panel
