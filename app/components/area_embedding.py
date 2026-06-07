@@ -575,7 +575,7 @@ def _render_usage_view(data_dir: Path, year: int) -> None:
         f"combined **{pc1_pct + pc2_pct:.0f}%** — {n_tracts} tracts + {n_csas} CSAs"
     )
 
-    pad    = 0.14
+    pad    = 0.27
     x5, x95 = np.percentile(embedding["x"], [5, 95])
     y5, y95 = np.percentile(embedding["y"], [5, 95])
     x_range = [x5 - (x95 - x5) * pad, x95 + (x95 - x5) * pad]
@@ -731,7 +731,7 @@ def _render_demographic_view(data_dir: Path, year: int) -> None:
         f"across {n_tracts} tracts + {n_csas} CSAs."
     )
 
-    pad    = 0.14
+    pad    = 0.27
     x5, x95 = np.percentile(embedding["x"], [5, 95])
     y5, y95 = np.percentile(embedding["y"], [5, 95])
     x_range = [x5 - (x95 - x5) * pad, x95 + (x95 - x5) * pad]

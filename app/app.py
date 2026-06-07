@@ -154,7 +154,7 @@ demographics = load_demographics(DATA_DIR / f"{geo_key}_demographics.csv")
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
 tab_ops, tab_cat, tab_areas, tab_eq, tab_cat_eq = st.tabs([
-    "Operations", "Services", "Areas", "Equity", "Service Equity",
+    "Operations", "Services", "Area Service Usage", "Equity", "Service Equity",
 ])
 
 # ── Operations tab ────────────────────────────────────────────────────────────
