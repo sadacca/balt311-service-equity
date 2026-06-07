@@ -82,6 +82,16 @@ def _load_metrics(data_dir: Path, geo_key: str, year: int) -> pd.DataFrame | Non
     return pd.read_parquet(path) if path.exists() else None
 
 
+@st.cache_data
+def _load_tract_nsa(data_dir: Path) -> dict[str, str]:
+    """Load tract→NSA name crosswalk. Returns empty dict if file not yet generated."""
+    path = data_dir / "tract_to_nsa.csv"
+    if not path.exists():
+        return {}
+    df = pd.read_csv(path, dtype={"geoid": str, "nsa_name": str}).fillna({"nsa_name": ""})
+    return dict(zip(df["geoid"], df["nsa_name"]))
+
+
 # ── Share-matrix & CLR helpers ────────────────────────────────────────────────
 
 def _usage_share_matrix(history: pd.DataFrame) -> pd.DataFrame:
@@ -237,25 +247,34 @@ def _assign_quadrants(
 
 # ── Chart helpers ─────────────────────────────────────────────────────────────
 
-def _subsample_csa_labels(
+def _subsample_labels(
     emb: pd.DataFrame,
+    geo_type_filter: str = "Tract",
     frac: float = _CSA_LABEL_FRAC,
     min_per_quad: int = _CSA_LABEL_MIN_PER_QUAD,
+    require_col: str | None = None,
 ) -> set:
-    """Farthest-point sample CSA labels with at least min_per_quad guaranteed per quadrant."""
-    csa_rows = emb[emb["geo_type"] == "CSA"]
-    if csa_rows.empty:
+    """Farthest-point sample geoids for scatter text labels.
+
+    Guarantees at least min_per_quad labels per quadrant (phase 1), then fills
+    the remaining budget globally (phase 2). When require_col is set, only rows
+    with a non-empty value in that column are eligible.
+    """
+    rows = emb[emb["geo_type"] == geo_type_filter]
+    if require_col and require_col in rows.columns:
+        rows = rows[rows[require_col].notna() & (rows[require_col] != "")]
+    if rows.empty:
         return set()
 
     mean_pos = (
-        csa_rows.groupby("geoid")[["x", "y"]].mean().reset_index()
-        if "year" in csa_rows.columns
-        else csa_rows[["geoid", "x", "y"]].drop_duplicates("geoid")
+        rows.groupby("geoid")[["x", "y"]].mean().reset_index()
+        if "year" in rows.columns
+        else rows[["geoid", "x", "y"]].drop_duplicates("geoid")
     ).reset_index(drop=True)
 
-    if "cluster_label" in csa_rows.columns:
+    if "cluster_label" in rows.columns:
         mean_pos = mean_pos.merge(
-            csa_rows[["geoid", "cluster_label"]].drop_duplicates("geoid"),
+            rows[["geoid", "cluster_label"]].drop_duplicates("geoid"),
             on="geoid", how="left",
         ).reset_index(drop=True)
 
@@ -264,13 +283,12 @@ def _subsample_csa_labels(
         max(round(len(mean_pos) * frac), min_per_quad * len(_QUADRANT_ORDER)),
     )
 
-    pts      = mean_pos[["x", "y"]].to_numpy()
-    geoids   = mean_pos["geoid"].tolist()
+    pts     = mean_pos[["x", "y"]].to_numpy()
+    geoids  = mean_pos["geoid"].tolist()
     sel_set: set[str]  = set()
     sel_idx: list[int] = []
 
     def _pick_farthest(candidate_idx: list[int]) -> int | None:
-        """Return the candidate index farthest from already-selected points."""
         avail = [i for i in candidate_idx if geoids[i] not in sel_set]
         if not avail:
             return None
@@ -294,7 +312,7 @@ def _subsample_csa_labels(
                 sel_set.add(geoids[best])
                 sel_idx.append(best)
 
-    # Phase 2: fill remaining slots with global farthest-point
+    # Phase 2: fill remaining budget globally
     all_idx = list(range(len(mean_pos)))
     while len(sel_set) < n_target:
         best = _pick_farthest(all_idx)
@@ -306,15 +324,20 @@ def _subsample_csa_labels(
     return sel_set
 
 
-def _add_viz_cols(emb: pd.DataFrame, labeled_csas: set | None = None) -> pd.DataFrame:
-    """Add _sz (Plotly bubble area) and _text (sampled CSA labels, blank for tracts)."""
-    emb   = emb.copy()
+def _add_viz_cols(
+    emb: pd.DataFrame,
+    labeled_tracts: set | None = None,
+    label_col: str = "nsa_name",
+) -> pd.DataFrame:
+    """Add _sz (Plotly bubble area) and _text (NSA name on sampled tract dots, blank elsewhere)."""
+    emb    = emb.copy()
     is_csa = emb["geo_type"] == "CSA"
-    emb["_sz"]  = np.where(is_csa, _SZ_CSA, _SZ_TRACT)
-    if labeled_csas is not None:
-        emb["_text"] = emb["geoid"].where(is_csa & emb["geoid"].isin(labeled_csas), "")
+    emb["_sz"] = np.where(is_csa, _SZ_CSA, _SZ_TRACT)
+    if labeled_tracts is not None and label_col in emb.columns:
+        is_labeled_tract = (~is_csa) & emb["geoid"].isin(labeled_tracts)
+        emb["_text"] = emb[label_col].where(is_labeled_tract, "")
     else:
-        emb["_text"] = emb["geoid"].where(is_csa, "")
+        emb["_text"] = ""
     return emb
 
 
@@ -594,16 +617,21 @@ def _render_usage_view(data_dir: Path, year: int) -> None:
     x_range = [x5 - (x95 - x5) * pad, x95 + (x95 - x5) * pad]
     y_range = [y5 - (y95 - y5) * pad, y95 + (y95 - y5) * pad]
 
-    labeled_csas = _subsample_csa_labels(embedding)
-    years_sorted = sorted(int(y) for y in embedding["year"].unique())
-    display_df   = _scale_pct_cols(embedding, demo_cols)
-    display_df, demo_hover_map = _add_hover_fmt(display_df, demo_cols)
-    display_df   = _add_viz_cols(display_df, labeled_csas)
+    tract_nsa = _load_tract_nsa(data_dir)
+    embedding["nsa_name"] = embedding["geoid"].map(tract_nsa).fillna("")
 
+    labeled_tracts = _subsample_labels(embedding, "Tract", require_col="nsa_name")
+    years_sorted   = sorted(int(y) for y in embedding["year"].unique())
+    display_df     = _scale_pct_cols(embedding, demo_cols)
+    display_df, demo_hover_map = _add_hover_fmt(display_df, demo_cols)
+    display_df     = _add_viz_cols(display_df, labeled_tracts=labeled_tracts)
+
+    has_nsa = bool(tract_nsa)
     hover_labels: dict[str, str] = {
         "x": "PC1", "y": "PC2",
         color_col:        color_label,
         "cluster_label":  "Quadrant",
+        "nsa_name":       "Neighborhood",
         "top_srtype":     "Top type",
         "geo_type":       "Level",
         "_sz": "", "_text": "",
@@ -611,6 +639,7 @@ def _render_usage_view(data_dir: Path, year: int) -> None:
     }
     hover_data: dict[str, bool] = {
         "cluster_label": True,
+        "nsa_name":      has_nsa,
         "top_srtype":    True,
         "geo_type":      True,
         "_sz": False, "_text": False,
@@ -655,7 +684,13 @@ def _render_usage_view(data_dir: Path, year: int) -> None:
 
     _dedup_legend(fig)
     st.plotly_chart(fig, use_container_width=True)
-    st.caption(f"~{round(_CSA_LABEL_FRAC * 100):.0f}% of CSA names labeled (farthest-point sampled). Hover any marker for details.")
+    nsa_note = (
+        f"~{round(_CSA_LABEL_FRAC * 100):.0f}% of tract NSA names labeled (min {_CSA_LABEL_MIN_PER_QUAD} per quadrant, farthest-point sampled). "
+        "Hover any marker for neighborhood, quadrant, and service details."
+        if has_nsa else
+        "Run `python scripts/pipeline.py --stage nsa` to add neighborhood name labels. Hover for details."
+    )
+    st.caption(nsa_note)
 
     # Quadrant service-mix bar (tracts only — avoids double-counting)
     st.subheader(f"Quadrant Profiles — {year}")
@@ -745,14 +780,19 @@ def _render_demographic_view(data_dir: Path, year: int) -> None:
     x_range = [x5 - (x95 - x5) * pad, x95 + (x95 - x5) * pad]
     y_range = [y5 - (y95 - y5) * pad, y95 + (y95 - y5) * pad]
 
-    labeled_csas = _subsample_csa_labels(embedding)
-    display_df   = _scale_pct_cols(embedding, feature_cols)
-    display_df, feat_hover_map = _add_hover_fmt(display_df, feature_cols)
-    display_df   = _add_viz_cols(display_df, labeled_csas)
+    tract_nsa = _load_tract_nsa(data_dir)
+    embedding["nsa_name"] = embedding["geoid"].map(tract_nsa).fillna("")
 
+    labeled_tracts = _subsample_labels(embedding, "Tract", require_col="nsa_name")
+    display_df     = _scale_pct_cols(embedding, feature_cols)
+    display_df, feat_hover_map = _add_hover_fmt(display_df, feature_cols)
+    display_df     = _add_viz_cols(display_df, labeled_tracts=labeled_tracts)
+
+    has_nsa = bool(tract_nsa)
     hover_labels: dict[str, str] = {
         "x": "PC1", "y": "PC2",
         "cluster_label": "Quadrant",
+        "nsa_name":      "Neighborhood",
         "geo_type":      "Level",
         color_col:       color_label,
         "top_sr_type":   "Top type",
@@ -770,6 +810,7 @@ def _render_demographic_view(data_dir: Path, year: int) -> None:
         hover_name="geoid",
         hover_data={
             "cluster_label": True,
+            "nsa_name":      has_nsa,
             "geo_type":      True,
             "top_sr_type":   True,
             "srtype_color":  False,
@@ -790,7 +831,13 @@ def _render_demographic_view(data_dir: Path, year: int) -> None:
     _add_quadrant_backgrounds(fig, x_mid, y_mid, x_range, y_range)
     _dedup_legend(fig)
     st.plotly_chart(fig, use_container_width=True)
-    st.caption(f"~{round(_CSA_LABEL_FRAC * 100):.0f}% of CSA names labeled. Hover any marker for details.")
+    nsa_note = (
+        f"~{round(_CSA_LABEL_FRAC * 100):.0f}% of tract NSA names labeled (min {_CSA_LABEL_MIN_PER_QUAD} per quadrant). "
+        "Hover any marker for neighborhood, quadrant, and demographic details."
+        if has_nsa else
+        "Run `python scripts/pipeline.py --stage nsa` to add neighborhood name labels. Hover for details."
+    )
+    st.caption(nsa_note)
 
     # Quadrant service-mix bar (tracts, grouped by demographic quadrant)
     usage_emb, usage_feat_cols, _ = compute_combined_usage_embedding(data_dir)
