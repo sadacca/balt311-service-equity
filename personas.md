@@ -130,19 +130,49 @@ Five primary personas drive feature prioritization. For each: who they are, what
 
 ---
 
+## Persona 6 — The Honors High School Civics / Statistics Student
+
+**Profile**: 16–18-year-old student in an AP Government, AP Statistics, or honors civics course. Has been assigned — or self-directed — research on local government, urban policy, or data literacy. Comfortable reading bar charts and tables; has encountered the word "median" and "percent" in class but has not used real-world government datasets before. Likely accessing on a laptop; session is goal-driven (homework, a presentation, or genuine curiosity after a class discussion about race and public services).
+
+**Primary question**: "How does Baltimore 311 actually work? Is the service fair? What does the data show about my city, and can I trust it?"
+
+**Needs to leave with**: A concrete, memorable finding they can articulate — "majority-Black neighborhoods wait X% longer on average" or "Solid Waste requests are three times more common in some neighborhoods than others" — plus enough confidence in the methodology to cite the source in a paper or class presentation. They need to feel like they understood what they were looking at, not just that they copied a number from a chart.
+
+**Currently served by**:
+- "What is 311?" sidebar explainer — the first question a new visitor asks, now answered before they see a single chart
+- "What to look for" expander on every tab — scaffolded reading guide that names the specific insight to look for and frames what a surprising vs. expected result would look like
+- Plain-language glossary in the sidebar — closure rate, median days to close, equity score, census tract all defined in one or two plain sentences
+- "How a 311 request is tracked" lifecycle explainer — explains what "closed" means before showing the closure rate
+- Period-average reference line on the Operations time series — provides a visual anchor; a student can see immediately whether a year is above or below the long-run norm
+- Department + Type columns in the performance table — strips city-jargon codes (SW-Dirty Alley → Solid Waste / Dirty Alley) so the table is scannable without prior knowledge
+- Color direction labels ("Shorter wait / City median / Longer wait") — removes the need to decode whether red or blue is "good"
+- Equity score annotation ("100% = no gap · 0% = complete separation") — maps an abstract number to an intuitive endpoint
+- Civic-hook opening sentence in the sidebar — frames the whole dashboard as a civic question a student would already be asking
+
+**Key gaps**:
+- No guided tour or suggested reading path — a student can open any tab first and may not see the five-tab arc as a coherent narrative
+- No plain-language narrative summary: "In 2024, majority-Black neighborhoods waited a median of X days; majority-White neighborhoods waited Y days — an equity score of Z%." The data is present but the student must synthesize it themselves
+- Some statistical vocabulary remains (Mann-Whitney, PCA, CLR) — defined in the glossary but still present in tab labels and hover text
+- No address search — a student curious about their own neighborhood must locate it visually on the map
+- No data-download button — a student writing a paper cannot easily extract a specific number as a citable table row
+
+**Roadmap relevance**: Persona 6 is the primary beneficiary of the accessibility improvements completed in this session (glossary, expanders, lifecycle explainer, plain-color labels). Further gains most likely to serve this persona: a narrative "key finding" card per tab (one sentence summarizing the headline result for the selected year); a citation/data-download affordance so the dashboard can be cited in a paper; and a mobile-responsive layout pass. None of these are on the active roadmap but should be considered before any public-launch press coverage that reaches student audiences.
+
+---
+
 ## Summary Matrix
 
-| Feature / Phase | Citizen | Journalist | Citywide Official | Council Member | Ops Manager |
-|---|---|---|---|---|---|
-| Map + click-to-select | ★★★ | ★★ | ★★ | ★★★ | ★★ |
-| Operations KPI + time series | ★ | ★★★ | ★★★ | ★★ | ★★★ |
-| SRType table + detail charts | ★ | ★★ | ★★ | ★★ | ★★★ |
-| Equity distributions + score | ★ | ★★★ | ★★★ | ★★ | ★ |
-| Equity trend chart | ★ | ★★★ | ★★★ | ★★ | ★ |
-| **Phase 4**: Within-type equity scoring | ★ | ★★★ | ★★★ | ★★ | ★★ |
-| **Phase 4b**: Area analysis / peer comparison | ★★ | ★★ | ★★ | ★★★ | ★★★ |
-| **Phase 5**: Cross-municipal benchmarking | ★ | ★★★ | ★★★ | ★★ | ★★ |
-| **Phase 6**: Seasonality tab | ★ | ★ | ★★ | ★ | ★★★ |
+| Feature / Phase | Citizen | Journalist | Citywide Official | Council Member | Ops Manager | HS Student |
+|---|---|---|---|---|---|---|
+| Map + click-to-select | ★★★ | ★★ | ★★ | ★★★ | ★★ | ★★ |
+| Operations KPI + time series | ★ | ★★★ | ★★★ | ★★ | ★★★ | ★★★ |
+| SRType table + detail charts | ★ | ★★ | ★★ | ★★ | ★★★ | ★★ |
+| Equity distributions + score | ★ | ★★★ | ★★★ | ★★ | ★ | ★★★ |
+| Equity trend chart | ★ | ★★★ | ★★★ | ★★ | ★ | ★★ |
+| **Phase 4**: Within-type equity scoring | ★ | ★★★ | ★★★ | ★★ | ★★ | ★★ |
+| **Phase 4b**: Area analysis / peer comparison | ★★ | ★★ | ★★ | ★★★ | ★★★ | ★★ |
+| **Phase 5**: Cross-municipal benchmarking | ★ | ★★★ | ★★★ | ★★ | ★★ | ★★ |
+| **Phase 6**: Seasonality tab | ★ | ★ | ★★ | ★ | ★★★ | ★ |
 
 ★★★ = primary use case &nbsp;&nbsp; ★★ = useful &nbsp;&nbsp; ★ = marginal
 
@@ -152,7 +182,9 @@ Five primary personas drive feature prioritization. For each: who they are, what
 
 The initial target audience is **super users** — people with vocational or research interest who can tolerate jargon and navigate a data-dense interface. This covers Personas 2–5 (journalist, citywide official, council member, ops manager). Persona 1 (interested citizen) is acknowledged but explicitly deprioritized for now: accessibility improvements (plain-language labels, address search, mobile layout, narrative summaries) are not on the active roadmap. Revisit when there is intent to publicize the dashboard to a general audience.
 
-This framing should guide design decisions: depth and precision over simplicity, technical labels acceptable, statistical concepts (overlap score, closure rate) can be used without inline explanation.
+Persona 6 (honors HS student) is a new addition that bridges the gap between Personas 1 and 2. A round of accessibility improvements shipped in June 2026 directly serves this persona: plain-language glossary, "What to look for" expanders on all five tabs, lifecycle explainer, civic-hook framing, and plain-color-direction labels. The student persona should now be considered a second design touchstone alongside the super-user baseline — new features should degrade gracefully for a student reader even when optimized for a journalist or official.
+
+This framing should guide design decisions: depth and precision over simplicity, technical labels acceptable, statistical concepts (overlap score, closure rate) can be used without inline explanation for the primary audience — but should be accompanied by a plain-language gloss (expander, caption, or glossary entry) whenever a student reader is a realistic visitor.
 
 ---
 
@@ -170,4 +202,4 @@ This framing should guide design decisions: depth and precision over simplicity,
 
 ---
 
-*Created: May 2026. Revisit after TD-3 validation with actual stakeholder interviews.*
+*Created: May 2026. Updated June 2026: added Persona 6 (Honors HS Student); updated summary matrix and audience focus section to reflect June 2026 accessibility improvements. Revisit after TD-3 validation with actual stakeholder interviews.*
