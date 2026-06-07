@@ -536,8 +536,7 @@ def _render_quadrant_srtype_bar(
 def _render_usage_view(data_dir: Path, year: int) -> None:
     st.caption(
         "Every geography projected into a shared 2D space by service-request mix — "
-        "fit once across all years so movement between frames is real change. "
-        "Large labeled markers = CSAs · small dots = tracts. Press play."
+        "fit once across all years so movement between frames is real change. Press play."
     )
 
     embedding, feature_cols, var = compute_combined_usage_embedding(data_dir)
@@ -675,8 +674,7 @@ def _render_demographic_view(data_dir: Path, year: int) -> None:
     st.caption(
         "Geographies placed by *who lives there* — ACS 2023 demographic profile. "
         "Colored by predominant service type in the selected year to test whether "
-        "demographic similarity predicts what 311 is used for. "
-        "Large labeled markers = CSAs · small dots = tracts."
+        "demographic similarity predicts what 311 is used for."
     )
 
     embedding, feature_cols, var = compute_combined_demographic_embedding(data_dir)
@@ -815,9 +813,7 @@ def _render_demographic_view(data_dir: Path, year: int) -> None:
 def render_area_embedding(data_dir: Path, year: int) -> None:
     """Render Tab 3 — Area Embedding.  Loads all data from data_dir internally."""
     st.caption(
-        "Each geography embedded by demographic profile or by service-request mix. "
-        "Switch views and color by the opposite dimension to see how areas that differ "
-        "demographically request different 311 services."
+        "Do areas that look alike demographically also use 311 the same way?"
     )
 
     if "area_emb_view" not in st.session_state:
