@@ -14,7 +14,7 @@ from components.equity_distributions import render_equity_distributions
 from components.equity_trend import render_equity_trend
 from components.map_view import METRIC_OPTIONS, build_choropleth
 from components.operations_panel import render_operations
-from components.summary_panel import render as render_summary
+from components.summary_panel import render as render_summary, render_peer_comparison
 
 DATA_DIR = Path(__file__).parent.parent / "data" / "processed"
 
@@ -317,6 +317,57 @@ with tab_eq:
 
             with col_panel:
                 render_summary(selected_row)
+
+            # ── Multi-neighborhood comparison ─────────────────────────────────
+            with st.expander("Compare neighborhoods side by side"):
+                st.caption(
+                    "Select up to 5 neighborhoods to compare their service metrics. "
+                    "Click a neighborhood on the map above, then add others here."
+                )
+                all_geo_names = sorted(df["geoid"].tolist())
+                compare_geos = st.multiselect(
+                    "Neighborhoods to compare",
+                    all_geo_names,
+                    default=(
+                        [str(selected_row["geoid"])]
+                        if selected_row is not None and "geoid" in selected_row.index
+                        else []
+                    ),
+                    max_selections=5,
+                    placeholder="Pick up to 5 neighborhoods",
+                    key="eq_compare_geos",
+                )
+                if compare_geos:
+                    cmp_rows = df[df["geoid"].isin(compare_geos)].set_index("geoid")
+                    cmp_metrics = [
+                        ("Closure rate", "closure_rate", ".1%"),
+                        ("Median days to close", "median_days_to_close", ".1f"),
+                        ("On-time rate", "on_time_rate", ".1%"),
+                        ("Requests / 1k", "requests_per_1k", ".1f"),
+                        ("Total requests", "total_requests", ",.0f"),
+                    ]
+                    tbl: dict[str, dict] = {}
+                    for lbl, col, fmt in cmp_metrics:
+                        if col not in cmp_rows.columns:
+                            continue
+                        tbl[lbl] = {
+                            geo: (
+                                f"{cmp_rows.loc[geo, col]:{fmt}}"
+                                if geo in cmp_rows.index and pd.notna(cmp_rows.loc[geo, col])
+                                else "—"
+                            )
+                            for geo in compare_geos
+                        }
+                    if tbl:
+                        st.dataframe(
+                            pd.DataFrame(tbl).T.rename_axis("Metric").reset_index(),
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+
+            # ── Peer neighborhood comparison ──────────────────────────────────
+            if selected_row is not None and demographics is not None:
+                render_peer_comparison(selected_row, df, demographics)
 
             if demographics is not None:
                 st.divider()

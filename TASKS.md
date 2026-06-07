@@ -303,9 +303,53 @@ Data is already in place (Stage 0 ✅). Build roughly in final tab order so each
 
 ---
 
-## Phase 5 — Cross-Municipality Comparison *(medium-term)*
+## Phase 4e — Updated Equity Baseline: Per-Geography Adjusted Metrics *(next priority)*
 
-**Goal**: place Baltimore's 311 performance and equity in context against peer cities. Two levels of depth.
+**Goal**: compute a within-service-type normalized performance score for each geography — the most defensible version of "is this neighborhood being served equitably" because it controls for what services the neighborhood requests. A neighborhood that requests structurally slow-to-close services shouldn't be penalized for that in its equity score.
+
+**The key computation**: for each geography × SRType cell, compute the geography's metric relative to the citywide average for that type (`actual / citywide_mean_for_type`). Then aggregate per geography as a volume-weighted mean across all types that geography requests. The result is a per-geography "relative service quality" score that factors out the type-mix effect already surfaced informally in Tab 5.
+
+### Pipeline additions
+
+- [ ] **P4e-1: Per-geography adjusted metrics stage** — new `stage_adjusted_metrics()` in `scripts/pipeline.py`. For each year: load `tract_srtype_metrics` + `srtype_metrics`, compute `relative_{col} = tract_value / citywide_mean_for_type` for each cell, then aggregate to tract level as volume-weighted mean. Produce `tract_adjusted_metrics_{year}.parquet` and `csa_adjusted_metrics_{year}.parquet`. Columns: `geoid`, `adj_closure_rate`, `adj_days_to_close`, `adj_on_time_rate` (all relative to 1.0 = city average). Suppression threshold: same `MIN_GEO_SRTYPE_N = 5` as existing geo×SRType cells; require ≥3 types with data per geography.
+- [ ] **P4e-2: Add to pipeline CLI + Actions workflow** — add `--stage adjusted` flag; call automatically in full pipeline run after `--stage srtype`.
+
+### App additions
+
+- [ ] **P4e-3: Adjusted metric option in Equity tab** — add "Adjusted closure rate" and "Adjusted days to close" to the `METRIC_OPTIONS` dict in `map_view.py`, reading from `*_adjusted_metrics_{year}.parquet`. Color scale centered at 1.0 (city average) rather than the data median; diverging scale where <1 = better than average for this neighborhood's mix, >1 = worse. Caption: "Adjusted for service mix — scores below 1.0 mean this neighborhood is served better than expected given what it requests; above 1.0 means worse."
+- [ ] **P4e-4: Adjusted equity distributions** — in `equity_distributions.py`, add adjusted metrics to the race/income comparison when the adjusted files are present; show adjusted overlap score alongside raw for direct comparison.
+- [ ] **P4e-5: Adjusted equity trend** — in `equity_trend.py`, add adjusted metric series to the year-over-year trend chart, as a second set of dashed lines alongside the raw series.
+
+---
+
+## Phase 4f — Council Member Features *(after Phase 4e)*
+
+**Goal**: make the dashboard usable for a city council member or district staff who needs to understand how their district is performing — not just how the city overall is performing. The four improvements implemented in June 2026 (see verification below) give council members a multi-neighborhood comparison tool, neighborhood search, worst-performer rankings, and a peer-similarity lens. The council district overlay remains the highest-value open item.
+
+### Implemented (June 2026)
+
+- [x] **P4f-1: Multi-neighborhood comparison widget** — `st.multiselect` expander on the Equity tab (below the map) lets users pick up to 5 CSAs or tracts and see their key metrics side-by-side in a formatted table. Uses already-loaded `df` in-app; no pipeline change. *Done — `app.py` Equity tab section.*
+- [x] **P4f-2: Neighborhood highlight search in Area Embedding** — `st.text_input` above the scatter plot in Tab 3; typing any portion of a CSA or NSA neighborhood name adds a gold-ring highlight trace on matching geographies in both views (usage and demographic). *Done — `area_embedding.py` `render_area_embedding()`, `_add_highlight_trace()`, `_render_usage_view(highlight=)`, `_render_demographic_view(highlight=)`.*
+- [x] **P4f-3: Worst-performing neighborhoods table** — ranked table of the 5 neighborhoods with the most extreme (worst) metric values, shown below the distribution charts in `equity_distributions.py`. Direction is metric-aware: longest wait for days-to-close, lowest rate for closure/on-time rate. *Done — `_render_outlier_table()` in `equity_distributions.py`.*
+- [x] **P4f-4: Peer neighborhood comparison** — when a neighborhood is selected on the Equity tab map, `render_peer_comparison()` (new function in `summary_panel.py`) computes the 3 most demographically similar geographies using Euclidean distance on normalized `pct_black`, `pct_white`, `median_income` features from the demographics CSV, then renders a comparison table: selected neighborhood (★) vs. each peer, all key metrics side by side. No pipeline change — uses already-loaded `*_demographics.csv`. *Done — `summary_panel.py` `_find_peers()`, `render_peer_comparison()`; called from `app.py` after the map columns.*
+
+### Remaining (open)
+
+- [ ] **P4f-5: Council district overlay + filter** — add Baltimore City council district boundaries as a toggle GeoJSON layer on the Equity tab choropleth; a district selector filters the distribution panels and comparison table to tracts within that district. **Blocked on data**: requires council district boundary GeoJSON (available at [Baltimore City Open Data — Council Districts](https://data.baltimorecity.gov/)) and a tract→district spatial crosswalk. Once the GeoJSON is acquired, the pipeline stage (`stage_council_crosswalk()`) can be modeled after the existing BNIA `stage_csa_boundaries()` pattern. The spatial join uses the same `geopandas.sjoin_nearest` approach as the NSA crosswalk.
+- [ ] **P4f-6: District-level equity distributions** — when a council district is selected (P4f-5), filter `equity_distributions.py` to show the race/income distribution for only the tracts in that district, with the citywide distribution overlaid as a reference. Answers: "is the equity gap in my district larger or smaller than the citywide average?"
+
+### Verification
+
+- **P4f-1 (compare widget)**: open Equity tab at CSA level; expand "Compare neighborhoods side by side"; select 3 CSAs; confirm a metric × neighborhood table appears with all 5 metrics formatted correctly and "—" for any nulls.
+- **P4f-2 (search)**: open Area Service Usage tab; type partial CSA name (e.g. "Canton"); confirm a gold ring appears on the matching bubble in both views; clear the field and confirm ring disappears.
+- **P4f-3 (outlier table)**: open Equity tab; change metric selector; confirm "Neighborhoods most in need of attention" table appears below the distribution charts and shows 5 rows with correct direction (longest wait for days-to-close, lowest rate for closure/on-time).
+- **P4f-4 (peer comparison)**: click a CSA on the Equity tab map; confirm "Demographically similar neighborhoods" section appears below the map with a 4-row table (★ selected + 3 peers); confirm metrics are populated and demographically the peers make sense (similar pct_black, similar income).
+
+---
+
+## Phase 5 — Cross-Municipality Comparison *(v2.0.0 target)*
+
+**Goal**: place Baltimore's 311 performance and equity in context against peer cities. This is the defining feature of **version 2.0.0** — once shipped, Baltimore's numbers become interpretable as strong, average, or lagging rather than just raw figures. Two levels of depth.
 
 ### Level 1 — High-level ops benchmarking
 
@@ -376,4 +420,35 @@ Data is already in place (Stage 0 ✅). Build roughly in final tab order so each
 
 ---
 
-*Last updated: May 2026. Mark items `[x]` when done.*
+## Long-term Enhancements *(post-v2.0.0)*
+
+These improvements address specific persona gaps identified in the June 2026 needs assessment (`personas.md`). None are on the active roadmap; they become relevant once v2.0.0 (Phase 5 / cross-municipal benchmarking) ships and the audience expands beyond super-users.
+
+### For the Interested Citizen (Persona 1)
+
+- **Address / neighborhood search** — text input that resolves a street address to a census tract GEOID (Nominatim geocode or static address→GEOID lookup) and pre-selects that tract on the Equity tab map, automatically opening the summary panel. Zero new data needed; pure UI.
+- **Simplified neighborhood report card** — a mobile-first, jargon-free card: ✓/⚠/✗ icon + one plain sentence per metric. Shareable via URL parameter (`?geo=<geoid>`).
+
+### For the Citizen Journalist (Persona 2)
+
+- **CSV export buttons** — `st.download_button` on the equity trend DataFrame, the flagged-type table (Service Equity), and the grain-comparison summary. No new data; serialization only.
+- **Year-over-year change summary panel** — a compact table of all metrics × dimensions showing Δ vs. prior year, color-coded by direction and magnitude. Placed at the top of the Equity tab for quick scanning.
+
+### For the Citywide Official (Persona 3)
+
+- **Executive summary / print view** — a `?view=executive` URL parameter that renders a single-screen, print-friendly layout: 4 KPIs + equity trend charts + grain comparison + auto-generated plain-language "key findings" paragraph. No new data; layout-only.
+
+### For the HS Civics / Statistics Student (Persona 6)
+
+- **Guided tour mode** — a `?tour=1` URL parameter that adds a persistent banner above each tab with a sequential civic question and a "next" button. No new data; Streamlit session state + URL query params.
+- **Narrative summary callout per tab** — a highlighted `st.info()` block at the top of each tab with a 2–3 sentence plain-English paragraph computed from live data values (e.g. "In 2024, majority-Black neighborhoods waited 11.4 days on average vs. 6.8 days in majority-White neighborhoods"). The single highest-impact change for this persona.
+- **"Cite this data" collapsible** — pre-formatted APA citation in the sidebar with the data source, dashboard URL, and access date.
+
+### For the Department Ops Manager (Persona 5)
+
+- **Geographic performance choropleth for selected SRType** — second metric toggle on the Operations tab geographic map: "View by: Volume / Closure rate / Median days." All data already in `tract_srtype_metrics`; `build_choropleth()` already accepts any metric column. This is "which neighborhoods am I serving slowly?" — the manager's most operationally useful question.
+- **SRType geographic outlier table** — when a SRType is selected, a ranked table of top-5 and bottom-5 CSAs by closure rate or median days. No pipeline change; filter the already-loaded geo×SRType DataFrame.
+
+---
+
+*Last updated: June 2026. Mark items `[x]` when done.*

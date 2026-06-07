@@ -9,6 +9,44 @@ from components.utils import format_metric, hex_to_rgba, overlap_score, score_la
 _COLOR_A = "#8B2020"  # majority-Black / below-median-income
 _COLOR_B = "#1F4E8C"  # majority-White / above-median-income
 
+_N_OUTLIERS = 5  # neighborhoods shown in the worst-performer table
+
+
+def _fmt_geoid(geoid: str) -> str:
+    """Format 11-digit tract GEOID as 'Tract XXXX.XX'; leave CSA names unchanged."""
+    s = str(geoid)
+    if s.isdigit() and len(s) == 11:
+        t = s[5:]
+        return f"Tract {t[:4]}.{t[4:]}"
+    return s
+
+
+def _render_outlier_table(df: pd.DataFrame, metric_col: str, metric_label: str) -> None:
+    """Show the N neighborhoods with the most extreme (worst) metric values."""
+    valid = df[["geoid", metric_col]].dropna(subset=[metric_col]).copy()
+    if len(valid) < _N_OUTLIERS + 1:
+        return
+
+    # "Worst": highest days-to-close / requests_per_1k; lowest closure/on-time rate
+    ascending = metric_col not in ("closure_rate", "on_time_rate")
+    worst = valid.nlargest(_N_OUTLIERS, metric_col) if ascending else valid.nsmallest(_N_OUTLIERS, metric_col)
+    worst["Neighborhood"] = worst["geoid"].map(_fmt_geoid)
+
+    if metric_col in ("closure_rate", "on_time_rate"):
+        worst[metric_label] = worst[metric_col].apply(lambda x: f"{x:.1%}")
+    else:
+        worst[metric_label] = worst[metric_col].apply(lambda x: f"{x:.1f}")
+
+    direction = "longest wait" if metric_col == "median_days_to_close" else (
+        "lowest rate" if metric_col in ("closure_rate", "on_time_rate") else "highest count"
+    )
+    st.markdown(f"**Neighborhoods most in need of attention** ({direction})")
+    st.dataframe(
+        worst[["Neighborhood", metric_label]].reset_index(drop=True),
+        use_container_width=True,
+        hide_index=True,
+    )
+
 
 def _box_trace(
     values: pd.Series,
@@ -150,3 +188,6 @@ def render_equity_distributions(
                 f"Too few geographies with income data "
                 f"(below n={len(below)}, above n={len(above)})."
             )
+
+    st.divider()
+    _render_outlier_table(valid, metric_col, metric_label)
