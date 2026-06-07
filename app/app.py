@@ -34,14 +34,23 @@ except (KeyError, FileNotFoundError):
 with st.sidebar:
     st.title("Baltimore 311\nService Equity")
     st.markdown(
-        "Operational and equity visibility into Baltimore's 311 "
-        "service request system — 2016 through 2025."
+        "Does your neighborhood affect how quickly Baltimore responds when you call 311? "
+        "Explore a decade of city service data — 2016 through 2025 — to find out."
     )
+    with st.expander("What is 311?"):
+        st.markdown(
+            "311 is Baltimore's non-emergency city services hotline. Residents call, "
+            "text, or use the app to report problems — potholes, broken streetlights, "
+            "illegal dumping, missed trash pickups — and to request services like bulk "
+            "item pickup. Every request is logged with a location, date, and service "
+            "type, making it possible to track how quickly the city responds across "
+            "different neighborhoods."
+        )
     st.caption(
-        "The four tabs read as one arc: how the city is doing → how that breaks "
-        "down by service → whether outcomes differ by neighborhood demographics → "
-        "whether that citywide equity picture holds up once you account for "
-        "*which* services an area actually requests."
+        "The five tabs tell one story: start with how the city is doing overall → zoom "
+        "into individual service types → see which neighborhoods look alike → check "
+        "whether outcomes differ by race or income → and ask whether that gap holds up "
+        "within individual service categories."
     )
     st.divider()
     st.markdown(
@@ -84,6 +93,27 @@ with st.sidebar:
         "request, not just how they're delivered — though it doesn't fully "
         "close, so real disparities remain even after accounting for that."
     )
+    with st.expander("Key terms"):
+        st.markdown(
+            "**Closure rate** — the share of requests marked resolved. "
+            "A lower rate may mean backlog or that the issue couldn't be addressed.\n\n"
+            "**Median days to close** — the typical number of days from filing to "
+            "closure. Half of requests closed faster, half slower.\n\n"
+            "**On-time rate** — the share of requests completed within the city's "
+            "stated deadline for that service type.\n\n"
+            "**Equity score** — how similar outcomes are between demographic groups. "
+            "100% = no gap · 0% = complete separation.\n\n"
+            "**Census tract** — a small geographic area (~4,000 residents) defined "
+            "by the U.S. Census Bureau.\n\n"
+            "**CSA (Community Statistical Area)** — Baltimore's 55 official "
+            "neighborhood groupings used for city data tracking and planning.\n\n"
+            "**Requests per 1,000 residents** — request count adjusted for "
+            "neighborhood size so areas of different populations can be compared fairly.\n\n"
+            "**Embedding / PCA** — in the Area tab, each neighborhood's 2D position "
+            "is computed by a method (Principal Component Analysis) that places "
+            "neighborhoods with similar profiles close together. "
+            "Position = similarity, not geography."
+        )
     st.divider()
     st.caption(
         "Data: Baltimore Open Data (311 requests 2016–2025) · "
@@ -206,6 +236,14 @@ with tab_eq:
             "it's delivered to? *Note: differences here can reflect the kinds of services "
             "delivered as much as delivery quality.*"
         )
+        with st.expander("What to look for"):
+            st.markdown(
+                "- How much do outcomes differ between majority-Black and majority-White "
+                "neighborhoods? Between lower- and higher-income ones?\n"
+                "- Is the gap larger for some metrics (wait time vs. closure rate) than others?\n"
+                "- Is the gap getting larger or smaller over time? "
+                "The trend chart at the bottom of the page shows year-over-year movement."
+            )
 
         # ── Inline controls above map ─────────────────────────────────────────
         ctrl1, ctrl2, ctrl3 = st.columns([2, 3, 5])

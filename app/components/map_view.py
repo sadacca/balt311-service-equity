@@ -28,14 +28,24 @@ def build_choropleth(
     mapbox_token: str,
     sequential: bool = False,
 ) -> go.Figure:
+    valid_vals = df[metric_col].dropna()
     if sequential:
         colorscale = "Blues"
         midpoint = None
-        range_color = [0, float(df[metric_col].max())]
+        data_max = float(valid_vals.max()) if not valid_vals.empty else 1.0
+        range_color = [0, data_max]
+        colorbar_ticks = {"tickvals": [0, data_max], "ticktext": ["Fewer", "More"]}
     else:
         colorscale = "RdBu_r"
-        midpoint = df[metric_col].median()
+        midpoint = float(valid_vals.median()) if not valid_vals.empty else None
         range_color = None
+        data_min = float(valid_vals.min()) if not valid_vals.empty else 0.0
+        data_max = float(valid_vals.max()) if not valid_vals.empty else 1.0
+        data_mid = midpoint if midpoint is not None else (data_min + data_max) / 2
+        colorbar_ticks = {
+            "tickvals": [data_min, data_mid, data_max],
+            "ticktext": ["Lower", "City median", "Higher"],
+        }
 
     fig = px.choropleth_mapbox(
         df,
@@ -65,6 +75,7 @@ def build_choropleth(
             thickness=12,
             len=0.85,
             title=dict(text=metric_label, side="top"),
+            **colorbar_ticks,
         ),
         mapbox_accesstoken=mapbox_token,
     )

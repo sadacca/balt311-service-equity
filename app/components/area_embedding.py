@@ -815,6 +815,14 @@ def render_area_embedding(data_dir: Path, year: int) -> None:
     st.caption(
         "Do areas that look alike demographically also use 311 the same way?"
     )
+    with st.expander("What to look for"):
+        st.markdown(
+            "- Do neighborhoods that cluster together in the **service-usage** view also "
+            "cluster together in the **demographic profile** view?\n"
+            "- Are there areas that look demographically similar but use 311 very "
+            "differently — or vice versa?\n"
+            "- Try switching views and see which neighborhoods move the most."
+        )
 
     if "area_emb_view" not in st.session_state:
         st.session_state["area_emb_view"] = "Demographic profile"
@@ -823,6 +831,11 @@ def render_area_embedding(data_dir: Path, year: int) -> None:
         "View", list(_VIEWS.keys()), horizontal=True, key="area_emb_view",
     )
     view = _VIEWS[view_label]
+    st.caption(
+        "Position on this chart is not geography — neighborhoods placed close together "
+        "have similar profiles. Large labeled bubbles = CSAs (community districts) · "
+        "small dots = individual census tracts."
+    )
     st.divider()
 
     if view == "usage":

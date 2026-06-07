@@ -580,6 +580,14 @@ def render_category_equity_explorer(
     year: int,
 ) -> None:
     st.caption("Does the citywide equity picture hold up or differ within individual service categories and types?")
+    with st.expander("What to look for"):
+        st.markdown(
+            "- Does the equity gap shrink when you look within individual service types "
+            "rather than citywide? The opening bar chart shows scores at three levels of detail.\n"
+            "- If scores rise from left to right on that chart, it suggests the gap is partly "
+            "about *which* services neighborhoods request, not just how quickly they're delivered.\n"
+            "- Are there specific service types where the racial or income gap is especially large?"
+        )
 
     if demographics is None or demographics.empty:
         st.caption(

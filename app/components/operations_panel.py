@@ -233,6 +233,18 @@ def _timeseries_fig(
             ),
             hovertemplate=hover_fmt,
         ))
+        mean_val = valid[metric_col].mean()
+        if not pd.isna(mean_val):
+            fig.add_hline(
+                y=mean_val,
+                line_dash="dot",
+                line_color="#bbbbbb",
+                line_width=1,
+                annotation_text="period avg",
+                annotation_position="bottom right",
+                annotation_font_size=10,
+                annotation_font_color="#999999",
+            )
 
     if has_eq:
         eq_valid = eq_ts[eq_ts[metric_col].notna()].copy()
@@ -415,6 +427,13 @@ def render_operations(
     mapbox_token: str,
 ) -> None:
     st.caption("A citywide health check: request volume and performance trends.")
+    with st.expander("What to look for"):
+        st.markdown(
+            "- Are response times (median days to close) improving or getting worse over the years?\n"
+            "- Which service types take the longest — and do they also close less reliably?\n"
+            "- Click any point on the trend chart to jump to that year, "
+            "or click a row in the table to see that type's full history."
+        )
 
     ts = _build_timeseries(data_dir)
     eq_ts = _build_equity_citywide_ts(data_dir)

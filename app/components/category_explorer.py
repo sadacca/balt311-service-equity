@@ -222,6 +222,13 @@ def _subtype_multiline_fig(
 
 def render_category_explorer(data_dir: Path, year: int) -> None:
     st.caption("How individual service categories perform and compare.")
+    with st.expander("What to look for"):
+        st.markdown(
+            "- Which categories have the highest and lowest closure rates and wait times?\n"
+            "- Is the citywide average (dashed line) getting better or worse over time?\n"
+            "- Select a category at the bottom to see which of its specific service types "
+            "are driving its average — sometimes one busy subtype tells the whole story."
+        )
 
     srtype_path = data_dir / f"srtype_metrics_{year}.parquet"
     if not srtype_path.exists():

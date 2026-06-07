@@ -72,6 +72,7 @@ def _comparison_fig(
             f"<span style='color:{css_color};font-weight:600'>{label}</span>",
             unsafe_allow_html=True,
         )
+        st.caption("100% = no gap · 0% = complete separation")
 
         med_a = group_a.median()
         med_b = group_b.median()
@@ -94,9 +95,10 @@ def render_equity_distributions(
 ) -> None:
     st.subheader("Equity by Demographics")
     st.caption(
-        f"Distributions of **{metric_label}** across demographic groups. "
-        "Equity score: how often do outcomes interleave between groups? "
-        "100% = perfectly equal · >70% = not bad · 40–70% = could be better · <40% = needs review."
+        f"How does **{metric_label}** compare across race and income groups? "
+        "Each chart shows the range of outcomes for two types of neighborhoods side by side — "
+        "the closer the distributions, the more equitable the picture. "
+        "Equity score: 100% = no gap · >70% = not bad · 40–70% = could be better · <40% = needs review."
     )
 
     merged = df.merge(demographics, on="geoid", how="left")

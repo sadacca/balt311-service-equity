@@ -114,9 +114,9 @@ def render_equity_trend(
 
     st.subheader("Equity Trend — Year over Year")
     st.caption(
-        f"**{metric_label}** equity score across years: how often outcomes interleave between groups. "
-        "Higher = more equal. "
-        "Bands: green >70% · amber 40–70% · red <40%."
+        f"Is the **{metric_label}** gap between demographic groups getting better or worse over time? "
+        "Higher scores mean more similar outcomes between groups. "
+        "Green = not much of a gap · amber = worth watching · red = significant gap."
     )
 
     trend_df = compute_citywide_equity_trend(data_dir, demographics, geo_key)
