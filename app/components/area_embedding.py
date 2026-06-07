@@ -324,20 +324,45 @@ def _subsample_labels(
     return sel_set
 
 
+def _fmt_geoid(geoid: str) -> str:
+    """Format 11-digit tract GEOID as 'Tract XXXX.XX'; leave CSA names unchanged."""
+    s = str(geoid)
+    if s.isdigit() and len(s) == 11:
+        t = s[5:]  # last 6 digits are the tract number
+        return f"Tract {t[:4]}.{t[4:]}"
+    return s
+
+
 def _add_viz_cols(
     emb: pd.DataFrame,
     labeled_tracts: set | None = None,
     label_col: str = "nsa_name",
 ) -> pd.DataFrame:
-    """Add _sz (Plotly bubble area) and _text (NSA name on sampled tract dots, blank elsewhere)."""
+    """Add _sz, _text (NSA name on sampled tract dots), and _hover_title."""
     emb    = emb.copy()
     is_csa = emb["geo_type"] == "CSA"
     emb["_sz"] = np.where(is_csa, _SZ_CSA, _SZ_TRACT)
+
+    # Scatter text: NSA name on the sampled labeled tract dots only
     if labeled_tracts is not None and label_col in emb.columns:
         is_labeled_tract = (~is_csa) & emb["geoid"].isin(labeled_tracts)
         emb["_text"] = emb[label_col].where(is_labeled_tract, "")
     else:
         emb["_text"] = ""
+
+    # Hover title: "NSA Name · Tract XXXX.XX" for tracts with a name,
+    # "Tract XXXX.XX" for tracts without, CSA name for CSAs.
+    tract_id = emb["geoid"].map(_fmt_geoid)
+    if label_col in emb.columns:
+        has_name = emb[label_col].notna() & (emb[label_col] != "")
+        emb["_hover_title"] = np.where(
+            ~is_csa & has_name,
+            emb[label_col] + "  ·  " + tract_id,
+            np.where(~is_csa, tract_id, emb["geoid"]),
+        )
+    else:
+        emb["_hover_title"] = np.where(~is_csa, tract_id, emb["geoid"])
+
     return emb
 
 
@@ -631,18 +656,16 @@ def _render_usage_view(data_dir: Path, year: int) -> None:
         "x": "PC1", "y": "PC2",
         color_col:        color_label,
         "cluster_label":  "Quadrant",
-        "nsa_name":       "Neighborhood",
         "top_srtype":     "Top type",
         "geo_type":       "Level",
-        "_sz": "", "_text": "",
+        "_sz": "", "_text": "", "_hover_title": "",
         **{hcol: _DEMO_HOVER_NAMES.get(orig, orig) for orig, hcol in demo_hover_map.items()},
     }
     hover_data: dict[str, bool] = {
-        "cluster_label": True,
-        "nsa_name":      has_nsa,
-        "top_srtype":    True,
-        "geo_type":      True,
-        "_sz": False, "_text": False,
+        "cluster_label":  True,
+        "top_srtype":     True,
+        "geo_type":       True,
+        "_sz": False, "_text": False, "_hover_title": False,
         **{hcol: True for hcol in demo_hover_map.values()},
     }
 
@@ -655,7 +678,7 @@ def _render_usage_view(data_dir: Path, year: int) -> None:
         size="_sz",
         size_max=16,
         text="_text",
-        hover_name="geoid",
+        hover_name="_hover_title",
         hover_data=hover_data,
         labels=hover_labels,
         category_orders={"year": years_sorted},
@@ -663,7 +686,7 @@ def _render_usage_view(data_dir: Path, year: int) -> None:
     )
     fig.update_traces(
         textposition="top center",
-        textfont=dict(size=8),
+        textfont=dict(size=11, color="rgba(20,20,20,0.9)"),
         marker=dict(opacity=0.8, line=dict(width=0.5, color="white")),
     )
     fig.update_layout(height=660, **_top_legend_layout(is_categorical))
@@ -791,12 +814,11 @@ def _render_demographic_view(data_dir: Path, year: int) -> None:
     has_nsa = bool(tract_nsa)
     hover_labels: dict[str, str] = {
         "x": "PC1", "y": "PC2",
-        "cluster_label": "Quadrant",
-        "nsa_name":      "Neighborhood",
-        "geo_type":      "Level",
-        color_col:       color_label,
-        "top_sr_type":   "Top type",
-        "_sz": "", "_text": "",
+        "cluster_label":  "Quadrant",
+        "geo_type":       "Level",
+        color_col:        color_label,
+        "top_sr_type":    "Top type",
+        "_sz": "", "_text": "", "_hover_title": "",
         **{hcol: _DEMO_HOVER_NAMES.get(orig, orig) for orig, hcol in feat_hover_map.items()},
     }
 
@@ -807,14 +829,13 @@ def _render_demographic_view(data_dir: Path, year: int) -> None:
         size="_sz",
         size_max=16,
         text="_text",
-        hover_name="geoid",
+        hover_name="_hover_title",
         hover_data={
-            "cluster_label": True,
-            "nsa_name":      has_nsa,
-            "geo_type":      True,
-            "top_sr_type":   True,
-            "srtype_color":  False,
-            "_sz": False, "_text": False,
+            "cluster_label":  True,
+            "geo_type":       True,
+            "top_sr_type":    True,
+            "srtype_color":   False,
+            "_sz": False, "_text": False, "_hover_title": False,
             **{hcol: True for hcol in feat_hover_map.values()},
         },
         labels=hover_labels,
@@ -822,7 +843,7 @@ def _render_demographic_view(data_dir: Path, year: int) -> None:
     )
     fig.update_traces(
         textposition="top center",
-        textfont=dict(size=8),
+        textfont=dict(size=11, color="rgba(20,20,20,0.9)"),
         marker=dict(opacity=0.85, line=dict(width=0.5, color="white")),
     )
     fig.update_layout(height=620, **_top_legend_layout(is_categorical))
