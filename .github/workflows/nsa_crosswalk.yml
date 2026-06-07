@@ -1,0 +1,68 @@
+name: Build NSA crosswalk
+
+# Generates data/processed/tract_to_nsa.csv — the tract → Baltimore Neighborhood
+# Statistical Area name crosswalk used by the Area Embedding tab to label scatter
+# dots with neighborhood names.
+#
+# Source: Baltimore City Open Data (Open Baltimore ArcGIS Hub, ~278 NSAs).
+# No API key required.
+#
+# Run this once after the initial setup, and again if NSA boundary definitions
+# change. The output file is committed to the repo so the app can read it without
+# network access at runtime.
+#
+# Prerequisite: data/processed/tract_boundaries.geojson must exist in the target
+# branch (produced by --stage process and committed by update_data.yml or backfill.yml).
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to check out and commit into"
+        required: false
+        default: "main"
+        type: string
+
+jobs:
+  build-nsa-crosswalk:
+    name: "Build NSA crosswalk → ${{ inputs.branch }}"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pandas pyarrow geopandas
+
+      - name: Verify tract boundaries exist
+        run: |
+          if [ ! -f data/processed/tract_boundaries.geojson ]; then
+            echo "ERROR: data/processed/tract_boundaries.geojson not found."
+            echo "Run update_data.yml for any available year first to generate it."
+            exit 1
+          fi
+          echo "tract_boundaries.geojson found ($(wc -c < data/processed/tract_boundaries.geojson | tr -d ' ') bytes)"
+
+      - name: Build tract → NSA crosswalk
+        run: python scripts/pipeline.py --stage nsa
+
+      - name: Commit crosswalk file
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/processed/tract_to_nsa.csv
+          if git diff --staged --quiet; then
+            echo "tract_to_nsa.csv unchanged — nothing to commit."
+          else
+            git commit -m "pipeline: generate tract→NSA neighborhood name crosswalk"
+            git push origin ${{ inputs.branch }}
+          fi
