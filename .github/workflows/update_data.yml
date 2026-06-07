@@ -27,12 +27,13 @@ on:
         type: boolean
 
 jobs:
-  # ── Job 0: ACS demographic reference files (year-independent, run once) ─────
-  # Fetches race (B02001) and income (B19013) from Census ACS 2023 5-year API
-  # and commits tract_demographics.csv + csa_demographics.csv to data/processed/.
-  # Skipped automatically if both files already exist in the repo.
+  # ── Job 0: ACS demographic reference files (year-independent) ───────────────
+  # Fetches ACS 2023 5-year demographics (race, income, age, ethnicity,
+  # education, poverty) and commits tract_demographics.csv + csa_demographics.csv
+  # to data/processed/. Always runs — use regen_demographics.yml when you need to
+  # force-regenerate files that already exist (e.g. after adding new ACS variables).
   demographics:
-    name: "Demographics — ACS race + income reference files"
+    name: "Demographics — ACS reference files"
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -47,7 +48,7 @@ jobs:
         run: |
           if [ -f data/processed/tract_demographics.csv ] && [ -f data/processed/csa_demographics.csv ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Demographic files already present — skipping."
+            echo "Demographic files already present — use regen_demographics.yml to force-regenerate."
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
