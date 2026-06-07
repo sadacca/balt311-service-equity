@@ -184,7 +184,7 @@ with tab_cat:
 
 # ── Area Embedding tab ────────────────────────────────────────────────────────
 with tab_areas:
-    render_area_embedding(DATA_DIR, demographics, geo_key, year, df=df_full)
+    render_area_embedding(DATA_DIR, year)
 
 # ── Equity tab ────────────────────────────────────────────────────────────────
 with tab_eq:
