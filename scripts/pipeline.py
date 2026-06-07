@@ -342,7 +342,19 @@ def _fetch_nsa_crosswalk(tracts_path: Path, dest: Path) -> None:
         last_exc: Exception | None = None
         for url in NSA_GEOJSON_URLS:
             try:
-                download_with_retry(url, nsa_path)
+                # Use a browser User-Agent — ArcGIS Hub rejects Python's default agent
+                for attempt in range(1, 5):
+                    try:
+                        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                        with urllib.request.urlopen(req, timeout=60) as resp:
+                            nsa_path.write_bytes(resp.read())
+                        break
+                    except Exception as exc:
+                        if attempt == 4:
+                            raise
+                        wait = 2 ** attempt
+                        log(f"  Attempt {attempt} failed ({exc}); retrying in {wait}s")
+                        time.sleep(wait)
                 nsa_gdf = gpd.read_file(nsa_path).to_crs("EPSG:4326")
                 log(f"  Fetched {len(nsa_gdf)} NSA polygons from {url.split('/')[2]}")
                 break
