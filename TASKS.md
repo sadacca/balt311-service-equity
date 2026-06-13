@@ -437,9 +437,15 @@ validates the whole cross-city pipeline that equity then reuses.
 - [ ] **P5.2-2: Comparability caveat UI** — a caption/banner stating each city's closure
   definition and the shared-year used; soft-degrade when a metric is null for a city (e.g. no
   derivable on-time rate). Reuse the "insufficient data" treatment pattern from the equity tabs.
-- [ ] **P5.2-3: Decide tab placement** — append Tab 7 to the existing arc vs. start a dedicated
-  "Compare cities" section. Record the decision (and why) in the checkpoint. Wire into
-  `app.py`'s `st.tabs([...])` + sidebar description.
+- [x] **P5.2-3: Decide tab placement** — ✅ **RESOLVED ahead of schedule (June 2026): a
+  dedicated "Compare cities" group, not appended to the within-Baltimore arc.** The app is now
+  two nested-tab groups — **🏙️ Within Baltimore** and **🌐 Compare cities** — because the two
+  families are structurally different (cross-city is city-level only, no `geo_level`, heavy
+  caveats, near-zero component reuse). The "Compare cities" group shell already ships with
+  placeholder inner tabs (Service Delivery, Service Equity, Maturity Index) in
+  `app/components/cross_city.py` + a comparability-caveat header; Phase 5.2 just fills in the
+  delivery render body. Rationale recorded in `cross_city_comparison.md` §5. *(The 5.2 build
+  still owns wiring the real chart in; only the placement question is closed.)*
 - [ ] **P5.2-4: Documentation checkpoint** — append `cross_city_comparison.md` §6.2: what the
   Baltimore-vs-DC delivery comparison shows, screenshots/figures if useful, placement decision.
   *(Gate for starting 5.3.)*

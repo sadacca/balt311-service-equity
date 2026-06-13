@@ -196,9 +196,21 @@ Documented up front so each city onboarding checks against the same list:
 - **Deferred:** **Boston** (revisit after the mid-2026 backend migration stabilizes)
 
 The two-tab end state: **Tab 7 — Cross-City Service Delivery** and **Tab 8 — Cross-City
-Service Equity**, both with Baltimore as the fixed reference. Whether they live as the final
-two tabs of the existing arc or in a dedicated "Compare cities" section is decided at 5.2
-(see `TASKS.md` P5.2-3).
+Service Equity**, both with Baltimore as the fixed reference.
+
+> **Placement decision — RESOLVED (June 2026, ahead of 5.2).** The cross-city views live
+> in a **dedicated "Compare cities" group, not appended to the within-Baltimore arc.** The
+> app is now organized as two nested-tab groups — **🏙️ Within Baltimore** (the sequenced
+> six-step story) and **🌐 Compare cities** — chosen because the two families are
+> structurally different (cross-city is city-level only, has no tract/CSA `geo_level`, carries
+> heavy comparability caveats, and shares almost no components), so blending them into one
+> tab strip would conflate two different kinds of question and overflow the bar as the
+> cross-city group grows. The shell shipped ahead of Phase 5: the "Compare cities" group
+> already exists with placeholder inner tabs (**Service Delivery**, **Service Equity**, and a
+> **Maturity Index** for §8) in `app/components/cross_city.py`, fronted by a comparability-
+> caveat header. Phase 5 fills in those render bodies; the navigation and framing do not need
+> to change. The design keeps the door open to migrating to `st.navigation` grouped sidebar
+> pages later if the group grows large, since the render functions are already decoupled.
 
 ---
 
