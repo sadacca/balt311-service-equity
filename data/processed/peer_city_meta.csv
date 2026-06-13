@@ -1,0 +1,3 @@
+city,fips,population,portal_url,closure_definition
+"Baltimore, MD",24510,577193.0,https://data.baltimorecity.gov,"Closed = a CloseDate is present (the uniform cross-city rule). The within-Baltimore tabs use SRStatus instead, so these figures may differ slightly."
+"Washington, DC",11001,672079.0,https://opendata.dc.gov/,"Closed = a resolution date (RESOLUTIONDATE) is present. DC auto-resolves some request types, so median days-to-close is directional, not exact."
