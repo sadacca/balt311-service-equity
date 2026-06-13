@@ -216,17 +216,28 @@ def _norm_trend_fig(trend: pd.DataFrame, dimension: str, year: int) -> go.Figure
 def compute_normalized_geo_metrics(
     data_dir: Path, geo_key: str, year: int, metric_col: str,
 ) -> pd.DataFrame:
-    """Each geography's metric relative to the citywide norm for the services *it*
-    requests. For every `(geo, type)` cell we compare the geography's value to the
-    citywide value for that type, then volume-weight across the geography's own mix:
+    """Each geography's *observed* metric vs. the value its **service mix** predicts —
+    classic indirect standardization.
 
-    - `expected` — volume-weighted mean of the **citywide** per-type value (what the
-      city would deliver for this area's service mix)
-    - `actual`   — volume-weighted mean of the geography's **own** per-type value
-    - `residual` — `actual − expected`: over/under-performance once the mix that the
-      geography requests is held constant. A neighborhood that asks for structurally
-      slow services is not penalized for that here — only for handling them
-      differently than the city does on average.
+    - `actual` — the geography's true metric, read straight from
+      `{geo}_metrics_{year}.parquet` (the *exact* number the Equity tab shows, so the
+      two tabs always agree). It is **not** rebuilt from per-type values: a median
+      does not decompose into a weighted mean of per-type medians (mean-of-medians
+      overweights the slow-tail types and inflates the scale), so reconstructing it
+      would diverge from the verified rollup.
+    - `expected` — the geography's own request mix scored at the **citywide** per-type
+      rate: `Σ_t w_{g,t} · city_value_t` where `w_{g,t}` is the geography's share of
+      its own volume in type t. This isolates the pure mix effect (what an area would
+      experience if every service it requests were delivered at the city's typical
+      pace for that service). It is rescaled by one global constant so the
+      volume-weighted citywide aggregate of `expected` equals that of `actual` —
+      putting it on the same scale as the rollup and centering the residual at 0 (for
+      closure rate, which decomposes cleanly, that constant is ≈1, i.e. direct
+      standardization).
+    - `residual` — `actual − expected`: over/under-performance once the mix the
+      geography requests is held constant. An area that asks for structurally slow
+      services is not penalized for that here — only for being handled differently
+      than the city handles those same services.
 
     Columns: `geoid`, `actual`, `expected`, `residual`, `volume`, `n_types`. Drops
     geographies with fewer than `_NORM_MIN_TYPES` scoreable types.
@@ -234,12 +245,18 @@ def compute_normalized_geo_metrics(
     cols = ["geoid", "actual", "expected", "residual", "volume", "n_types"]
     hist = load_geo_srtype_history(data_dir, geo_key)
     sr_path = data_dir / f"srtype_metrics_{year}.parquet"
-    if hist.empty or not sr_path.exists():
+    rollup_path = data_dir / f"{geo_key}_metrics_{year}.parquet"
+    if hist.empty or not sr_path.exists() or not rollup_path.exists():
         return pd.DataFrame(columns=cols)
+
+    # The verified geo-level value (== Equity tab) is the single source of truth for `actual`.
+    rollup = pd.read_parquet(rollup_path)[["geoid", metric_col, "total_requests"]].rename(
+        columns={metric_col: "actual", "total_requests": "volume"}
+    )
 
     cells = hist[(hist["year"] == year) & (hist["total_requests"] >= MIN_GEO_SRTYPE_N)]
     city = pd.read_parquet(sr_path)[["SRType", metric_col]].rename(columns={metric_col: "_city"})
-    m = cells.merge(city, on="SRType", how="left").dropna(subset=[metric_col, "_city", "total_requests"])
+    m = cells.merge(city, on="SRType", how="left").dropna(subset=["_city", "total_requests"])
     m = m[m["total_requests"] > 0]
     if m.empty:
         return pd.DataFrame(columns=cols)
@@ -249,23 +266,34 @@ def compute_normalized_geo_metrics(
         if grp["SRType"].nunique() < _NORM_MIN_TYPES:
             continue
         w = grp["total_requests"].to_numpy(float)
-        actual = float((grp[metric_col].to_numpy(float) * w).sum() / w.sum())
-        expected = float((grp["_city"].to_numpy(float) * w).sum() / w.sum())
-        recs.append({
-            "geoid": gid, "actual": actual, "expected": expected,
-            "residual": actual - expected, "volume": float(w.sum()),
-            "n_types": int(grp["SRType"].nunique()),
-        })
-    return pd.DataFrame(recs, columns=cols)
+        raw_expected = float((grp["_city"].to_numpy(float) * w).sum() / w.sum())
+        recs.append({"geoid": gid, "raw_expected": raw_expected, "n_types": int(grp["SRType"].nunique())})
+    if not recs:
+        return pd.DataFrame(columns=cols)
+
+    out = pd.DataFrame(recs).merge(rollup, on="geoid", how="inner").dropna(subset=["actual", "raw_expected"])
+    if out.empty:
+        return pd.DataFrame(columns=cols)
+
+    # One global rescale so the volume-weighted citywide aggregates of expected and
+    # actual coincide — anchors expected to the rollup scale and centers residuals at 0.
+    wv = out["volume"].to_numpy(float)
+    denom = float((out["raw_expected"].to_numpy(float) * wv).sum())
+    c = float((out["actual"].to_numpy(float) * wv).sum()) / denom if denom else 1.0
+    out["expected"] = out["raw_expected"] * c
+    out["residual"] = out["actual"] - out["expected"]
+    return out[cols]
 
 
 def _residual_choropleth_fig(
     df: pd.DataFrame, geojson: dict, featureidkey: str,
-    metric_label: str, higher_better: bool, mapbox_token: str,
+    metric_label: str, metric_col: str, higher_better: bool, mapbox_token: str,
 ) -> go.Figure:
     """Diverging residual map centered at 0 (on par with the city). Blue = better
     than the citywide norm for this area's mix, red = worse — direction handled per
     metric so 'better' always reads blue regardless of whether high or low is good."""
+    is_rate = metric_col == "closure_rate"
+    fmt, resid_fmt = (":.0%", ":+.1%") if is_rate else (":.1f", ":+.1f")
     vals = df["residual"].dropna()
     m = float(max(abs(vals.min()), abs(vals.max()))) if not vals.empty else 1.0
     m = m or 1.0
@@ -284,7 +312,7 @@ def _residual_choropleth_fig(
         color_continuous_midpoint=0.0, range_color=[-m, m],
         mapbox_style=MAPBOX_STYLE, zoom=BALTIMORE_ZOOM, center=BALTIMORE_CENTER,
         opacity=0.75, labels={"residual": f"{metric_label} vs. city norm"},
-        hover_data={"geoid": True, "actual": ":.3f", "expected": ":.3f", "residual": ":+.3f"},
+        hover_data={"geoid": True, "actual": fmt, "expected": fmt, "residual": resid_fmt},
     )
     fig.update_layout(
         margin={"r": 0, "t": 0, "l": 0, "b": 55}, height=560,
@@ -301,30 +329,32 @@ def _residual_choropleth_fig(
 def _actual_expected_scatter_fig(
     df: pd.DataFrame, metric_label: str, metric_col: str, higher_better: bool,
 ) -> go.Figure:
-    """One dot per neighborhood: expected (citywide norm for its mix) on x, actual on
-    y, with the y=x reference line. Off the diagonal = over/under-performing beyond
-    what the service mix predicts. Colored by share Black to surface the equity read."""
-    is_rate = metric_col in METRIC_OPTIONS.values() and metric_col in ("closure_rate", "on_time_rate")
+    """One dot per neighborhood: expected (what its service mix predicts) on x, actual
+    (the verified rollup value) on y, with the y=x reference line. Off the diagonal =
+    over/under-performing beyond what the service mix predicts. Colored by median
+    income — a neutral demographic shading for the equity read."""
+    is_rate = metric_col == "closure_rate"
     fmt = ".0%" if is_rate else ".1f"
+    resid_fmt = ":+.1%" if is_rate else ":+.1f"
     lo = float(min(df["expected"].min(), df["actual"].min()))
     hi = float(max(df["expected"].max(), df["actual"].max()))
     pad = (hi - lo) * 0.05 or 1.0
 
-    color_col = "pct_black" if "pct_black" in df.columns else None
+    color_col = "median_income" if "median_income" in df.columns else None
     fig = px.scatter(
         df, x="expected", y="actual",
         color=color_col,
-        color_continuous_scale="RdBu_r" if color_col else None,
+        color_continuous_scale="Viridis" if color_col else None,
         size="volume", size_max=22,
         hover_name="geoid",
         hover_data={
-            "expected": f":{fmt}", "actual": f":{fmt}", "residual": ":+.3f",
-            "volume": ":,.0f", "pct_black": ":.0%" if color_col else False,
+            "expected": f":{fmt}", "actual": f":{fmt}", "residual": resid_fmt,
+            "volume": ":,.0f", "median_income": ":$,.0f" if color_col else False,
         },
         labels={
-            "expected": f"Expected {metric_label.lower()} (citywide norm for this mix)",
+            "expected": f"Expected {metric_label.lower()} (predicted by service mix)",
             "actual": f"Actual {metric_label.lower()}",
-            "pct_black": "Share Black",
+            "median_income": "Median income",
         },
     )
     fig.add_trace(go.Scatter(
@@ -337,7 +367,7 @@ def _actual_expected_scatter_fig(
         plot_bgcolor="white", paper_bgcolor="white",
         xaxis=dict(gridcolor="#eeeeee", tickformat=fmt, range=[lo - pad, hi + pad]),
         yaxis=dict(gridcolor="#eeeeee", tickformat=fmt, range=[lo - pad, hi + pad]),
-        coloraxis_colorbar=dict(title="Share<br>Black", tickformat=".0%"),
+        coloraxis_colorbar=dict(title="Median<br>income", tickprefix="$", tickformat=",.0f"),
     )
     return fig
 
@@ -658,7 +688,7 @@ def render_equity_adjusted(
         if geojson is not None:
             st.markdown("**Residual map** — blue is better than the city norm, red is worse")
             st.plotly_chart(
-                _residual_choropleth_fig(norm, geojson, featureidkey, metric_label, higher_better, mapbox_token),
+                _residual_choropleth_fig(norm, geojson, featureidkey, metric_label, metric_col, higher_better, mapbox_token),
                 use_container_width=True, key="adj_resid_map", config={"displayModeBar": False},
             )
         st.markdown("**Actual vs. expected** — each dot a neighborhood; the dashed line is "
@@ -669,10 +699,12 @@ def render_equity_adjusted(
         )
         better = "above" if higher_better else "below"
         st.caption(
-            f"Points **{better}** the dashed line out-perform what their service mix "
-            f"predicts; points on the other side under-perform. Shading by share Black "
-            "shows whether off-diagonal performance lines up with demographics — the "
-            "equity question, asked on the mix-normalized metric."
+            f"The y-axis is the **verified rollup value** (identical to the Equity tab); "
+            f"the x-axis is what each area's **service mix** predicts at citywide per-type "
+            f"rates. Points **{better}** the dashed line out-perform what their mix predicts; "
+            "points on the other side under-perform. Shading by median income shows whether "
+            "off-diagonal performance lines up with neighborhood wealth — the equity question, "
+            "asked on the mix-normalized metric."
         )
 
     # ── 3 — Within-type ranking ───────────────────────────────────────────────
