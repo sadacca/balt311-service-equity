@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from components.area_embedding import render_area_embedding
 from components.category_equity_explorer import render_category_equity_explorer
 from components.category_explorer import render_category_explorer
+from components.equity_adjusted import render_equity_adjusted
 from components.equity_distributions import render_equity_distributions
 from components.equity_trend import render_equity_trend
 from components.map_view import METRIC_OPTIONS, build_choropleth
@@ -47,10 +48,11 @@ with st.sidebar:
             "different neighborhoods."
         )
     st.caption(
-        "The five tabs tell one story: start with how the city is doing overall → zoom "
+        "The six tabs tell one story: start with how the city is doing overall → zoom "
         "into individual service types → see which neighborhoods look alike → check "
-        "whether outcomes differ by race or income → and ask whether that gap holds up "
-        "within individual service categories."
+        "whether outcomes differ by race or income → ask whether that gap holds up "
+        "within individual service categories → and finally separate how much of it is "
+        "about *which* services an area requests versus how the same service is delivered."
     )
     st.divider()
     st.markdown(
@@ -92,6 +94,14 @@ with st.sidebar:
         "citywide gap reflects *which* services different neighborhoods "
         "request, not just how they're delivered — though it doesn't fully "
         "close, so real disparities remain even after accounting for that."
+    )
+    st.markdown(
+        "**Mix-Adjusted Equity** — the payoff\n\n"
+        "*How much of the citywide gap is about which services an area requests "
+        "versus how the same service is delivered?* The citywide score recomputed "
+        "within each service type and recombined volume-weighted, a ranking of the "
+        "most unequally delivered types, and a fixed-effects regression as an "
+        "independent check."
     )
     with st.expander("Key terms"):
         st.markdown(
@@ -183,8 +193,9 @@ else:
 demographics = load_demographics(DATA_DIR / f"{geo_key}_demographics.csv")
 
 # ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_ops, tab_cat, tab_areas, tab_eq, tab_cat_eq = st.tabs([
+tab_ops, tab_cat, tab_areas, tab_eq, tab_cat_eq, tab_adj = st.tabs([
     "Operations", "Services", "Area Service Usage", "Equity", "Service Equity",
+    "Mix-Adjusted Equity",
 ])
 
 # ── Operations tab ────────────────────────────────────────────────────────────
@@ -391,3 +402,19 @@ with tab_cat_eq:
         )
     else:
         render_category_equity_explorer(DATA_DIR, demographics, geo_key, year)
+
+# ── Mix-Adjusted Equity tab ───────────────────────────────────────────────────
+with tab_adj:
+    if not data_ready:
+        st.info(
+            f"No processed data found for **{year}** at **{geo_level}** level. "
+            "Run the pipeline to generate it."
+        )
+    else:
+        # Carry over the Equity tab's metric selection so the two tabs stay aligned;
+        # falls back to days-to-close inside the component when that metric doesn't
+        # exist at the service-type grain.
+        render_equity_adjusted(
+            DATA_DIR, demographics, geo_key, year,
+            eq_metric_label=st.session_state.get("eq_metric"),
+        )
