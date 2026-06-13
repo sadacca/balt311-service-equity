@@ -10,6 +10,7 @@ that picture has moved over time.
 """
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -88,6 +89,17 @@ def _score_layout_kwargs(height: int) -> dict:
 # median-income groups, and score each split with `overlap_score()` — exactly the
 # computation `equity_trend.py` already performs citywide, just re-scoped to a
 # category or subtype slice for each year independently.
+
+def _overlap_np(a: np.ndarray, b: np.ndarray) -> float:
+    """Numpy-array twin of `utils.overlap_score` (bit-identical) for hot loops that
+    have already extracted their groups as arrays — skips the per-call `dropna`/
+    `to_numpy` that dominate when scoring thousands of small type×year groups."""
+    if a.size < 3 or b.size < 3:
+        return float("nan")
+    d = a[:, None] - b[None, :]
+    p = (np.count_nonzero(d > 0) + 0.5 * np.count_nonzero(d == 0)) / (a.size * b.size)
+    return 1.0 - 2.0 * abs(p - 0.5)
+
 
 def _dimension_scores(valid: pd.DataFrame, metric_col: str) -> dict[str, float]:
     """Race and income overlap scores for one demographics-merged, metric-valid slice."""
@@ -257,12 +269,32 @@ def _subtype_current_year_scores(
     if rows.empty:
         return pd.DataFrame(columns=["SRType", "dimension", "score"])
 
+    # Vectorized: extract the metric and demographic columns to numpy once, then slice
+    # each SRType's group by positional index (`groupby().indices`) and score on arrays.
+    # Bit-identical to the per-group `_dimension_scores` path but ~40× faster across the
+    # thousands of type×year groups the trend and ranking need — the per-group pandas
+    # `dropna`/mask overhead, not the math, was the cost.
+    m = rows[metric_col].to_numpy(dtype=float)
+    pb = rows["pct_black"].to_numpy(dtype=float)
+    pw = rows["pct_white"].to_numpy(dtype=float)
+    inc = rows["median_income"].to_numpy(dtype=float)
+
     records = []
-    for srtype, g in rows.groupby("SRType"):
-        valid = g.dropna(subset=[metric_col])
-        for dim, score in _dimension_scores(valid, metric_col).items():
-            records.append({"SRType": srtype, "dimension": dim, "score": score})
-    return pd.DataFrame(records)
+    for srtype, idx in rows.groupby("SRType").indices.items():
+        mm, b, w, ic = m[idx], pb[idx], pw[idx], inc[idx]
+        race_ok = ~np.isnan(mm) & ~np.isnan(b) & ~np.isnan(w)
+        race = _overlap_np(mm[race_ok & (b > 0.5)], mm[race_ok & (w > 0.5)])
+
+        inc_ok = ~np.isnan(mm) & ~np.isnan(ic)
+        ii, mi = ic[inc_ok], mm[inc_ok]
+        if ii.size:
+            med = np.median(ii)
+            income = _overlap_np(mi[ii <= med], mi[ii > med])
+        else:
+            income = float("nan")
+        records.append({"SRType": srtype, "dimension": "Race", "score": race})
+        records.append({"SRType": srtype, "dimension": "Income", "score": income})
+    return pd.DataFrame(records, columns=["SRType", "dimension", "score"])
 
 
 @st.cache_data

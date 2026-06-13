@@ -291,6 +291,42 @@ def _residual_choropleth_fig(
     return fig
 
 
+def _neighborhood_index_table(
+    df: pd.DataFrame, metric_col: str, higher_better: bool,
+) -> tuple[pd.DataFrame, dict]:
+    """Sortable/searchable per-neighborhood table behind the map — raw, mix-adjusted,
+    and Δ-vs-city for every geography, worst-first by default. Returns the display
+    frame and a Streamlit `column_config` so numbers sort numerically (not as text)."""
+    is_rate = metric_col == "closure_rate"
+    scale = 100.0 if is_rate else 1.0
+    unit = "%" if is_rate else "days"
+    raw_c, adj_c, delta_c = f"Raw ({unit})", f"Mix-adjusted ({unit})", f"Δ vs city ({unit})"
+
+    out = pd.DataFrame({
+        "Neighborhood": df["geoid"].astype(str),
+        raw_c: df["raw"] * scale,
+        adj_c: df["adjusted"] * scale,
+        delta_c: df["residual"] * scale,
+        "Requests": df["volume"].round().astype("Int64"),
+    })
+    if "median_income" in df.columns:
+        out["Median income"] = df["median_income"]
+    # Worst first: for higher-is-better metrics the worst residual is the most negative
+    # (ascending); for days the worst is the most positive (descending).
+    out = out.sort_values(delta_c, ascending=higher_better).reset_index(drop=True)
+
+    num = "%.0f" if is_rate else "%.1f"
+    cfg = {
+        raw_c: st.column_config.NumberColumn(format=num),
+        adj_c: st.column_config.NumberColumn(format=num),
+        delta_c: st.column_config.NumberColumn(format=("%+.0f" if is_rate else "%+.1f")),
+        "Requests": st.column_config.NumberColumn(format="%d"),
+    }
+    if "Median income" in out.columns:
+        cfg["Median income"] = st.column_config.NumberColumn(format="$%d")
+    return out, cfg
+
+
 def _raw_adjusted_scatter_fig(
     df: pd.DataFrame, metric_label: str, metric_col: str, higher_better: bool,
 ) -> go.Figure:
@@ -674,6 +710,14 @@ def render_equity_adjusted(
             "adjustment is genuinely over- or under-delivering. Shading by median income "
             "shows whether that lines up with neighborhood wealth — the equity question, "
             "asked on the mix-adjusted metric."
+        )
+
+        st.markdown("**Find a neighborhood** — every geography, worst-first; click a "
+                    "column to re-sort, or the ⌕ icon to search by name")
+        index_tbl, index_cfg = _neighborhood_index_table(norm, metric_col, higher_better)
+        st.dataframe(
+            index_tbl, use_container_width=True, hide_index=True, height=320,
+            column_config=index_cfg, key="adj_index",
         )
 
     # ── 3 — Within-type ranking ───────────────────────────────────────────────
