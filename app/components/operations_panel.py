@@ -491,19 +491,9 @@ def render_operations(
     selected_type, selected_cat = _srtype_charts(data_dir, year)
 
     # ── Geographic distribution map ───────────────────────────────────────────
+    # Geographic unit (Census Tract / CSA) is the global control at the top of the
+    # Within-Baltimore group; this map follows the passed-in geo_key.
     st.divider()
-    geo_col, _ = st.columns([3, 7])
-    with geo_col:
-        _curr_geo = st.session_state.get("geo_level", "Census Tract")
-        new_geo_ops = st.radio(
-            "View as",
-            ["Census Tract", "CSA"],
-            index=0 if _curr_geo == "Census Tract" else 1,
-            horizontal=True,
-        )
-        if new_geo_ops != _curr_geo:
-            st.session_state["geo_level"] = new_geo_ops
-            st.rerun()
     st.subheader("Geographic Distribution")
 
     geo_srtype = load_geo_srtype_metrics(data_dir / f"{geo_key}_srtype_metrics_{year}.parquet")
