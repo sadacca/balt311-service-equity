@@ -63,6 +63,7 @@ jobs:
 
             python scripts/pipeline.py --year $year --stage process
             python scripts/pipeline.py --year $year --stage srtype
+            python scripts/pipeline.py --year $year --stage adjusted
 
             # Commit processed outputs for this year before moving on
             git pull --rebase --autostash origin main

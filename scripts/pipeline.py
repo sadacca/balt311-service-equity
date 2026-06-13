@@ -31,6 +31,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
+import numpy as np
 import pandas as pd
 
 from balt311.ingest import fetch_year
@@ -703,6 +704,97 @@ def stage_srtype(year: int) -> None:
         log("  WARNING: crosswalk absent or tract_geoid missing — csa_srtype_metrics skipped")
 
 
+def _rollup_adjusted_to_csa(
+    tract_adj: pd.DataFrame, population: pd.DataFrame | None, xwalk: pd.DataFrame,
+) -> pd.DataFrame:
+    """Aggregate per-tract adjusted metrics to CSA level by population-weighted mean —
+    the same operator `rollup_to_csa` uses for the raw metrics, so raw and adjusted
+    sit on the same CSA basis (BNIA Vital Signs methodology)."""
+    merged = tract_adj.merge(xwalk[["geoid", "csa_name"]], on="geoid", how="left")
+    merged = merged[merged["csa_name"].notna()]
+    if population is not None:
+        merged = merged.merge(population, on="geoid", how="left")
+
+    out = merged.groupby("csa_name", as_index=False).agg(n_obs=("n_obs", "sum"))
+    for col in ("adj_median_days_to_close", "adj_closure_rate"):
+        valid = merged.dropna(subset=[col])
+        if "population" in valid.columns:
+            valid = valid.dropna(subset=["population"])
+        if valid.empty:
+            out[col] = float("nan")
+            continue
+        if "population" in valid.columns and valid["population"].notna().any():
+            agg = valid.groupby("csa_name").apply(
+                lambda g, c=col: np.average(g[c], weights=g["population"]),
+                include_groups=False,
+            ).reset_index(name=col)
+        else:
+            agg = valid.groupby("csa_name")[col].mean().reset_index(name=col)
+        out = out.merge(agg, on="csa_name", how="left")
+    return out.rename(columns={"csa_name": "geoid"})
+
+
+def stage_adjusted(year: int, is_live: bool) -> None:
+    """Stage adjusted: per-geography mix-standardized delivery metrics.
+
+    Reads data/interim/requests_{year}_clean.parquet (produced by stage_process),
+    filters to the same equity subset as the Equity-tab rollups, and writes
+    {tract,csa}_adjusted_metrics_{year}.parquet with direct-standardized
+    `adj_median_days_to_close` and `adj_closure_rate` (each geography reweighted to
+    the citywide service mix), plus the citywide reference values so the app can
+    map residuals (adjusted − citywide) without record-level data. This is the
+    statistically correct mix-adjusted median — the per-type-median reconstruction
+    it replaces was unsound because a median does not decompose by service type.
+    """
+    from balt311.metrics import (
+        compute_adjusted_geo_metrics,
+        filter_equity_subset,
+    )
+
+    for d in (RAW_DIR, INTERIM, PROC):
+        d.mkdir(parents=True, exist_ok=True)
+
+    right_censor_days = 30 if is_live else 0
+    log(f"=== Stage adjusted: mix-standardized metrics {year} (right_censor_days={right_censor_days}) ===")
+
+    interim_path = INTERIM / f"requests_{year}_clean.parquet"
+    if not interim_path.exists():
+        raise FileNotFoundError(f"{interim_path} not found. Run --stage process first.")
+    df_clean = pd.read_parquet(interim_path)
+    df_eq = filter_equity_subset(df_clean, right_censor_days=right_censor_days)
+    log(f"Equity subset: {len(df_eq):,} rows across {df_eq['tract_geoid'].nunique()} tracts")
+
+    # Citywide reference values (record-level, equity subset) — the residual baseline.
+    closed = df_eq["SRStatus"].str.strip().str.lower().isin({"closed", "closed (transferred)"})
+    has_dtc = closed & df_eq["days_to_close"].notna()
+    ref_median = float(df_eq.loc[has_dtc, "days_to_close"].median()) if has_dtc.any() else float("nan")
+    ref_closure = float(closed.sum() / len(df_eq)) if len(df_eq) else float("nan")
+    log(f"  Citywide reference: median_days={ref_median:.2f}  closure_rate={ref_closure:.3f}")
+
+    tract_adj = compute_adjusted_geo_metrics(df_eq, "tract_geoid")
+    log(f"  Tract adjusted: {tract_adj['adj_median_days_to_close'].notna().sum()} of {len(tract_adj)} tracts scoreable")
+
+    # Population for the CSA population-weighted rollup (matches raw CSA basis).
+    population = None
+    tract_metrics_path = PROC / f"tract_metrics_{year}.parquet"
+    if tract_metrics_path.exists():
+        tm = pd.read_parquet(tract_metrics_path)
+        if "population" in tm.columns:
+            population = tm[["geoid", "population"]].copy()
+
+    crosswalk_path = RAW_DIR / "tract_to_csa.csv"
+    if not crosswalk_path.exists():
+        _fetch_csa_crosswalk(crosswalk_path)
+    xwalk = pd.read_csv(crosswalk_path, dtype=str)
+    csa_adj = _rollup_adjusted_to_csa(tract_adj, population, xwalk)
+
+    for df, level in [(tract_adj, "tract"), (csa_adj, "csa")]:
+        df = df.assign(ref_median_days_to_close=ref_median, ref_closure_rate=ref_closure)
+        out_path = PROC / f"{level}_adjusted_metrics_{year}.parquet"
+        df.to_parquet(out_path, index=False)
+        log(f"Saved {level} adjusted metrics ({len(df)} rows) → {out_path.name}")
+
+
 def stage_demographics() -> None:
     """Fetch ACS demographics and write commit-ready CSVs to data/processed/.
 
@@ -744,12 +836,13 @@ if __name__ == "__main__":
     parser.add_argument("--year", type=int, help="Year to process (not required for --stage demographics)")
     parser.add_argument(
         "--stage",
-        choices=["ingest", "process", "demographics", "srtype", "nsa", "all"],
+        choices=["ingest", "process", "demographics", "srtype", "adjusted", "nsa", "all"],
         default="all",
         help=(
             "ingest=Stage 1 only; process=Stages 2+3 only; "
             "demographics=fetch ACS race+income CSVs (year-independent); "
             "srtype=per-SRType aggregate metrics (requires process output); "
+            "adjusted=per-geography mix-standardized metrics (requires process output); "
             "nsa=build tract→NSA name crosswalk (year-independent, requires tract_boundaries.geojson); "
             "all=full pipeline (default)"
         ),
@@ -774,6 +867,8 @@ if __name__ == "__main__":
             stage_process(args.year, args.live)
         elif args.stage == "srtype":
             stage_srtype(args.year)
+        elif args.stage == "adjusted":
+            stage_adjusted(args.year, args.live)
         else:
             stage_ingest(args.year)
             stage_process(args.year, args.live)

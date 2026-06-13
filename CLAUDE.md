@@ -63,6 +63,7 @@ Headless pipeline at `scripts/pipeline.py`. Four stages, each independently runn
 python scripts/pipeline.py --year 2024 --stage ingest        # ArcGIS → data/raw/
 python scripts/pipeline.py --year 2024 --stage process       # clean + spatial join + aggregate
 python scripts/pipeline.py --year 2024 --stage srtype        # SRType + geo×SRType metrics
+python scripts/pipeline.py --year 2024 --stage adjusted      # per-geo mix-standardized metrics (needs process output)
 python scripts/pipeline.py --stage demographics              # ACS race + income (run once)
 python scripts/pipeline.py --year 2024                       # all stages in sequence
 python scripts/pipeline.py --year 2026 --live                # current-year with 30-day right-censoring
@@ -97,6 +98,8 @@ Everything else (System/Internal source, ECC types, ungeocoded) is excluded from
 | `srtype_metrics_{year}.parquet` | SRType × year | total_requests, closed_requests, closure_rate, median_days_to_close, on_time_rate, pct_resident_initiated |
 | `tract_srtype_metrics_{year}.parquet` | tract × SRType × year | total_requests, closed_requests, closure_rate, median_days_to_close |
 | `csa_srtype_metrics_{year}.parquet` | CSA × SRType × year | same as tract_srtype |
+| `tract_adjusted_metrics_{year}.parquet` | tract × year | n_obs, adj_median_days_to_close, adj_closure_rate, ref_median_days_to_close, ref_closure_rate — mix-standardized (direct standardization to citywide mix, record-level) for Tab 6 |
+| `csa_adjusted_metrics_{year}.parquet` | CSA × year | same as tract_adjusted; CSA = population-weighted rollup of tract adjusted values |
 | `tract_boundaries.geojson` | — | Census 2020 tract boundaries for Baltimore City (FIPS 510) |
 | `csa_boundaries.geojson` | — | CSA boundaries dissolved from tract polygons via BNIA crosswalk |
 | `tract_demographics.csv` | tract | pct_black, pct_white, median_income (ACS 2023 5-year; year-independent) |

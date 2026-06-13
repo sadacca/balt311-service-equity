@@ -137,6 +137,108 @@ def aggregate_tract(df: pd.DataFrame, geo_col: str = "tract_geoid") -> pd.DataFr
     return out.rename(columns={geo_col: "geoid"})
 
 
+# Closed-status set shared by aggregate_tract and the mix-standardization below, so
+# "what counts as closed" is identical to the verified Equity-tab rollup.
+_CLOSED_STATUSES = {"closed", "closed (transferred)"}
+
+
+def weighted_median(values, weights) -> float:
+    """Interpolated weighted median — the value at cumulative weight = half the total,
+    linearly interpolated between the straddling observations. Reduces to numpy's
+    median when weights are equal, and is robust at the knife-edge where a sharp
+    weight boundary sits exactly at the midpoint (a plain cumulative-threshold median
+    is float-fragile there). Drops NaN / non-positive-weight rows."""
+    v = np.asarray(values, dtype=float)
+    w = np.asarray(weights, dtype=float)
+    mask = ~np.isnan(v) & ~np.isnan(w) & (w > 0)
+    v, w = v[mask], w[mask]
+    if v.size == 0:
+        return float("nan")
+    if v.size == 1:
+        return float(v[0])
+    order = np.argsort(v, kind="mergesort")
+    v, w = v[order], w[order]
+    # Cumulative weight at each observation's midpoint, normalized to [0, total].
+    cum = np.cumsum(w) - 0.5 * w
+    return float(np.interp(0.5 * w.sum(), cum, v))
+
+
+def compute_adjusted_geo_metrics(
+    df_eq: pd.DataFrame,
+    geo_col: str = "tract_geoid",
+    min_cell_n: int = 5,
+    min_types: int = 3,
+) -> pd.DataFrame:
+    """Per-geography *mix-standardized* delivery metrics via direct standardization.
+
+    For each geography we reweight its **own** requests so that its service-type mix
+    matches the **citywide** mix, then read off the metric. This isolates delivery
+    speed/quality from *what* the area requests — the statistically correct counterpart
+    to Tab 6's residual view, and the only honest way to mix-adjust a *median* (a median
+    does not decompose into a weighted mean of per-type medians, so the per-type-median
+    reconstruction used previously was unsound).
+
+    - `adj_median_days_to_close` — weighted median of the geography's closed-request
+      days-to-close, each record weighted by `citywide_closed_count(type) /
+      geo_closed_count(type)` so the type composition equals the citywide composition.
+    - `adj_closure_rate` — citywide-request-weighted mean of the geography's per-type
+      closure rates (closure decomposes exactly, so this is exact).
+
+    Only types with at least `min_cell_n` of the geography's requests count, and a
+    geography needs at least `min_types` such types (else NaN). Expects `df_eq` already
+    filtered to the equity subset, so `adj_*` sit on the same population as the verified
+    `*_metrics_{year}.parquet` rollups.
+
+    Returns one row per geography: `geoid`, `n_obs`, `adj_median_days_to_close`,
+    `adj_closure_rate`.
+    """
+    d = df_eq.dropna(subset=[geo_col]).copy()
+    d["_closed"] = d["SRStatus"].str.strip().str.lower().isin(_CLOSED_STATUSES)
+    d["_has_dtc"] = d["_closed"] & d["days_to_close"].notna()
+
+    # Citywide per-type request counts (closure weights) and closed-with-time counts
+    # (median weights) — the standardization targets.
+    city_total_t = d.groupby("SRType").size()
+    city_closed_t = d.loc[d["_has_dtc"]].groupby("SRType").size()
+
+    rows = []
+    for gid, g in d.groupby(geo_col):
+        # ── adjusted closure: reweight per-type closure to citywide request mix ──
+        tot_t = g.groupby("SRType").size()
+        keep_c = tot_t[tot_t >= min_cell_n].index
+        if len(keep_c) >= min_types:
+            clr_t = g[g["SRType"].isin(keep_c)].groupby("SRType")["_closed"].mean()
+            w = city_total_t.reindex(keep_c).to_numpy(float)
+            cr = clr_t.reindex(keep_c).to_numpy(float)
+            ok = ~np.isnan(cr) & ~np.isnan(w)
+            adj_closure = float((cr[ok] * w[ok]).sum() / w[ok].sum()) if ok.any() else float("nan")
+        else:
+            adj_closure = float("nan")
+
+        # ── adjusted median days: weighted median of closed records to citywide mix ──
+        gc = g[g["_has_dtc"]]
+        cnt_t = gc.groupby("SRType").size()
+        keep_m = cnt_t[cnt_t >= min_cell_n].index
+        if len(keep_m) >= min_types:
+            gcm = gc[gc["SRType"].isin(keep_m)]
+            rec_w = (
+                city_closed_t.reindex(gcm["SRType"]).to_numpy(float)
+                / cnt_t.reindex(gcm["SRType"]).to_numpy(float)
+            )
+            adj_median = weighted_median(gcm["days_to_close"].to_numpy(float), rec_w)
+            n_obs = int(len(gcm))
+        else:
+            adj_median = float("nan")
+            n_obs = int(len(gc))
+
+        rows.append({
+            "geoid": gid, "n_obs": n_obs,
+            "adj_median_days_to_close": adj_median, "adj_closure_rate": adj_closure,
+        })
+
+    return pd.DataFrame(rows, columns=["geoid", "n_obs", "adj_median_days_to_close", "adj_closure_rate"])
+
+
 def rollup_demographics_to_csa(
     tract_demo_df: pd.DataFrame,
     xwalk_df: pd.DataFrame,
