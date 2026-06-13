@@ -12,10 +12,10 @@ from components.category_equity_explorer import render_category_equity_explorer
 from components.category_explorer import render_category_explorer
 from components.cross_city import (
     render_cross_city_intro,
-    render_delivery_placeholder,
     render_equity_placeholder,
     render_maturity_placeholder,
 )
+from components.city_delivery import render_city_delivery
 from components.equity_adjusted import render_equity_adjusted
 from components.equity_panel import render_equity
 from components.operations_panel import render_operations
@@ -310,7 +310,7 @@ with grp_cross:
         "Service Delivery", "Service Equity", "Maturity Index",
     ])
     with cc_delivery:
-        render_delivery_placeholder()
+        render_city_delivery(DATA_DIR, year)
     with cc_equity:
         render_equity_placeholder()
     with cc_maturity:

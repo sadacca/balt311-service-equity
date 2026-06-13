@@ -245,9 +245,32 @@ Service Equity**, both with Baltimore as the fixed reference.
   deferred pending its mid-2026 backend migration.
 - **No revision to the plan** resulting from feasibility review — proceed to 5.1.
 
-### 6.1 — Adapter + MVP pair (Phase 5.1) — _pending_
+### 6.1 — Adapter + MVP pair (Phase 5.1) — _code shipped 2026-06-13; data run pending_
 
-### 6.2 — Delivery tab, MVP (Phase 5.2) — _pending_
+**Built:** the `src/balt311/cities/` adapter package (`base`, `arcgis`, `dc`, `baltimore`),
+`peer_metrics` (uniform per-(city,year) metrics + ACS county population + upsert),
+`scripts/peer_city.py`, and the `peer_city.yml` workflow. DC endpoint confirmed:
+`maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/ServiceRequests/FeatureServer`, one
+layer per year; **layer ids are not a clean year offset** (2023=15, 2024=16, 2025=18), so
+the adapter discovers the layer by name at fetch time rather than hardcoding ids. Field
+map: `SERVICECODEDESCRIPTION→SRType`, `ADDDATE→CreatedDate`, `RESOLUTIONDATE→CloseDate`,
+`LATITUDE/LONGITUDE`. Uniform closure rule across cities: **closed iff a CloseDate is
+present** (Baltimore's native SRStatus rule differs slightly — footnoted, not used here).
+
+**Still pending (gates 5.2's checkpoint, needs the first CI run):** P5.1-5 — run the MVP
+pair on real data and record DC's row counts, closure-semantics finding, any field-map
+surprises, and the **Baltimore-row cross-check vs. the Operations KPI total** (must match).
+ArcGIS is unreachable from the dev sandbox (403), so this runs in CI like the Baltimore
+backfill. Fill in the findings here once the workflow has run.
+
+### 6.2 — Delivery tab, MVP (Phase 5.2) — _tab shipped 2026-06-13; findings pending data_
+
+**Built:** `app/components/city_delivery.py` (`render_city_delivery`) wired into the
+"Compare cities" group's Service Delivery tab — metric toggle (requests-per-1k, median
+days, closure rate, on-time rate), horizontal ranked bar with **Baltimore highlighted**,
+rates-only, per-city closure-definition expander, soft-degrade for null metrics and for
+years not shared across cities, and a "run the workflow" notice until `peer_city_metrics`
+exists. **Findings (what Baltimore-vs-DC actually shows) pending the data run.**
 
 ### 6.3 — Cohort expansion (Phase 5.3) — _pending_
 

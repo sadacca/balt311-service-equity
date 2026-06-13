@@ -104,6 +104,8 @@ Everything else (System/Internal source, ECC types, ungeocoded) is excluded from
 | `csa_boundaries.geojson` | — | CSA boundaries dissolved from tract polygons via BNIA crosswalk |
 | `tract_demographics.csv` | tract | pct_black, pct_white, median_income (ACS 2023 5-year; year-independent) |
 | `csa_demographics.csv` | CSA | population-weighted rollup of tract demographics |
+| `peer_city_metrics.parquet` | city × year | cross-city delivery metrics (total_requests, requests_per_1k, median_days_to_close, closure_rate, on_time_rate, population, closure_definition) — Phase 5, built by `scripts/peer_city.py` |
+| `peer_city_meta.csv` | city | fips, ACS population, portal_url, closure_definition |
 
 `data/raw/` and `data/interim/` are gitignored and rebuilt by the pipeline.
 
@@ -137,7 +139,7 @@ See `TASKS.md` for full detail. Current phase status:
 | 4 / 4d | SRType-stratified equity — six-tab arc (Services, Areas, Service Equity, Mix-Adjusted Equity) | Complete — all tabs shipped |
 | 4e | Per-geography mix-adjusted metrics (record-level direct-standardization `adjusted` stage) | Stage shipped — Tab 6 consumes it; P4e-3→5 (Equity-tab surfacing) open |
 | 4b | Area Analysis tab — peer comparison for managers | Candidate next release |
-| 5 | Cross-municipality benchmarking | Medium-term |
+| 5 | Cross-municipality benchmarking | In progress — 5.1/5.2 MVP (Baltimore + DC) code shipped; data run + §6.1 cross-check pending CI |
 | 6 | Seasonality tab | Long-term |
 
 Key open investigations before heavy Phase 4 / 5 work:
@@ -162,15 +164,19 @@ app/
     utils.py                      # overlap_score, score_label, format_metric, hex_to_rgba
 
 scripts/
-  pipeline.py                     # Headless pipeline — all stages
+  pipeline.py                     # Headless pipeline — all stages (within-Baltimore)
+  peer_city.py                    # Cross-city ingestion + metrics (Phase 5)
 
 src/balt311/
-  ingest.py                       # ArcGIS FeatureServer pagination
+  ingest.py                       # ArcGIS FeatureServer pagination (Baltimore)
   metrics.py                      # Cleaning, aggregation, CSA rollup, demographics rollup
+  peer_metrics.py                 # City-agnostic cross-city delivery metrics + ACS county pop
+  cities/                         # Per-city adapters: base, arcgis (reusable client), dc, baltimore
 
 .github/workflows/
   update_data.yml                 # Single-year workflow
   backfill.yml                    # Multi-year sequential backfill
+  peer_city.yml                   # Cross-city metrics (Phase 5)
 
 data/processed/                   # Committed — app reads only from here
 data/raw/                         # Gitignored

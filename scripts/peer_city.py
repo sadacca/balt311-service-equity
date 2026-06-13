@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Cross-city 311 ingestion + metrics (Phase 5.1).
+
+For each requested city, fetch the year's records via its adapter, compute the uniform
+delivery metrics, and upsert one (city, year) row into
+`data/processed/peer_city_metrics.parquet`, alongside a `peer_city_meta.csv` of city
+metadata (FIPS, ACS population, portal, closure definition).
+
+ArcGIS endpoints are unreachable from sandboxed dev environments, so this is designed to
+run in CI (see .github/workflows/peer_city.yml), exactly like the Baltimore backfill.
+
+Usage:
+    python scripts/peer_city.py --year 2024                    # all registered cities
+    python scripts/peer_city.py --year 2024 --cities dc        # one city
+    python scripts/peer_city.py --year 2026 --live             # 30-day right-censoring
+"""
+import argparse
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
+
+import pandas as pd
+
+from balt311.cities import ADAPTERS
+from balt311.peer_metrics import (
+    METRIC_COLUMNS,
+    compute_city_metrics,
+    fetch_county_population,
+    upsert_metrics,
+)
+
+PROC = ROOT / "data" / "processed"
+METRICS_PATH = PROC / "peer_city_metrics.parquet"
+META_PATH = PROC / "peer_city_meta.csv"
+
+
+def log(msg: str) -> None:
+    print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
+
+
+def run(year: int, cities: list[str], is_live: bool) -> None:
+    PROC.mkdir(parents=True, exist_ok=True)
+    right_censor_days = 30 if is_live else 0
+
+    existing = pd.read_parquet(METRICS_PATH) if METRICS_PATH.exists() else None
+    meta = (
+        pd.read_csv(META_PATH, dtype={"fips": str}).set_index("city").to_dict("index")
+        if META_PATH.exists() else {}
+    )
+
+    new_rows = []
+    for slug in cities:
+        if slug not in ADAPTERS:
+            log(f"SKIP unknown city '{slug}' (known: {', '.join(ADAPTERS)})")
+            continue
+        adapter = ADAPTERS[slug]()
+        log(f"=== {adapter.city} ({slug}) · {year} ===")
+
+        population = fetch_county_population(adapter.fips)
+        log(f"  ACS population (FIPS {adapter.fips}): {population}")
+
+        t0 = time.time()
+        records = adapter.fetch(year)
+        log(f"  fetched {len(records):,} records in {time.time() - t0:.0f}s")
+
+        row = compute_city_metrics(
+            records, city=adapter.city, year=year, population=population,
+            right_censor_days=right_censor_days, closure_definition=adapter.closure_definition,
+        )
+        log(
+            f"  total={row['total_requests']:,}  per_1k="
+            f"{row['requests_per_1k']}  median_days={row['median_days_to_close']}  "
+            f"closure_rate={row['closure_rate']}"
+        )
+        new_rows.append(row)
+
+        meta[adapter.city] = {
+            "fips": adapter.fips, "population": population,
+            "portal_url": adapter.portal_url, "closure_definition": adapter.closure_definition,
+        }
+
+    if not new_rows:
+        log("No cities processed — nothing written.")
+        return
+
+    metrics = upsert_metrics(existing, new_rows)
+    metrics.to_parquet(METRICS_PATH, index=False)
+    log(f"Wrote {len(metrics)} rows → {METRICS_PATH.name}")
+
+    meta_df = (
+        pd.DataFrame.from_dict(meta, orient="index")
+        .rename_axis("city").reset_index()
+        [["city", "fips", "population", "portal_url", "closure_definition"]]
+    )
+    meta_df.to_csv(META_PATH, index=False)
+    log(f"Wrote {len(meta_df)} rows → {META_PATH.name}")
+
+
+if __name__ == "__main__":
+    p = argparse.ArgumentParser(description="Cross-city 311 ingestion + metrics")
+    p.add_argument("--year", type=int, required=True)
+    p.add_argument("--cities", default=",".join(ADAPTERS),
+                   help="Comma-separated city slugs (default: all registered)")
+    p.add_argument("--live", action="store_true", help="Apply 30-day right-censoring")
+    args = p.parse_args()
+    run(args.year, [c.strip() for c in args.cities.split(",") if c.strip()], args.live)
