@@ -21,6 +21,30 @@ holds the reasoning, the evidence, and the accumulating findings.
 
 ---
 
+## 0. A word of credit — openness is the precondition for all of this
+
+Before a single peer comparison or critical finding, one fact deserves to lead: **a
+cross-city analysis of this depth is only possible because some cities — Baltimore
+foremost — publish their 311 data openly, completely, and at the record level.** Baltimore
+was the **first US city to run a 311 system (1996)**, pioneered **CitiStat (1999)** — the
+data-driven performance-management model the rest of the country adopted — and was an **early
+adopter of the Open311 GeoReport v2 standard (~2011)**, a standard that, even today, only on
+the order of a dozen US cities have implemented, putting Baltimore ahead of many far larger
+cities. The §2 matrix below makes the same point in reverse: of the thousands of US
+municipalities, only a few dozen publish 311 data mature enough to support delivery *and*
+equity comparison at all.
+
+This creates an uncomfortable asymmetry the project should name explicitly: **the more openly
+a city publishes, the more it exposes itself to criticism, while less-transparent cities
+escape scrutiny by default.** If openness is rewarded only with critique, cities are
+disincentivized from being open. So the stance taken here is deliberate — **evaluating
+Baltimore's performance is, simultaneously, a tribute to Baltimore's openness.** Most US
+cities could not be evaluated this way; Baltimore can, and that is to its credit. The
+cross-city maturity index (Phase 5.8) is built precisely to make that credit explicit and
+measurable rather than incidental — recognition first, critique second.
+
+---
+
 ## 1. What "comparison" means here (and what it does not)
 
 Three distinct comparisons, in increasing difficulty:
@@ -147,6 +171,7 @@ Documented up front so each city onboarding checks against the same list:
 | **5.5 Equity methodology** | Portable ACS-tract + TIGER equity join per city; per-city internal overlap scores | — | §6.5 — per-city equity scores + validation vs. Baltimore in-app numbers |
 | **5.6 Equity tab (cohort)** | **Cross-City Service Equity** tab — each city's internal race/income score, Baltimore as reference | ✅ Tab 8 | §6.6 — cross-city equity findings |
 | **5.7 Within-type (stretch)** | Request-type taxonomy crosswalk; within-type equity comparison for shared categories | (extends Tab 8) | §6.7 — taxonomy mapping coverage + within-type findings |
+| **5.8 Maturity index (enhancement)** | 311 open-data maturity scorecard over the cohort; Baltimore's rank + per-dimension gap profile; "credit where due" framing | optional in-app panel | §6.8 — scorecard, Baltimore rank, gap profile |
 
 **Recommended cohort waves** (each wave = one adapter family coming online):
 
@@ -208,6 +233,8 @@ two tabs of the existing arc or in a dedicated "Compare cities" section is decid
 
 ### 6.7 — Within-type comparison (Phase 5.7) — _pending_
 
+### 6.8 — 311 open-data maturity index (Phase 5.8) — _pending_
+
 ---
 
 ## 7. Sources (feasibility review, June 2026)
@@ -222,5 +249,53 @@ two tabs of the existing arc or in a dedicated "Compare cities" section is decid
 - Metro 311 Service Request, Louisville Open Data — https://louisville-metro-opendata-lojic.hub.arcgis.com/
 - 311 Requests, Open Data KC — https://data.kcmo.org/
 - CSB Service Requests (311), City of St. Louis — https://www.stlouis-mo.gov/data/datasets/dataset.cfm?id=5
-</content>
-</invoke>
+
+**Baltimore open-data leadership (Phase 5.8 maturity context):**
+- Baltimore 311 history (first US 311 system, 1996) — https://localwiki.org/baltimore/311_Non-Emergency_Services
+- "311 Pioneering Baltimore Continues to Lead with Open311" (~2011 GeoReport v2 adoption) — https://www.open311.org/2011/09/baltimore/
+- Open311 GeoReport v2 ecosystem & adopters — https://www.open311.org/2015/06/highlights-from-the-open311-ecosystem/
+- What Works Cities — Baltimore (Silver certification, 2021) — https://whatworkscities.bloomberg.org/cities/baltimore-maryland-usa/
+
+---
+
+## 8. 311 Open-Data Maturity Index — scoring rubric (Phase 5.8)
+
+**Purpose.** Rank Baltimore's 311 *open-data publishing maturity* against the set of US cities
+that publish 311 open data — and, equally, **credit** the cities whose openness makes analysis
+like this repository possible. This is recognition with a measurement attached, not a gotcha.
+
+**Two caveats baked into every use of the index:**
+
+1. **It measures publishing maturity, not service quality.** A city can publish beautifully and
+   still deliver inequitably — indeed, only the open cities can even be *evaluated* for delivery
+   or equity. A high maturity score is a precondition for accountability, not a substitute for it.
+2. **"All US cities" is scoped to "US cities with public 311 open data"** — a few dozen — the only
+   defensible denominator. Ranking against all ~19,000 municipalities is neither feasible nor
+   meaningful; most run no 311 system, and most that do publish nothing.
+
+**Baltimore's standing (the reference point):** first US 311 system (1996); CitiStat pioneer
+(1999); early Open311 GeoReport v2 adopter (~2011, among only ~a dozen US cities); What Works
+Cities **Silver** certification (2021). A genuine pioneer — and, on the *publishing* axis
+specifically, a strong mid-tier performer that the Socrata leaders (NYC/Chicago/SF) now edge out
+on unification, update cadence, and documentation (see §2). The index is designed to show both
+truths honestly.
+
+**Rubric** — score each cohort city 0–N per dimension (weights set in P5.8-1):
+
+| Dimension | What it measures | Observable from |
+|---|---|---|
+| Availability & license | Is 311 published as open data under an open license? | Portal listing + license field |
+| Granularity | Record-level per-request vs. aggregates only | Dataset schema |
+| History depth | Years of continuous coverage | Earliest record / dataset range |
+| Update cadence | Daily/nightly vs. annual vs. manual | Portal metadata |
+| API access | Programmatic API (SODA / ArcGIS REST / Carto SQL) vs. download-only | Endpoint type |
+| Standardization | Open311 GeoReport v2 compliance | Open311 endpoint presence |
+| Field completeness | created + closed timestamps, geo, type, status, channel, reopen, cost | Field inventory |
+| Geocoding coverage | % of requests with valid lat/lon | Computed during onboarding |
+| Documentation | Data dictionary / metadata quality | Portal docs |
+
+Most of these are already assessed during city onboarding (Phases 5.1 / 5.3), so the index is
+nearly free to populate — it formalizes the §2 matrix into a scored, rankable form, and
+produces a **per-dimension gap profile** for Baltimore that maps one-to-one onto
+`requirements.md` §5 Gap Dependencies (turning "publish better data" into a measured,
+prioritized list).

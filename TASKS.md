@@ -527,6 +527,50 @@ validates the whole cross-city pipeline that equity then reuses.
 
 ---
 
+### Phase 5.8 — 311 Open-Data Maturity Index *(planned enhancement)*
+
+**Goal**: rank Baltimore's 311 *open-data publishing maturity* against the set of US cities that
+publish 311 open data — and, just as importantly, **credit** the cities (Baltimore foremost)
+whose openness makes analysis like this repository possible. Framed as recognition, not a
+gotcha: penalizing openness with criticism while letting closed cities off the hook would
+disincentivize the very transparency this project depends on.
+
+> **Why this belongs in the plan**: the §2 evaluation matrix in `cross_city_comparison.md`
+> already assesses most maturity criteria qualitatively during city onboarding. This phase
+> formalizes that into a scored, rankable index — nearly free to populate — and produces a
+> per-dimension gap profile for Baltimore that maps one-to-one onto `requirements.md` §5 Gap
+> Dependencies. Full rubric and the two standing caveats (measures *publishing* maturity, not
+> service quality; "all US cities" scoped to "cities with public 311 open data") are in
+> `cross_city_comparison.md` §8.
+
+**Baltimore's standing (the reference point)**: first US 311 system (1996); CitiStat pioneer
+(1999); early Open311 GeoReport v2 adopter (~2011, among only ~a dozen US cities — ahead of
+many far larger ones); What Works Cities Silver (2021). A pioneer that, on the *publishing*
+axis specifically, the Socrata leaders now edge out on unification/cadence/documentation — the
+index is built to show both truths honestly.
+
+- [ ] **P5.8-1: Define the maturity rubric + weights** — finalize the dimension list and 0–N
+  scoring scale (`cross_city_comparison.md` §8): availability & open license; granularity
+  (record-level vs. aggregate); history depth; update cadence; API access (SODA/ArcGIS/Carto
+  vs. download-only); Open311 GeoReport v2 standardization; field completeness (created/closed
+  timestamps, geo, type, status, channel, reopen, cost); geocoding coverage; documentation quality.
+- [ ] **P5.8-2: Score the cohort** — populate a scorecard (one row per city, per-dimension
+  subscores + total) from the onboarding assessments (5.1/5.3); fill remaining gaps (geocoding %,
+  Open311 compliance check, license). Output: `data/processed/peer_city_maturity.csv`.
+- [ ] **P5.8-3: Baltimore gap profile** — for each dimension where Baltimore trails the leader,
+  name the specific field/practice that would close it; cross-reference `requirements.md` §5.
+  Turns "publish better data" into a measured, prioritized list.
+- [ ] **P5.8-4: "Credit where due" framing in-app and in docs** — surface the standing with
+  explicit positive framing: name the enabling openness *before* any critical finding. A small
+  panel on the cross-city tabs (or the sidebar) that credits the cities whose openness permits
+  the analysis, Baltimore's first-mover and Open311 leadership highlighted. (The README and
+  `requirements.md` §1 narrative additions for this already shipped with the plan; this task
+  carries the same framing into the app surface.)
+- [ ] **P5.8-5: Documentation checkpoint** — append `cross_city_comparison.md` §6.8: the
+  scorecard, Baltimore's rank, the gap profile, and the credit framing.
+
+---
+
 ## Phase 6 — Seasonality Tab *(Long-term)*
 
 **Goal**: answer "when do requests spike, and does seasonal surge affect equitable delivery?"

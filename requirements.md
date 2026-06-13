@@ -31,6 +31,8 @@ Four comparison axes structure the analysis and drive prioritization of features
 
 The equity lens is not the only lens — operational clarity for managers is equally important and is the default landing view. The output should also function as a demonstration of what becomes possible when the city adds resolution time and cost-of-service fields to its daily 311 feed.
 
+**A note on what makes this analysis possible.** An evaluation of this depth and breadth is only feasible because Baltimore publishes its 311 data openly, completely, and at the record level — a posture rooted in the city's history as the **first US city to deploy a 311 system (1996)**, the **birthplace of CitiStat (1999)**, and an **early Open311 GeoReport v2 adopter (~2011)**, a standard still implemented by only on the order of a dozen US cities. Most municipalities cannot be analyzed this way; their data is not open enough. This document and the dashboard it specifies therefore serve a dual purpose: they scrutinize Baltimore's service delivery *and* stand as a credit to the openness that permits the scrutiny. Openness invites criticism — which is exactly why it should be recognized and praised, not penalized, lest cities be disincentivized from the transparency this kind of accountability depends on.
+
 **Primary Questions:**
 1. What request types are coming in, where, and in what volume — and how does this compare to prior years?
 2. How quickly and completely are requests being resolved, by type and by geography?
