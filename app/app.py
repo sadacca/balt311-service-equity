@@ -296,6 +296,9 @@ with grp_local:
             # doesn't exist at the service-type grain.
             render_equity_adjusted(
                 DATA_DIR, demographics, geo_key, year,
+                geojson=geojson,
+                featureidkey=featureidkey,
+                mapbox_token=MAPBOX_TOKEN,
                 eq_metric_label=st.session_state.get("eq_metric"),
             )
 
