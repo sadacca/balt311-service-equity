@@ -142,6 +142,18 @@ def load_geo_srtype_metrics(path: Path) -> pd.DataFrame:
 
 
 @st.cache_data
+def load_adjusted_metrics(data_dir: Path, geo_key: str, year: int) -> pd.DataFrame:
+    """Per-geography mix-standardized metrics for one geo level and year, or empty if
+    the `adjusted` pipeline stage hasn't been run. Columns: geoid, n_obs,
+    adj_median_days_to_close, adj_closure_rate, ref_median_days_to_close,
+    ref_closure_rate."""
+    path = data_dir / f"{geo_key}_adjusted_metrics_{year}.parquet"
+    if not path.exists():
+        return pd.DataFrame()
+    return pd.read_parquet(path)
+
+
+@st.cache_data
 def load_geo_srtype_history(data_dir: Path, geo_key: str) -> pd.DataFrame:
     """All available geo×SRType metrics years for one geo level, combined with a `year` column."""
     dfs = []
