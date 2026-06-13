@@ -31,6 +31,8 @@ Four comparison axes structure the analysis and drive prioritization of features
 
 The equity lens is not the only lens — operational clarity for managers is equally important and is the default landing view. The output should also function as a demonstration of what becomes possible when the city adds resolution time and cost-of-service fields to its daily 311 feed.
 
+**A note on what makes this analysis possible.** An evaluation of this depth and breadth is only feasible because Baltimore publishes its 311 data openly, completely, and at the record level — a posture rooted in the city's history as the **first US city to deploy a 311 system (1996)**, the **birthplace of CitiStat (1999)**, and an **early Open311 GeoReport v2 adopter (~2011)**, a standard still implemented by only on the order of a dozen US cities. Most municipalities cannot be analyzed this way; their data is not open enough. This document and the dashboard it specifies therefore serve a dual purpose: they scrutinize Baltimore's service delivery *and* stand as a credit to the openness that permits the scrutiny. Openness invites criticism — which is exactly why it should be recognized and praised, not penalized, lest cities be disincentivized from the transparency this kind of accountability depends on.
+
 **Primary Questions:**
 1. What request types are coming in, where, and in what volume — and how does this compare to prior years?
 2. How quickly and completely are requests being resolved, by type and by geography?
@@ -117,6 +119,62 @@ Three additional analyses bridge the operational (Section 3.2) and equity (Secti
 
 3. **Mix-adjusted regression** — extends §3.4's regression to the aggregate tract×SRType×year panel available in `data/processed/` (record-level data is not retained): `log(median_days_to_close) ~ pct_black + median_income + SRType fixed effects + year fixed effects`. Reported as a coefficient table with 95% confidence intervals for the race and income terms, paired with the stratified scores above as two independent lines of evidence for the same question — is the *same* service delivered more slowly to disadvantaged areas, controlling for what's being requested and when?
 
+### 3.6 Cross-City Comparison Methodology (Phase 5)
+
+Phase 5 places Baltimore's numbers in context against peer and leading cities. Full
+feasibility assessment, the city-by-city evaluation matrix, the phased rollout, and a
+running results log live in **`cross_city_comparison.md`**; this section records the
+methodological decisions that requirements depend on.
+
+**Three comparisons, increasing difficulty:**
+
+1. **Overall volume** *(low difficulty)* — city-level request totals and per-1,000-resident
+   rates. Every city publishes counts; ACS population is national, so the rate is portable.
+2. **Service delivery** *(medium)* — city-level median days to close, closure rate, and
+   on-time rate where derivable. Timestamps are universal, but "closed" vs. "resolved"
+   semantics differ across cities (some auto-close), so the metric is comparable **only with
+   each city's closure definition footnoted**.
+3. **Service equity** *(medium aggregate → high within-type)* — see below.
+
+**The equity comparison compares scores, not places.** We do **not** match Baltimore tracts
+to another city's tracts. For each city we compute its *own internal* race-based and
+income-based Mann-Whitney overlap score (does the majority-Black / lower-income half of the
+city wait longer than the majority-White / higher-income half?), then compare those **scores**
+across cities. The tab answers "is Baltimore more or less equitable in its own delivery than
+its peers are in theirs?" This makes equity comparison **more portable than delivery
+comparison**: it rides entirely on nationally-uniform sources — the Census ACS API (tract
+race/income, identical query with a different state+county FIPS) and TIGER/Line tract
+boundaries — plus the latitude/longitude every candidate city already publishes for
+point-in-polygon tract assignment. No reliance on any city's own demographic publishing.
+
+**Use the mix-adjusted score across cities, not the raw score.** The dashboard's own headline
+finding (§3.5 / Tab 5) is that much of the apparent citywide equity gap is a *service-mix*
+effect — which services a neighborhood requests — not unequal delivery of the *same* service.
+Comparing **raw** scores across cities would confound real delivery-equity differences with
+mere differences in each city's request mix. The cross-city equity comparison therefore uses
+the **mix-adjusted overall score** as its primary metric — the volume-weighted mean of each
+city's *within-service-category* overlap scores (the §3.5 / Tab 6 "adjusted" score) — with the
+raw score shown only as a secondary reference. Crucially, the adjusted *overall* score needs
+**no cross-city taxonomy harmonization**: each city scores within its own categories and only
+the final volume-weighted scalar is compared. (Comparing the *same* category across cities is
+the separate within-type stretch, Phase 5.7, which does need a shared taxonomy.) A
+*cross-city analysis of service-mix composition itself* is interesting but an explicit non-goal
+of these dashboards.
+
+**Normalization rules** (applied in the per-city adapter layer; full list in
+`cross_city_comparison.md` §4):
+- Compare **rates** (per-1k, closure rate, median days), never raw counts — NYC dwarfs Baltimore.
+- For high-volume Socrata systems, aggregate **server-side** (`$select`/`$group`); never pull tens of millions of raw rows.
+- Apply Baltimore's existing 30-day right-censoring exclusion per city for live-year queries.
+- Use **all geocoded requests** as the common denominator; apply the resident-initiated subset only where a channel field exists, and label it.
+- Compare on the set of years present in all cohort cities; default to the most recent shared year.
+
+**Within-type equity** (do majority-Black areas wait longer for *pothole repair specifically*,
+per city?) is the **Phase 5.7 stretch goal** because it is the only comparison that requires
+harmonizing each city's request-type taxonomy to a shared ontology (anchored on the Open311
+service-category list). Everything before it works on aggregate metrics with no shared
+taxonomy required.
+
 ---
 
 ## 4. Output Specifications
@@ -184,6 +242,39 @@ Phase 4d adds four new tabs to the existing Operations and Equity tabs, producin
 **Persona alignment** (full detail in `personas.md`): each new tab closes a documented gap for one of the five personas rather than adding analysis for its own sake. Tab 2 gives the **Department Operations Manager** an equity-free performance drill-down for their own service types — the gap personas.md flags as "wants SRType breakdown without equity framing." Tab 3 gives both the **Local Official/Council Member** and the **Operations Manager** the "areas like mine" comparison personas.md identifies as the single highest-value gap across personas, by turning the embedding into reusable, named peer groups. Tabs 5 and 6 give the **Citizen Journalist** and **Citywide Official** the "which SRTypes drive the aggregate equity gap" and "adjusted equity score" answers personas.md lists as their most significant unmet needs — the two lines of evidence (stratified scores + regression) are deliberately paired so neither claim has to stand alone. Read together, the six tabs trace one continuous arc — operational overview → operational deep-dive → peer-grouped geographic understanding → citywide equity → category-level equity → mix-adjusted equity — so that every persona finds their question answered at the point in the story where they'd naturally ask it.
 
 All four new tabs require `srtype_metrics_{year}.parquet`, `{geo_key}_srtype_metrics_{year}.parquet`, and the demographics CSVs — these are **already committed on `main` for all years 2016–2025** (full backfill, PRs #33–37) and merged into the working branch; the data-availability blocker noted in earlier drafts of this phase was a branch-sync gap, not a real one (see Stage 0 in `TASKS.md` Phase 4d). New runtime dependencies: `scikit-learn` (PCA + clustering for Area Embedding) and `statsmodels` (OLS for Equity Adjusted) — see §8.
+
+### 4.6 Phase 5 Scope — Two Cross-City Comparison Tabs
+
+Phase 5 adds two tabs that take the dashboard's fourth comparison axis (cross-municipal)
+from "not yet built" to live. Both keep **Baltimore as the fixed reference** — always present,
+always highlighted — and both compare *rates and scores*, never raw counts (see §3.6). The
+staged build (one pair city → cohort) and the full task list are in `TASKS.md` Phase 5; the
+feasibility evidence and per-phase results log are in `cross_city_comparison.md`.
+
+| # | Tab | Core question | Key interactions | Phase |
+|---|---|---|---|---|
+| 7 | **Cross-City Service Delivery** | Is Baltimore's 311 volume and delivery performance strong, average, or lagging versus peer and leading cities? | Cohort/city selector; metric toggle (requests per 1k, median days to close, closure rate, on-time rate where derivable); dot-plot or ranked bar with Baltimore highlighted; year aligned to the most recent shared year; comparability caveat banner (per-city closure semantics) | 5.2 (MVP: Baltimore + DC) → 5.4 (cohort) |
+| 8 | **Cross-City Service Equity** | Controlling for what each city requests, is Baltimore more or less equitable in *delivering the same services* than its peers? | Per-city **mix-adjusted** race/income overlap scores (primary — see §3.6) on a fixed `[0,1]` axis with the same green/amber/red threshold bands as `equity_trend.py`; Baltimore highlighted; **raw** score shown as a secondary reference (a wide raw↔adjusted gap = that city's disparity is mostly mix-driven); within-type breakdown for shared categories (Phase 5.7 stretch) | 5.6 (cohort) |
+
+**Why these two, in this order.** They answer the two most-cited unmet needs in
+`personas.md`: the **Citizen Journalist** and **Citywide Official** both need external context
+to make "Baltimore is doing well / poorly" defensible rather than a raw number (Tab 7), and
+the equity comparison (Tab 8) turns "Baltimore has an equity gap" into "Baltimore's gap is
+wider / narrower than peer cities' gaps" — a materially stronger, more publishable claim.
+Delivery comes first: it is the lower-difficulty comparison and validates the whole cross-city
+pipeline; equity follows because it reuses that pipeline plus the portable ACS-tract join
+(§3.6).
+
+**Reference-city framing.** Baltimore is the reference both in the UI (highlighted, pinned)
+and analytically (every value reads "relative to Baltimore's"). The cohort grows from a single
+pair (Baltimore + DC) at MVP to ~5 cities, sequenced by API family so each new adapter unlocks
+several cities at once (ArcGIS → Carto → Socrata; see `cross_city_comparison.md` §3). Placement
+— whether Tabs 7–8 append to the existing six-tab arc or form a dedicated "Compare cities"
+section — is decided during the MVP build (`TASKS.md` P5.2-3).
+
+**New Phase 5 dependencies:** a per-city ingestion adapter layer (`src/balt311/cities/`), one
+adapter per API family; no new app runtime dependencies beyond `app/requirements.txt` (the
+tabs are Plotly charts over small pre-aggregated `peer_city_*` tables).
 
 ---
 
@@ -293,6 +384,8 @@ Set `mapbox.token` in the Streamlit Cloud Secrets manager (not in the repo).
 | BNIA Vital Signs Open Data Portal | vital-signs-bniajfi.hub.arcgis.com |
 | Baltimore NSA/CSA Boundary Files | data.baltimorecity.gov |
 | ACS 5-Year Estimates | census.gov/programs-surveys/acs |
+| **Cross-city comparison — feasibility, plan, results log (Phase 5)** | `cross_city_comparison.md` |
+| Peer/leading city 311 portals (Phase 5 feasibility sources) | see `cross_city_comparison.md` §7 |
 
 ---
 

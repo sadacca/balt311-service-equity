@@ -18,6 +18,14 @@ The equity lens is not the only lens — operational clarity for managers is equ
 
 ---
 
+## Why this analysis is possible — credit where it's due
+
+Before any of the findings below, one fact deserves to lead: **this entire repository exists only because Baltimore publishes its 311 data openly, completely, and at the record level.** Baltimore was the **first US city to deploy a 311 non-emergency system (1996)**, pioneered **CitiStat (1999)** — the data-driven performance-management model the rest of the country went on to copy — and was an **early adopter of the Open311 GeoReport v2 standard (~2011)**, a standard that even today only on the order of a dozen US cities have implemented, putting Baltimore ahead of many far larger cities. That open posture is exactly what lets a resident, journalist, or researcher evaluate the city in the depth and breadth this dashboard does.
+
+There is an uncomfortable irony worth naming: the more openly a city publishes, the more it exposes itself to scrutiny, while less-transparent cities escape criticism by default. Most US cities simply could not be analyzed this way — the data isn't there. So this dashboard holds two things at once: it evaluates Baltimore's performance *and* it is a tribute to Baltimore's openness. Every critical finding here should be read in that light. Openness invites criticism, and that is precisely why it deserves praise — a city willing to be measured this honestly is doing something most are not, and that willingness is itself a civic achievement.
+
+---
+
 ## How this dashboard tells its story
 
 311 data answers very different questions depending on who's asking. A council member wants to know whether the gaps in their district are typical, or worse, than similar neighborhoods elsewhere. A department manager wants to know how their service type is performing — without wading through demographic framing that isn't theirs to interpret. A journalist or citywide official wants a defensible answer to "is service delivery equitable, and if not, which services and neighborhoods are driving that gap?" Rather than build one view that tries to answer all of these at once, the dashboard is structured as a sequence of lenses, each a complete answer for one audience that also sets up the next. Four tabs are live today, in the order the app presents them; two more are planned for a future release (`Phase 4d`/`4e`, see `TASKS.md`) to complete the arc:
