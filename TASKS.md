@@ -404,22 +404,24 @@ validates the whole cross-city pipeline that equity then reuses.
 
 ### Phase 5.1 — Cross-city ingestion abstraction + MVP pair (Baltimore + DC)
 
-- [ ] **P5.1-1: Per-city adapter contract** — define a small adapter interface in
+> **Status (2026-06-13)**: code for the whole data layer **and** the 5.2 delivery tab shipped together (user chose to build both at once). New `src/balt311/cities/` package — `base.py` (adapter contract + `apply_field_map`), `arcgis.py` (reusable FeatureServer client + name-based per-year layer discovery, since DC's layer ids aren't a clean offset: 2023=15, 2024=16, 2025=18), `dc.py` (DC adapter, `SERVICECODEDESCRIPTION/ADDDATE/RESOLUTIONDATE/LAT/LON` → canonical), `baltimore.py` (wraps `ingest.fetch_year`). `peer_metrics.compute_city_metrics` computes the uniform per-(city,year) row (closure = CloseDate present; rates only), `fetch_county_population` pulls ACS county pop by FIPS, `upsert_metrics` keys on (city,year). Driver `scripts/peer_city.py` + workflow `.github/workflows/peer_city.yml` write `peer_city_metrics.parquet` + `peer_city_meta.csv`. **ArcGIS is unreachable from the dev sandbox (403), so P5.1-5 (run the MVP pair) and the §6.1 / §6.2 checkpoints are pending the first CI workflow run** — the tab soft-degrades to a "run the workflow" notice until the files land. `compute_city_metrics`/`upsert` unit-tested; the delivery tab verified via `AppTest` (chart for the 3 derivable metrics, on-time soft-degrade, year fallback, file-absent notice; full app renders 11 tabs).
+
+- [x] **P5.1-1: Per-city adapter contract** — define a small adapter interface in
   `src/balt311/cities/` (e.g. `base.py`): each adapter exposes `fetch(year) -> records` and a
   `FIELD_MAP` translating its raw columns to Baltimore's canonical names
   (`SRType`, `CreatedDate`, `CloseDate`, `Latitude`, `Longitude`, channel where available).
   Keep the existing Baltimore pipeline untouched; Baltimore becomes one adapter among many.
-- [ ] **P5.1-2: ArcGIS adapter + DC config** — generalize the FeatureServer pagination in
+- [x] **P5.1-2: ArcGIS adapter + DC config** — generalize the FeatureServer pagination in
   `ingest.py` into a reusable ArcGIS adapter (`cities/arcgis.py`) parameterized by base URL,
   per-year layer map, and field list. Add `cities/dc.py`: per-year `311 City Service Requests
   in YYYY` layers, mapping `ADDDATE`→created, `RESOLUTIONDATE`→closed,
   `SERVICECODEDESCRIPTION`→type, `LATITUDE`/`LONGITUDE`.
-- [ ] **P5.1-3: Normalized cross-city metrics schema** — define `peer_city_metrics.parquet`
+- [x] **P5.1-3: Normalized cross-city metrics schema** — define `peer_city_metrics.parquet`
   (or CSV): one row per `(city, year)` with `total_requests`, `requests_per_1k`,
   `median_days_to_close`, `closure_rate`, `on_time_rate` (nullable), plus a `closure_definition`
   note column. Compute via a city-agnostic aggregation that reuses Baltimore's
   `compute_days_to_close` logic and applies the 30-day right-censoring rule.
-- [ ] **P5.1-4: City population for per-1k** — pull each city's ACS total population by FIPS
+- [x] **P5.1-4: City population for per-1k** — pull each city's ACS total population by FIPS
   (reuse the existing `ACS_POPULATION_URL` pattern with the city's state+county FIPS). Store in
   a small `peer_city_meta.csv` (city, fips, population, portal_url, closure_definition).
 - [ ] **P5.1-5: Run MVP pair** — produce `peer_city_metrics` rows for Baltimore + DC for the
@@ -432,11 +434,11 @@ validates the whole cross-city pipeline that equity then reuses.
 
 ### Phase 5.2 — Cross-City Service Delivery tab (MVP: Baltimore + DC)
 
-- [ ] **P5.2-1: Delivery comparison component** — `app/components/city_delivery.py`
+- [x] **P5.2-1: Delivery comparison component** — `app/components/city_delivery.py`
   (`render_city_delivery(data_dir, year)`). Loads `peer_city_metrics`; renders a metric toggle
   (requests per 1k, median days to close, closure rate, on-time rate) and a ranked dot-plot /
   bar with **Baltimore highlighted**. Compares rates, never raw counts.
-- [ ] **P5.2-2: Comparability caveat UI** — a caption/banner stating each city's closure
+- [x] **P5.2-2: Comparability caveat UI** — a caption/banner stating each city's closure
   definition and the shared-year used; soft-degrade when a metric is null for a city (e.g. no
   derivable on-time rate). Reuse the "insufficient data" treatment pattern from the equity tabs.
 - [x] **P5.2-3: Decide tab placement** — ✅ **RESOLVED ahead of schedule (June 2026): a
