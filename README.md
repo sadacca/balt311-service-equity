@@ -28,16 +28,16 @@ There is an uncomfortable irony worth naming: the more openly a city publishes, 
 
 ## How this dashboard tells its story
 
-311 data answers very different questions depending on who's asking. A council member wants to know whether the gaps in their district are typical, or worse, than similar neighborhoods elsewhere. A department manager wants to know how their service type is performing — without wading through demographic framing that isn't theirs to interpret. A journalist or citywide official wants a defensible answer to "is service delivery equitable, and if not, which services and neighborhoods are driving that gap?" Rather than build one view that tries to answer all of these at once, the dashboard is structured as a sequence of lenses, each a complete answer for one audience that also sets up the next. Four tabs are live today, in the order the app presents them; two more are planned for a future release (`Phase 4d`/`4e`, see `TASKS.md`) to complete the arc:
+311 data answers very different questions depending on who's asking. A council member wants to know whether the gaps in their district are typical, or worse, than similar neighborhoods elsewhere. A department manager wants to know how their service type is performing — without wading through demographic framing that isn't theirs to interpret. A journalist or citywide official wants a defensible answer to "is service delivery equitable, and if not, which services and neighborhoods are driving that gap?" Rather than build one view that tries to answer all of these at once, the dashboard is structured as a sequence of lenses, each a complete answer for one audience that also sets up the next. Six tabs are live today, in the order the app presents them, completing the within-Baltimore arc:
 
 1. **Operations** *(live — first tab)* — the citywide health check: KPIs, year-over-year trends, and a request-volume map answer "how is the city doing, overall, this year vs. prior years?" The landing view for anyone — resident, manager, or official — who wants the big picture before drilling into anything else.
 2. **Services** *(live)* — the operations manager's deep dive, with the equity framing deliberately stripped out: how does my service category compare to others, and how has it performed across time? The tool a department head reaches for when the question is "how am I doing," not "how does this break down by race or income."
 3. **Area Service Usage** *(live)* — the bridge from *what* to *where*: which neighborhoods use 311 similarly, and which neighborhoods look alike demographically? Two complementary 2D embeddings — service-request mix and demographic profile — place every tract and CSA into a shared coordinate space, with CSA bubbles floating above their constituent tract dots. Quadrant backgrounds group neighborhoods into four named regions; an animated year slider traces how usage patterns shift over time; cross-coloring (income on the usage chart, service type on the demographic chart) tests whether demographically similar areas also request similar services. For council members and managers alike: the neighborhoods your area actually resembles.
 4. **Equity** *(live)* — the citywide equity check: does service quality differ systematically by race or income, citywide, this year and over time? The headline question for journalists, advocates, and citywide leadership, answered with maps, distribution comparisons, and a multi-year trend of the Mann-Whitney overlap score.
 5. **Service Equity** *(live)* — does the citywide equity picture hold up within individual service categories, or does it mask very different stories for potholes vs. bulk trash vs. rodent control? It turns out to mask something real: scored within individual categories — and within individual service types — equity scores run substantially higher than the citywide aggregate, evidence that a meaningful share of the apparent citywide gap reflects *which* services different neighborhoods request (a usage-mix effect) rather than *how* any one service is delivered once requested. The improvement isn't total, though — some disparity persists even at that finer grain, so the citywide number still matters; it just needs this view to interpret correctly. The tool a journalist reaches for when the citywide number raises more questions than it answers.
-6. **Equity Adjusted for Service Mix** *(planned)* — the most defensible version of the equity claim, formalizing what tab 5 already surfaces informally: are the gaps explained by *which* services an area happens to request (a structural, type-mix effect), or by *how* the same service is delivered to different neighborhoods (the cleaner equity signal)? A stratified, volume-weighted score paired with a regression panel gives citywide officials and journalists two independent lines of evidence for the same conclusion — the kind of rigor a contested public claim needs to hold up.
+6. **Mix-Adjusted Equity** *(live)* — the most defensible version of the equity claim, formalizing what tab 5 surfaces informally: are the gaps explained by *which* services an area happens to request (a structural, type-mix effect), or by *how* the same service is delivered to different neighborhoods (the cleaner equity signal)? A year-over-year trend of the raw vs. mix-adjusted citywide score, a per-neighborhood map and raw-vs-adjusted scatter that reweight every area to the citywide service mix, a within-type equity ranking, and a fixed-effects regression give citywide officials and journalists several independent lines of evidence for the same conclusion — the kind of rigor a contested public claim needs to hold up.
 
-Read top to bottom, the five live tabs trace a complete arc: an **operational overview** anyone can use → an **operational deep-dive** for the people who run individual services → **where** those services land, and which neighborhoods share a common 311 character → a **citywide equity check** → that same equity lens re-scored within individual service categories, where the most important finding surfaces. **Equity Adjusted for Service Mix** remains planned and would extend the arc further: a formal separation of the type-mix effect from the cleaner delivery-equity signal tab 5 already hints at. No two adjacent tabs require a conceptual leap; each answers a real, documented need (see `personas.md`) and hands the reader naturally to the next question.
+Read top to bottom, the six live tabs trace a complete arc: an **operational overview** anyone can use → an **operational deep-dive** for the people who run individual services → **where** those services land, and which neighborhoods share a common 311 character → a **citywide equity check** → that same equity lens re-scored within individual service categories, where the most important finding surfaces → and finally a **mix-adjusted view** that formally separates the type-mix effect from the cleaner delivery-equity signal tab 5 hints at, in time and in space. No two adjacent tabs require a conceptual leap; each answers a real, documented need (see `personas.md`) and hands the reader naturally to the next question.
 
 ---
 
@@ -146,6 +146,20 @@ A year-over-year line chart tracks the Mann-Whitney overlap score for each metri
 
 ---
 
+### Mix-Adjusted Equity tab
+
+*How much of the citywide gap is about which services an area requests versus how the same service is delivered?* The payoff of the equity arc, formalizing tab 5's finding in time and in space, then checking it against a regression.
+
+**Normalized equity, year over year** — the citywide equity score computed two ways across every year: the **raw** geo-level score (the Equity tab's number) and the **mix-adjusted** score (the same comparison run *within* each service type, then volume-weighted across types). The gap between the two lines is the part of the disparity that reflects *which* services neighborhoods request rather than how any one is delivered. Race and income panels, on the same fixed 0–100% scale and threshold bands as the Equity Trend.
+
+**Mix-adjusted delivery across neighborhoods** — every geography reweighted so its service-type mix matches the citywide mix (**direct standardization**, computed record-level in the pipeline — the only sound way to mix-adjust a median, since a median does not decompose into a weighted mean of per-type medians). Shown as a residual choropleth (blue = better than the citywide norm for that mix, red = worse) and a **raw-vs-adjusted scatter** (x = the verified rollup value, identical to the Equity tab; y = the mix-adjusted value; the diagonal is where the mix made no difference), shaded by median income. A neighborhood that asks for structurally slow services isn't penalized for that here — only for delivering the citywide service mix faster or slower than the city as a whole.
+
+**Which service types are delivered most unequally** — every eligible service type ranked by its within-type equity score (the gap that remains after the mix effect is stripped out), with a drill-down to the raw race/income distributions behind any one type.
+
+**Regression** — a weighted least-squares panel of `log(1 + median days to close)` on neighborhood race and income with service-type and year fixed effects, as an independent corroboration of the overlap-score story: does a race or income gap survive once *what* is requested and *when* are held constant?
+
+---
+
 ## Data sources
 
 | Source | What | How accessed |
@@ -176,6 +190,7 @@ GitHub Actions (manual trigger)
 │  + ACS race + income → tract/csa_demographics.csv       │
 │  + BNIA crosswalk → CSA rollup                          │
 │  + srtype stage → srtype_metrics + geo×SRType metrics   │
+│  + adjusted stage → mix-standardized adjusted metrics   │
 │  Commits data/processed/ to main                        │
 └─────────────────────────────────────────────────────────┘
                     │
@@ -202,6 +217,11 @@ app/
     equity_distributions.py # Race + income distribution comparison charts
     equity_trend.py         # Year-over-year overlap score trend chart
     operations_panel.py     # Operations tab: KPI bar, time series, SRType table, map
+    category_explorer.py    # Services tab: operational category drill-down
+    area_embedding.py       # Area Service Usage tab: PCA usage + demographic embeddings
+    category_equity_explorer.py # Service Equity tab: among/within-category equity trends
+    equity_adjusted.py      # Mix-Adjusted Equity tab: normalized trend, residual map/scatter, ranking, regression
+    srtype_shared.py        # Shared SRType loaders + category-pill scaffolding
     utils.py                # Shared: overlap_score, score_label, format_metric
 
 data/
@@ -211,6 +231,8 @@ data/
     srtype_metrics_{year}.parquet         # City-wide metrics per SRType
     tract_srtype_metrics_{year}.parquet   # Tract × SRType: requests + performance
     csa_srtype_metrics_{year}.parquet     # CSA × SRType: requests + performance
+    tract_adjusted_metrics_{year}.parquet # Tract: mix-standardized median + closure (Tab 6)
+    csa_adjusted_metrics_{year}.parquet   # CSA rollup of tract adjusted metrics
     tract_boundaries.geojson
     csa_boundaries.geojson
     tract_demographics.csv  # ACS race + income by tract (year-independent)
@@ -219,7 +241,7 @@ data/
   interim/                  # Gitignored — rebuilt by pipeline
 
 scripts/
-  pipeline.py               # Headless pipeline: --stage ingest/process/srtype/demographics
+  pipeline.py               # Headless pipeline: --stage ingest/process/srtype/adjusted/demographics
 
 src/balt311/
   ingest.py                 # ArcGIS FeatureServer pagination
@@ -284,6 +306,8 @@ python scripts/pipeline.py --year 2026 --live   # current-year with right-censor
 **Median days to close**: computed on closed requests only; sub-second negatives (timestamp precision artifacts in same-day closures) are floored to 0. At CSA level: population-weighted mean of tract medians.
 
 **Closure rate**: closed / total requests. "Closed (Transferred)" counts as closed.
+
+**Mix-adjusted metrics** (Tab 6): each geography's requests reweighted by **direct standardization** so its service-type mix matches the citywide mix, then the metric is read off — `adj_median_days_to_close` as an interpolated weighted median of the geography's closed records (weight `citywide_closed_count(type) / geo_closed_count(type)`), `adj_closure_rate` as the citywide-request-weighted mean of its per-type closure rates. Computed record-level in the pipeline `adjusted` stage on the same equity subset as the raw rollups; the residual a geography shows on the map is `adjusted − citywide reference`. This is the statistically correct way to mix-adjust a median — a median does not decompose into a weighted mean of per-type medians, so a per-type-median reconstruction is unsound.
 
 **On-time rate**: closed requests with CloseDate ≤ DueDate, as a share of all closed requests where DueDate > CreatedDate. SRTypes where DueDate < CreatedDate are excluded (known data artifact). Open requests are not counted as late.
 

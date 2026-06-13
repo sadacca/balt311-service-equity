@@ -134,7 +134,8 @@ See `TASKS.md` for full detail. Current phase status:
 | Phase | What | Status |
 |-------|------|--------|
 | 0–3 | Data investigation, pipeline, MVP app, Operations tab | Complete |
-| 4 | SRType-stratified equity (ranking panel, adjusted score) | Next — pipeline files ready |
+| 4 / 4d | SRType-stratified equity — six-tab arc (Services, Areas, Service Equity, Mix-Adjusted Equity) | Complete — all tabs shipped |
+| 4e | Per-geography mix-adjusted metrics (record-level direct-standardization `adjusted` stage) | Stage shipped — Tab 6 consumes it; P4e-3→5 (Equity-tab surfacing) open |
 | 4b | Area Analysis tab — peer comparison for managers | Candidate next release |
 | 5 | Cross-municipality benchmarking | Medium-term |
 | 6 | Seasonality tab | Long-term |
