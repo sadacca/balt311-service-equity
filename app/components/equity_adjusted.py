@@ -80,6 +80,32 @@ def _wmean(values: pd.Series, weights: pd.Series) -> float:
     return float((df["v"] * df["w"]).sum() / df["w"].sum())
 
 
+@st.cache_data
+def _tract_nsa_map(data_dir: Path) -> dict[str, str]:
+    """geoid → NSA neighborhood name, from `tract_to_nsa.csv` (empty if absent)."""
+    path = data_dir / "tract_to_nsa.csv"
+    if not path.exists():
+        return {}
+    df = pd.read_csv(path, dtype={"geoid": str, "nsa_name": str}).fillna({"nsa_name": ""})
+    return dict(zip(df["geoid"], df["nsa_name"]))
+
+
+def _add_labels(df: pd.DataFrame, data_dir: Path, geo_key: str) -> pd.DataFrame:
+    """Add a human-readable `label` column. CSA geoids are already names; tract
+    geoids become 'NSA Name · Tract XXXX.XX' (or just the tract code when the NSA
+    name is unknown), mirroring the Areas tab."""
+    if geo_key != "tract":
+        df["label"] = df["geoid"].astype(str)
+        return df
+    nsa = _tract_nsa_map(data_dir)
+    g = df["geoid"].astype(str)
+    t = g.str[5:]
+    tract = "Tract " + t.str[:4] + "." + t.str[4:]
+    name = g.map(nsa).fillna("")
+    df["label"] = np.where(name.ne(""), name + " · " + tract, tract)
+    return df
+
+
 def _short_label(srtype: str) -> str:
     """'SW-Dirty Alley' -> 'Dirty Alley (SW)' — keeps the department visible while
     dropping the redundant prefix from the descriptive part."""
@@ -277,7 +303,8 @@ def _residual_choropleth_fig(
         color_continuous_midpoint=0.0, range_color=[-m, m],
         mapbox_style=MAPBOX_STYLE, zoom=BALTIMORE_ZOOM, center=BALTIMORE_CENTER,
         opacity=0.75, labels={"residual": f"{metric_label} vs. city norm"},
-        hover_data={"geoid": True, "raw": fmt, "adjusted": fmt, "residual": resid_fmt},
+        hover_name="label" if "label" in df.columns else None,
+        hover_data={"raw": fmt, "adjusted": fmt, "residual": resid_fmt},
     )
     fig.update_layout(
         margin={"r": 0, "t": 0, "l": 0, "b": 55}, height=560,
@@ -302,8 +329,9 @@ def _neighborhood_index_table(
     unit = "%" if is_rate else "days"
     raw_c, adj_c, delta_c = f"Raw ({unit})", f"Mix-adjusted ({unit})", f"Δ vs city ({unit})"
 
+    name_col = "label" if "label" in df.columns else "geoid"
     out = pd.DataFrame({
-        "Neighborhood": df["geoid"].astype(str),
+        "Neighborhood": df[name_col].astype(str),
         raw_c: df["raw"] * scale,
         adj_c: df["adjusted"] * scale,
         delta_c: df["residual"] * scale,
@@ -332,14 +360,21 @@ def _raw_adjusted_scatter_fig(
 ) -> go.Figure:
     """One dot per neighborhood: raw (the verified rollup value, as observed) on x,
     mix-adjusted (reweighted to the citywide service mix) on y, with the y=x reference
-    line. Distance from the diagonal is how much the area's service mix was distorting
-    its raw number; staying off the diagonal after adjustment is genuine over/under-
-    delivery. Colored by median income — a neutral shading for the equity read."""
+    line. The two pastel half-planes split by the diagonal label where neighborhoods
+    are faster/slower (or better/worse) than they appear once the service mix is held
+    constant. Colored by median income — a neutral shading for the equity read."""
     is_rate = metric_col == "closure_rate"
     fmt = ".0%" if is_rate else ".1f"
-    lo = float(min(df["raw"].min(), df["adjusted"].min()))
-    hi = float(max(df["raw"].max(), df["adjusted"].max()))
-    pad = (hi - lo) * 0.05 or 1.0
+
+    # Zoom to the central bulk (2nd–98th pct of the combined values) so points spread
+    # across the plot instead of being compressed by a few extreme neighborhoods.
+    combined = pd.concat([df["raw"], df["adjusted"]]).dropna()
+    lo = float(combined.quantile(0.02))
+    hi = float(combined.quantile(0.98))
+    if hi <= lo:
+        lo, hi = float(combined.min()), float(combined.max() or lo + 1)
+    pad = (hi - lo) * 0.04 or 1.0
+    lo, hi = lo - pad, hi + pad
 
     color_col = "median_income" if "median_income" in df.columns else None
     fig = px.scatter(
@@ -347,7 +382,7 @@ def _raw_adjusted_scatter_fig(
         color=color_col,
         color_continuous_scale="Viridis" if color_col else None,
         size="volume", size_max=22,
-        hover_name="geoid",
+        hover_name="label" if "label" in df.columns else "geoid",
         hover_data={
             "raw": f":{fmt}", "adjusted": f":{fmt}", "residual": ":+.1%" if is_rate else ":+.1f",
             "volume": ":,.0f", "median_income": ":$,.0f" if color_col else False,
@@ -358,16 +393,42 @@ def _raw_adjusted_scatter_fig(
             "median_income": "Median income",
         },
     )
+
+    # Diagonal half-planes: above the line adjusted > raw. For a lower-is-better metric
+    # (days) that means slower-than-it-looks (worse, red); for closure it means
+    # better-than-it-looks (blue). Held consistent with the app-wide red = worse rule.
+    RED, BLUE = "rgba(214,39,40,0.06)", "rgba(31,119,180,0.06)"
+    above_better = higher_better
+    above_color = BLUE if above_better else RED
+    below_color = RED if above_better else BLUE
+    for path, fill in [
+        (f"M {lo},{lo} L {lo},{hi} L {hi},{hi} Z", above_color),   # upper-left: adjusted > raw
+        (f"M {lo},{lo} L {hi},{lo} L {hi},{hi} Z", below_color),   # lower-right: adjusted < raw
+    ]:
+        fig.add_shape(type="path", path=path, fillcolor=fill, line_width=0, layer="below")
+
+    if is_rate:
+        above_word, below_word = ("Better", "Worse") if above_better else ("Worse", "Better")
+    else:
+        above_word, below_word = ("Faster", "Slower") if above_better else ("Slower", "Faster")
+    note = "than they appear<br>(after adjusting for service mix)"
+    fig.add_annotation(x=lo + 0.04 * (hi - lo), y=hi - 0.04 * (hi - lo), xanchor="left", yanchor="top",
+                       text=f"{above_word} {note}", showarrow=False, align="left",
+                       font=dict(size=11, color="rgba(70,70,70,0.6)"))
+    fig.add_annotation(x=hi - 0.04 * (hi - lo), y=lo + 0.04 * (hi - lo), xanchor="right", yanchor="bottom",
+                       text=f"{below_word} {note}", showarrow=False, align="right",
+                       font=dict(size=11, color="rgba(70,70,70,0.6)"))
+
     fig.add_trace(go.Scatter(
-        x=[lo - pad, hi + pad], y=[lo - pad, hi + pad], mode="lines",
+        x=[lo, hi], y=[lo, hi], mode="lines",
         line=dict(color="#888888", width=1, dash="dash"),
         name="Mix had no effect", hoverinfo="skip", showlegend=False,
     ))
     fig.update_layout(
         height=460, margin={"t": 8, "b": 8, "l": 8, "r": 8},
         plot_bgcolor="white", paper_bgcolor="white",
-        xaxis=dict(gridcolor="#eeeeee", tickformat=fmt, range=[lo - pad, hi + pad]),
-        yaxis=dict(gridcolor="#eeeeee", tickformat=fmt, range=[lo - pad, hi + pad]),
+        xaxis=dict(gridcolor="#eeeeee", tickformat=fmt, range=[lo, hi]),
+        yaxis=dict(gridcolor="#eeeeee", tickformat=fmt, range=[lo, hi]),
         coloraxis_colorbar=dict(title="Median<br>income", tickprefix="$", tickformat=",.0f"),
     )
     return fig
@@ -690,6 +751,7 @@ def render_equity_adjusted(
         )
     else:
         norm = norm.merge(demographics, on="geoid", how="left")
+        norm = _add_labels(norm, data_dir, geo_key)
         if geojson is not None:
             st.markdown("**Residual map** — blue is better than the citywide norm, red is worse")
             st.plotly_chart(
