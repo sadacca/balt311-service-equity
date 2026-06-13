@@ -557,6 +557,13 @@ index is built to show both truths honestly.
 - [ ] **P5.8-2: Score the cohort** — populate a scorecard (one row per city, per-dimension
   subscores + total) from the onboarding assessments (5.1/5.3); fill remaining gaps (geocoding %,
   Open311 compliance check, license). Output: `data/processed/peer_city_maturity.csv`.
+- [ ] **P5.8-2b: Harden the largest-metros coverage census** — validate and finalize the
+  provisional ✅/🟡/❔ census of the ~40 largest US cities in `cross_city_comparison.md` §8.1:
+  confirm each city's open-311 status against its portal (record-level? timestamps? geo? API?
+  history?), resolve every ❔ to a definite ✅/🟡/❌, and record the headline count ("only N of the
+  40 largest can be scored"). This is the inverse of the scorecard — it names the cities that
+  *cannot* be evaluated this way, which is what makes the scoreable cities (Baltimore foremost)
+  notable. Anchor on the National 311 Data Portal + US City Open Data Census (§7).
 - [ ] **P5.8-3: Baltimore gap profile** — for each dimension where Baltimore trails the leader,
   name the specific field/practice that would close it; cross-reference `requirements.md` §5.
   Turns "publish better data" into a measured, prioritized list.

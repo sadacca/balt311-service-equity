@@ -250,6 +250,16 @@ two tabs of the existing arc or in a dedicated "Compare cities" section is decid
 - 311 Requests, Open Data KC — https://data.kcmo.org/
 - CSB Service Requests (311), City of St. Louis — https://www.stlouis-mo.gov/data/datasets/dataset.cfm?id=5
 
+**Coverage-census aggregators (§8.1 — used to survey the largest US cities):**
+- National 311 Data Portal (catalog of city 311 datasets) — https://andrew-friedman.github.io/jkan/
+- US City Open Data Census — Service Requests (311) — http://us-city.census.okfn.org/dataset/service-requests.html
+- Open Data SA — 311 All Service Calls (San Antonio) — https://data.sanantonio.gov/dataset/311-all-service-calls
+- Get It Done 311 (San Diego) — https://data.sandiego.gov/datasets/get-it-done-311/
+- Dallas 311 Service Requests — https://www.dallasopendata.com/Services/311-Service-Requests/gc4d-8a49
+- Austin 311 Public Data — https://data.austintexas.gov/Utilities-and-City-Services/Austin-311-Public-Data/xwdj-i9he/data
+- Service Requests 311, City of Charlotte — https://data.charlottenc.gov/datasets/charlotte::service-requests-311/about
+- 311 Service Requests, Denver Open Data — https://opendata-geospatialdenver.hub.arcgis.com/datasets/311-service-requests
+
 **Baltimore open-data leadership (Phase 5.8 maturity context):**
 - Baltimore 311 history (first US 311 system, 1996) — https://localwiki.org/baltimore/311_Non-Emergency_Services
 - "311 Pioneering Baltimore Continues to Lead with Open311" (~2011 GeoReport v2 adoption) — https://www.open311.org/2011/09/baltimore/
@@ -299,3 +309,75 @@ nearly free to populate — it formalizes the §2 matrix into a scored, rankable
 produces a **per-dimension gap profile** for Baltimore that maps one-to-one onto
 `requirements.md` §5 Gap Dependencies (turning "publish better data" into a measured,
 prioritized list).
+
+### 8.1 Coverage census — which of the largest US cities can be scored *at all*
+
+The maturity index ranks the cities that *can* be scored. Equally important is naming the
+ones that **cannot** — because the inability to run this analysis is itself the most striking
+finding. An open-data evaluation of 311 service delivery and equity requires, at minimum,
+**record-level requests with created + closed timestamps and geocoordinates**. Most large US
+cities do not publish that. The census below surveys the ~40 largest US cities; it is a
+**provisional first pass** (built from the two aggregators in §7 plus direct portal checks)
+to be hardened in task P5.8-2.
+
+**Status legend:**
+- ✅ **Scoreable** — open, record-level 311 with timestamps + lat/lon; both delivery *and* equity analysis possible (a Baltimore-class capability).
+- 🟡 **Partial / limited** — open data exists but constrained: short rolling history, app-channel subset only, aggregate-only, no API, or missing key fields.
+- ❔ **None found / unconfirmed** — no open record-level 311 located in this pass. Provisional: this flags either a genuine gap *or* a discoverability problem — and under a maturity lens, hard-to-find data is itself a low score.
+
+| Rank | City | Status | Note (provisional) |
+|---|---|---|---|
+| 1 | New York, NY | ✅ | Socrata `erm2-nwe9`; 24M+ records, daily |
+| 2 | Los Angeles, CA | ✅ | MyLA311 on Socrata, per-year datasets |
+| 3 | Chicago, IL | ✅ | Socrata `v6vf-nfxy`, unified since 2018 |
+| 4 | Houston, TX | 🟡 | Open data portal exists; full record-level 311 appears limited (subset datasets) |
+| 5 | Phoenix, AZ | 🟡 | Limited 311 publishing; verify scope |
+| 6 | Philadelphia, PA | ✅ | Carto `public_cases_fc`, since 2014 |
+| 7 | San Antonio, TX | ✅ | Open Data SA "311 All Service Calls," 2011–present |
+| 8 | San Diego, CA | ✅ | "Get It Done 311" open dataset (app-channel) |
+| 9 | Dallas, TX | ✅ | Socrata, 2018–present, 400+ types |
+| 10 | San Jose, CA | 🟡 | 311 dataset on portal; confirm fields/history |
+| 11 | Austin, TX | ✅ | "Austin 311 Public Data" on Socrata |
+| 12 | Jacksonville, FL | ❔ | No open record-level 311 found this pass |
+| 13 | Fort Worth, TX | ❔ | Open data portal; 311 record-level unconfirmed |
+| 14 | Columbus, OH | 🟡 | 311 map present; record-level/API unconfirmed |
+| 15 | Charlotte, NC | ✅ | "Service Requests 311" w/ type, lat/long, date (WWC Gold city) |
+| 16 | San Francisco, CA | ✅ | Socrata `vw6y-z8j6`, since 2008, nightly |
+| 17 | Indianapolis, IN | 🟡 | RequestIndy; open scope unconfirmed |
+| 18 | Seattle, WA | ✅ | Customer Service Requests open data |
+| 19 | Denver, CO | 🟡 | 311 dataset is **rolling 12 months only** — limited history |
+| 20 | Oklahoma City, OK | ❔ | Unconfirmed |
+| 21 | Nashville, TN | ✅ | hubNashville on Socrata |
+| 22 | Washington, DC | ✅ | Open Data DC, per-year ArcGIS layers *(MVP pair)* |
+| 23 | El Paso, TX | ❔ | Unconfirmed |
+| 24 | Boston, MA | ✅ | Analyze Boston / CKAN *(mid-2026 backend migration)* |
+| 25 | Detroit, MI | 🟡 | Improve Detroit = app-channel subset, not full 311 |
+| 26 | Portland, OR | 🟡 | Limited; verify |
+| 27 | Memphis, TN | ❔ | Unconfirmed |
+| 28 | Louisville, KY | ✅ | Metro Open Data, ArcGIS, Open311-based |
+| 29 | **Baltimore, MD** | ✅ | **Reference** — ArcGIS per-year layers, 2016–present |
+| 30 | Milwaukee, WI | ❔ | Unconfirmed |
+| 31 | Albuquerque, NM | 🟡 | Verify |
+| 32 | Sacramento, CA | ✅ | Sacramento 311 on Socrata |
+| 33 | Kansas City, MO | ✅ | data.kcmo.org / Socrata (since 2021 system) |
+| 34 | Atlanta, GA | 🟡 | ATL311 exists; open record-level 311 not clearly published |
+| 35 | Colorado Springs, CO | ❔ | Unconfirmed |
+| 36 | Fresno, CA | ❔ | Unconfirmed |
+| 37 | Tucson, AZ | 🟡 | Verify |
+| 38 | Mesa, AZ | ❔ | Unconfirmed |
+| 39 | Omaha, NE | ❔ | Unconfirmed |
+| 40 | Raleigh, NC | ✅ | Raleigh open data 311 |
+
+**Strong mid-size enablers worth crediting alongside the giants** (below the top 40 by
+population but with mature, scoreable open 311 — several are close demographic peers of
+Baltimore): Cincinnati ✅, Pittsburgh ✅ (WPRDC), Minneapolis ✅, New Orleans ✅, St. Louis ✅.
+
+**What the census shows.** Of the ~40 largest US cities, only on the order of **half publish
+311 open data mature enough to support this analysis**, and a smaller subset match Baltimore's
+combination of **record-level data + a decade of history + an open API**. The rest — including
+several cities far larger than Baltimore — simply **cannot be evaluated this way**: the data
+isn't open, isn't record-level, or doesn't exist publicly at all. That is the point worth
+underscoring. When this dashboard scrutinizes Baltimore, it is scrutinizing one of the
+relatively few American cities that has *chosen to be scrutinizable*. The cities that score
+✅ here — Baltimore foremost, as a first-mover — deserve credit precisely for accepting the
+exposure that openness brings; the ❔ rows are not "better" cities, only less visible ones.
