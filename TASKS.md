@@ -480,32 +480,73 @@ validates the whole cross-city pipeline that equity then reuses.
 
 ### Phase 5.5 — Cross-city equity methodology (portable ACS-tract join)
 
+> **Primary metric is the mix-adjusted score, not the raw score.** The dashboard's own
+> headline finding (Tab 5 / Phase 4d) is that **a large share of the apparent citywide equity
+> gap is driven by service *mix*** — which services a neighborhood requests — rather than by
+> unequal delivery of the *same* service. Comparing **raw** citywide overlap scores *across
+> cities* would therefore confound two different things: real differences in delivery equity,
+> and mere differences in each city's service-request mix. The cross-city equity comparison
+> must instead use the **mix-adjusted overall score** — the volume-weighted mean of each city's
+> *within-service-category* overlap scores (the Phase 4d Tab 6 / Phase 4e "adjusted" score,
+> P4d-14 / P4e-1) — so the comparison isolates *how the same kinds of services are delivered*
+> from *what each city happens to request*. The raw score is retained only as a secondary
+> reference line for transparency.
+>
+> **Portability note**: the mix-adjusted *overall* score needs **no cross-city taxonomy
+> harmonization** — each city's within-category scoring happens entirely inside that city using
+> its *own* request-type vocabulary, and only the final volume-weighted scalar is compared
+> across cities. (Comparing the *same category* across cities — pothole-vs-pothole — is the
+> separate Phase 5.7 stretch that *does* need a shared taxonomy.) This means the adjusted
+> overall comparison sits cleanly between 5.6-raw and 5.7-within-type and is fully portable.
+>
+> **Dependency**: P5.5-3 reuses the within-category equity machinery already built for Baltimore
+> (`category_equity_explorer.py`: `compute_category_equity_history`) plus the volume-weighted
+> combination from Tab 6 (P4d-14). If Tab 6 has not yet shipped, build the volume-weighted
+> combiner here and back-port it to Tab 6 — they are the same computation.
+>
+> **Explicitly out of scope for these dashboards**: a *cross-city service-mix analysis* (how the
+> composition of request types itself differs city to city, and what that says about each city's
+> service model) is genuinely interesting but is a different study — note it as a non-goal here so
+> the equity tab stays focused on delivery equity, not demand composition.
+
 - [ ] **P5.5-1: Per-city tract demographics** — generalize `stage_demographics` to any city by
   parameterizing the ACS query on state+county FIPS; produce `{city}_tract_demographics.csv`
   (`pct_black`, `pct_white`, `median_income`). National ACS API — no per-city portal needed.
 - [ ] **P5.5-2: Per-city tract boundaries + point-in-polygon** — pull each city's TIGER tracts
   (state+county FIPS) and assign each geocoded request to a tract (reuse Baltimore's spatial-join
-  logic). City-level boundary filter mirrors the existing FIPS-510 filter.
-- [ ] **P5.5-3: Per-city internal overlap scores** — for each city, compute race-based and
-  income-based `utils.overlap_score()` exactly as Baltimore does citywide (majority-Black vs.
-  majority-White tracts; above- vs. below-median-income tracts), for the chosen metric. Output:
-  `peer_city_equity.parquet` — one row per `(city, year, metric)` with race_score, income_score,
-  and the raw between-group median-days gap. **Scores are compared across cities; tracts are not.**
-- [ ] **P5.5-4: Validate against Baltimore in-app numbers** — Baltimore's computed scores here
-  must match the Equity tab's existing scores for the same year/metric.
+  logic). City-level boundary filter mirrors the existing FIPS-510 filter. Also produce per-city
+  `{city}_tract_srtype_metrics` (geo×SRType grain), needed for the within-category scoring below.
+- [ ] **P5.5-3: Per-city mix-adjusted overall equity score** *(primary)* — for each city, compute
+  the within-service-category race- and income-based `utils.overlap_score()` (each city's own
+  categories), then combine into a single volume-weighted **adjusted** overall score per
+  `(city, year, metric)` — reusing the Tab 6 / P4d-14 logic. Also compute the **raw** citywide
+  score for the same cells as a secondary reference. Output: `peer_city_equity.parquet` — one row
+  per `(city, year, metric)` with `adj_race_score`, `adj_income_score`, `raw_race_score`,
+  `raw_income_score`, and the raw between-group median-days gap. **Scores are compared across
+  cities; tracts are not.**
+- [ ] **P5.5-4: Validate against Baltimore in-app numbers** — Baltimore's raw scores here must
+  match the Equity tab's existing scores, and its adjusted scores must match Tab 5/Tab 6's
+  within-category and volume-weighted figures, for the same year/metric.
 - [ ] **P5.5-5: Documentation checkpoint** — append `cross_city_comparison.md` §6.5: per-city
-  equity scores, the Baltimore validation result, demographic-coverage notes. *(Gate for 5.6.)*
+  adjusted **and** raw equity scores (note the gap between them per city — a large gap means that
+  city's apparent disparity is mostly mix-driven), the Baltimore validation result, demographic-
+  coverage notes. *(Gate for 5.6.)*
 
 ---
 
 ### Phase 5.6 — Cross-City Service Equity tab (cohort)
 
 - [ ] **P5.6-1: Equity comparison component** — `app/components/city_equity.py`. Plots each
-  city's race-based and income-based overlap score on a fixed `[0,1]` axis with the same
-  green/amber/red threshold bands as `equity_trend.py`; **Baltimore highlighted**. Plain-language
-  framing: "is Baltimore more or less equitable in its own delivery than its peers?"
-- [ ] **P5.6-2: Raw-gap secondary view** — optional toggle to show the raw between-group
-  median-days gap per city alongside the overlap score, for readers who want the unscaled disparity.
+  city's **mix-adjusted** race- and income-based overlap score (the primary metric, per the 5.5
+  rationale) on a fixed `[0,1]` axis with the same green/amber/red threshold bands as
+  `equity_trend.py`; **Baltimore highlighted**. Plain-language framing: "controlling for what each
+  city requests, is Baltimore more or less equitable in *delivering the same services* than its
+  peers?"
+- [ ] **P5.6-2: Raw-vs-adjusted reference view** — show each city's **raw** citywide score as a
+  secondary/reference series alongside its adjusted score (and optionally the raw between-group
+  median-days gap), with a caption explaining that a wide raw↔adjusted gap for a city means its
+  apparent disparity is largely a service-mix effect, not a delivery-equity one — the same
+  raw-vs-adjusted story Tab 6 tells citywide, now told across cities.
 - [ ] **P5.6-3: Wire Tab 8 into `app.py`** — add after Tab 7 (placement per the 5.2 decision) +
   sidebar description; soft-degrade when a city's scores are unavailable.
 - [ ] **P5.6-4: Documentation checkpoint** — append `cross_city_comparison.md` §6.6: cross-city

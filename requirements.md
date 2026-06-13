@@ -138,15 +138,28 @@ methodological decisions that requirements depend on.
 
 **The equity comparison compares scores, not places.** We do **not** match Baltimore tracts
 to another city's tracts. For each city we compute its *own internal* race-based and
-income-based Mann-Whitney overlap score with the identical `utils.overlap_score()` method
-already used citywide (does the majority-Black / lower-income half of the city wait longer
-than the majority-White / higher-income half?), then compare those **scores** across cities.
-The tab answers "is Baltimore more or less equitable in its own delivery than its peers are
-in theirs?" This makes equity comparison **more portable than delivery comparison**: it rides
-entirely on nationally-uniform sources — the Census ACS API (tract race/income, identical
-query with a different state+county FIPS) and TIGER/Line tract boundaries — plus the
-latitude/longitude every candidate city already publishes for point-in-polygon tract
-assignment. No reliance on any city's own demographic publishing.
+income-based Mann-Whitney overlap score (does the majority-Black / lower-income half of the
+city wait longer than the majority-White / higher-income half?), then compare those **scores**
+across cities. The tab answers "is Baltimore more or less equitable in its own delivery than
+its peers are in theirs?" This makes equity comparison **more portable than delivery
+comparison**: it rides entirely on nationally-uniform sources — the Census ACS API (tract
+race/income, identical query with a different state+county FIPS) and TIGER/Line tract
+boundaries — plus the latitude/longitude every candidate city already publishes for
+point-in-polygon tract assignment. No reliance on any city's own demographic publishing.
+
+**Use the mix-adjusted score across cities, not the raw score.** The dashboard's own headline
+finding (§3.5 / Tab 5) is that much of the apparent citywide equity gap is a *service-mix*
+effect — which services a neighborhood requests — not unequal delivery of the *same* service.
+Comparing **raw** scores across cities would confound real delivery-equity differences with
+mere differences in each city's request mix. The cross-city equity comparison therefore uses
+the **mix-adjusted overall score** as its primary metric — the volume-weighted mean of each
+city's *within-service-category* overlap scores (the §3.5 / Tab 6 "adjusted" score) — with the
+raw score shown only as a secondary reference. Crucially, the adjusted *overall* score needs
+**no cross-city taxonomy harmonization**: each city scores within its own categories and only
+the final volume-weighted scalar is compared. (Comparing the *same* category across cities is
+the separate within-type stretch, Phase 5.7, which does need a shared taxonomy.) A
+*cross-city analysis of service-mix composition itself* is interesting but an explicit non-goal
+of these dashboards.
 
 **Normalization rules** (applied in the per-city adapter layer; full list in
 `cross_city_comparison.md` §4):
@@ -241,7 +254,7 @@ feasibility evidence and per-phase results log are in `cross_city_comparison.md`
 | # | Tab | Core question | Key interactions | Phase |
 |---|---|---|---|---|
 | 7 | **Cross-City Service Delivery** | Is Baltimore's 311 volume and delivery performance strong, average, or lagging versus peer and leading cities? | Cohort/city selector; metric toggle (requests per 1k, median days to close, closure rate, on-time rate where derivable); dot-plot or ranked bar with Baltimore highlighted; year aligned to the most recent shared year; comparability caveat banner (per-city closure semantics) | 5.2 (MVP: Baltimore + DC) → 5.4 (cohort) |
-| 8 | **Cross-City Service Equity** | Is Baltimore more or less equitable in its *own* service delivery than its peers are in theirs? | Per-city internal race-based and income-based overlap scores on a fixed `[0,1]` axis with the same green/amber/red threshold bands as `equity_trend.py`; Baltimore highlighted; optional raw between-group gap (median-days difference) as a second view; within-type breakdown for shared categories (Phase 5.7 stretch) | 5.6 (cohort) |
+| 8 | **Cross-City Service Equity** | Controlling for what each city requests, is Baltimore more or less equitable in *delivering the same services* than its peers? | Per-city **mix-adjusted** race/income overlap scores (primary — see §3.6) on a fixed `[0,1]` axis with the same green/amber/red threshold bands as `equity_trend.py`; Baltimore highlighted; **raw** score shown as a secondary reference (a wide raw↔adjusted gap = that city's disparity is mostly mix-driven); within-type breakdown for shared categories (Phase 5.7 stretch) | 5.6 (cohort) |
 
 **Why these two, in this order.** They answer the two most-cited unmet needs in
 `personas.md`: the **Citizen Journalist** and **Citywide Official** both need external context

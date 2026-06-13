@@ -53,22 +53,36 @@ Three distinct comparisons, in increasing difficulty:
 |---|---|---|---|
 | **Overall volume** | City-level totals + per-1k-resident rates | High — every city publishes counts; ACS population is national | Low |
 | **Service delivery** | City-level median days to close, closure rate, (on-time rate where derivable) | Medium — timestamps are universal but "closed"/"resolved" semantics differ | Medium |
-| **Service equity** | Each city's *own internal* race/income disparity score (Mann-Whitney overlap), then the **scores** compared across cities | High for the aggregate score — ACS tract demographics and TIGER tract boundaries are national, every candidate has lat/lon | Medium (aggregate) → High (within-type) |
+| **Service equity** | Each city's *own internal* **mix-adjusted** race/income disparity score, then the **scores** compared across cities | High for the adjusted overall score — ACS tract demographics and TIGER tract boundaries are national, every candidate has lat/lon, and no shared taxonomy is needed | Medium (adjusted overall) → High (within-type) |
 
 **Critical conceptual point for the equity tab:** we do **not** compare Baltimore tracts
 to DC tracts directly — they are not the same places. Instead we compute *each city's
-internal equity score* using the identical methodology already in `utils.overlap_score()`
-(does the majority-Black / lower-income half of the city wait longer than the
-majority-White / higher-income half?), then compare those **scores** across cities. The
-question the tab answers is "is Baltimore more or less equitable in its own service
+internal equity score* (does the majority-Black / lower-income half of the city wait longer
+than the majority-White / higher-income half?), then compare those **scores** across cities.
+The question the tab answers is "is Baltimore more or less equitable in its own service
 delivery than its peers are in theirs?" — not "does Baltimore tract 2604 resemble DC
 tract X." This makes the equity comparison genuinely portable: it rides entirely on
 nationally-uniform data sources (Census ACS API + TIGER/Line tracts) plus the lat/lon
 every candidate city already publishes.
 
-**What stays hard:** *within-type* equity comparison (do majority-Black areas wait longer
-for pothole repair specifically, in each city?) requires harmonizing each city's request-type
-taxonomy to a shared ontology. That is the Phase 5.7 stretch goal, deliberately last.
+**Use the *mix-adjusted* score, not the raw score (this matters).** This repository's own
+headline finding is that **much of the apparent citywide equity gap is a service-*mix* effect**
+— *which* services a neighborhood requests — rather than unequal delivery of the *same*
+service (see `requirements.md` §3.5 / Tab 5). So comparing **raw** equity scores across cities
+would confound two different things: real differences in how equitably each city *delivers*,
+and mere differences in what each city's residents *request*. The cross-city equity comparison
+therefore uses the **mix-adjusted overall score** — the volume-weighted mean of each city's
+within-service-category overlap scores (the Tab 6 "adjusted" score) — as its primary metric,
+keeping the raw score only as a secondary reference. The adjusted *overall* score is fully
+portable and needs **no shared taxonomy**: each city scores within its *own* categories, and
+only the final volume-weighted scalar is compared (P5.5-3). A wide raw↔adjusted gap for a city
+is itself informative — it means that city's disparity is mostly mix-driven.
+
+**What stays hard:** comparing the *same* request type across cities (do majority-Black areas
+wait longer for pothole repair *specifically*, city by city?) requires harmonizing each city's
+request-type taxonomy to a shared ontology. That is the Phase 5.7 stretch goal, deliberately
+last. A *cross-city analysis of service-mix composition itself* is interesting but an explicit
+**non-goal** of these dashboards — the equity tab isolates delivery equity, not demand mix.
 
 ---
 
@@ -168,8 +182,8 @@ Documented up front so each city onboarding checks against the same list:
 | **5.2 Delivery tab (MVP)** | **Cross-City Service Delivery** tab — Baltimore vs. DC, Baltimore as reference | ✅ Tab 7 | §6.2 — what the pair comparison shows |
 | **5.3 Cohort expansion** | Carto adapter (**Philadelphia**) + Socrata adapter (**NYC, Chicago, SF**); cohort metrics table | — | §6.3 — one entry per city onboarded (quirks, comparability) |
 | **5.4 Delivery tab (cohort)** | Delivery tab generalized to N cities, Baltimore highlighted as reference | (Tab 7 grows) | §6.4 — cohort delivery findings |
-| **5.5 Equity methodology** | Portable ACS-tract + TIGER equity join per city; per-city internal overlap scores | — | §6.5 — per-city equity scores + validation vs. Baltimore in-app numbers |
-| **5.6 Equity tab (cohort)** | **Cross-City Service Equity** tab — each city's internal race/income score, Baltimore as reference | ✅ Tab 8 | §6.6 — cross-city equity findings |
+| **5.5 Equity methodology** | Portable ACS-tract + TIGER equity join per city; per-city **mix-adjusted** overall overlap scores (raw kept as reference) | — | §6.5 — per-city adjusted + raw scores, raw↔adjusted gap, validation vs. Baltimore in-app numbers |
+| **5.6 Equity tab (cohort)** | **Cross-City Service Equity** tab — each city's internal **mix-adjusted** race/income score (raw as reference), Baltimore as reference | ✅ Tab 8 | §6.6 — cross-city equity findings |
 | **5.7 Within-type (stretch)** | Request-type taxonomy crosswalk; within-type equity comparison for shared categories | (extends Tab 8) | §6.7 — taxonomy mapping coverage + within-type findings |
 | **5.8 Maturity index (enhancement)** | 311 open-data maturity scorecard over the cohort; Baltimore's rank + per-dimension gap profile; "credit where due" framing | optional in-app panel | §6.8 — scorecard, Baltimore rank, gap profile |
 
