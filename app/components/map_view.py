@@ -41,15 +41,18 @@ def build_choropleth(
         data_min = float(valid_vals.min()) if not valid_vals.empty else 0.0
         data_max = float(valid_vals.max()) if not valid_vals.empty else 1.0
         data_mid = midpoint if midpoint is not None else (data_min + data_max) / 2
+        # Convention across the app: red = worse. `RdBu` is red at the low end, blue at
+        # the high end; `RdBu_r` is the reverse.
         if metric_col == "median_days_to_close":
-            # Lower = faster = better → use blue for low end so "good" reads as blue
-            colorscale = "RdBu"
+            # Higher days = slower = worse → red at the high end.
+            colorscale = "RdBu_r"
             colorbar_ticks = {
                 "tickvals": [data_min, data_mid, data_max],
                 "ticktext": ["Shorter wait", "City median", "Longer wait"],
             }
         else:
-            colorscale = "RdBu_r"
+            # Closure / on-time rate, requests-per-1k: higher = better → red at the low end.
+            colorscale = "RdBu"
             colorbar_ticks = {
                 "tickvals": [data_min, data_mid, data_max],
                 "ticktext": ["Lower", "City median", "Higher"],
