@@ -104,10 +104,11 @@ with st.sidebar:
     st.markdown(
         "**Mix-Adjusted Equity** — the payoff\n\n"
         "*How much of the citywide gap is about which services an area requests "
-        "versus how the same service is delivered?* The citywide score recomputed "
-        "within each service type and recombined volume-weighted, a ranking of the "
-        "most unequally delivered types, and a fixed-effects regression as an "
-        "independent check."
+        "versus how the same service is delivered?* A year-over-year trend of the "
+        "raw vs. mix-adjusted equity score, a per-neighborhood map and raw-vs-adjusted "
+        "scatter that reweight every area to the citywide service mix (so slowness "
+        "caused by *what* an area requests is held constant), a ranking of the most "
+        "unequally delivered types, and a fixed-effects regression as an independent check."
     )
     st.divider()
     st.markdown("### Compare cities — coming in Phase 5")
