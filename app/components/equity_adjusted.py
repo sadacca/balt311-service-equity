@@ -729,7 +729,7 @@ def render_equity_adjusted(
         st.plotly_chart(_norm_trend_fig(trend, "Income", year), use_container_width=True,
                         key="adj_trend_income", config={"displayModeBar": False})
 
-    # ── 2 — Normalized delivery across neighborhoods ──────────────────────────
+    # ── 2 — Mix-adjusted delivery across neighborhoods ────────────────────────
     st.divider()
     st.subheader(f"Mix-adjusted {metric_label.lower()} across neighborhoods · {year}")
     st.caption(
@@ -766,10 +766,12 @@ def render_equity_adjusted(
         )
         st.caption(
             "The x-axis is the **verified rollup value** (identical to the Equity tab); the "
-            "y-axis is the same neighborhood reweighted to the citywide service mix. The "
-            "vertical drop from a point to the diagonal is how much that area's mix was "
-            "distorting its raw number; a point that stays far from the diagonal after "
-            "adjustment is genuinely over- or under-delivering. Shading by median income "
+            "y-axis is the same neighborhood reweighted to the citywide service mix. The two "
+            "shaded halves split by the dashed line mark where a neighborhood comes out **"
+            f"{'better' if higher_better else 'faster'}** (blue) or **"
+            f"{'worse' if higher_better else 'slower'}** (red) than its raw number suggests "
+            "once mix is held constant; distance from the line is how much the mix was "
+            "distorting that raw number. Shading the dots by median income "
             "shows whether that lines up with neighborhood wealth — the equity question, "
             "asked on the mix-adjusted metric."
         )
