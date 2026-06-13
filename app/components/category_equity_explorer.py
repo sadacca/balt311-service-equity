@@ -629,36 +629,16 @@ def render_category_equity_explorer(
     ranked = by_volume.groupby("_cat")["total_requests"].sum().sort_values(ascending=False).index.tolist()
     top_cats = ranked[:_TOP_CATEGORIES_N]
 
-    # ── Geographic unit + metric selectors ────────────────────────────────────
-    # Tract and CSA rollups often diverge on these scores (CSA values are
-    # population-weighted means of their member tracts) — exposing the same
-    # toggle the Equity tab uses lets a reader check whether a finding holds at
-    # both grains or is an artifact of one. Updates the shared `geo_level` state,
-    # so the choice carries over to the Equity tab too — same convention.
-    ctrl_geo, ctrl_metric = st.columns([1, 2])
-    with ctrl_geo:
-        _curr_geo = st.session_state.get("geo_level", "Census Tract")
-        # Two-way sync with the shared `geo_level`: only overwrite this widget's
-        # keyed value when `geo_level` changed *elsewhere* (e.g. the Equity tab's
-        # own toggle) — tracked via `_seen` — so a fresh click here isn't clobbered
-        # before it has a chance to propagate (Streamlit widgets ignore `index`
-        # once their keyed state is set, so a one-way default isn't enough).
-        if st.session_state.get("cat_eq_geo_seen") != _curr_geo:
-            st.session_state["cat_eq_geo_choice"] = _curr_geo
-            st.session_state["cat_eq_geo_seen"] = _curr_geo
-        new_geo = st.radio(
-            "Geographic unit", ["Census Tract", "CSA"],
-            horizontal=True, key="cat_eq_geo_choice",
-        )
-        if new_geo != _curr_geo:
-            st.session_state["geo_level"] = new_geo
-            st.session_state["cat_eq_geo_seen"] = new_geo
-            st.rerun()
-    with ctrl_metric:
-        metric_label = st.radio(
-            "Equity metric", list(_METRIC_OPTIONS.keys()),
-            horizontal=True, key="cat_eq_metric",
-        )
+    # ── Metric selector ───────────────────────────────────────────────────────
+    # Geographic unit (Census Tract / CSA) is the global control at the top of the
+    # Within-Baltimore group. Tract and CSA rollups often diverge on these scores
+    # (CSA values are population-weighted means of their member tracts), so a reader
+    # can flip that global toggle to check whether a finding holds at both grains or
+    # is an artifact of one.
+    metric_label = st.radio(
+        "Equity metric", list(_METRIC_OPTIONS.keys()),
+        horizontal=True, key="cat_eq_metric",
+    )
     metric_col = _METRIC_OPTIONS[metric_label]
 
     st.caption(

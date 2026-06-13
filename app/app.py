@@ -10,12 +10,15 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from components.area_embedding import render_area_embedding
 from components.category_equity_explorer import render_category_equity_explorer
 from components.category_explorer import render_category_explorer
+from components.cross_city import (
+    render_cross_city_intro,
+    render_delivery_placeholder,
+    render_equity_placeholder,
+    render_maturity_placeholder,
+)
 from components.equity_adjusted import render_equity_adjusted
-from components.equity_distributions import render_equity_distributions
-from components.equity_trend import render_equity_trend
-from components.map_view import METRIC_OPTIONS, build_choropleth
+from components.equity_panel import render_equity
 from components.operations_panel import render_operations
-from components.summary_panel import render as render_summary, render_peer_comparison
 
 DATA_DIR = Path(__file__).parent.parent / "data" / "processed"
 
@@ -48,13 +51,16 @@ with st.sidebar:
             "different neighborhoods."
         )
     st.caption(
-        "The six tabs tell one story: start with how the city is doing overall → zoom "
-        "into individual service types → see which neighborhoods look alike → check "
-        "whether outcomes differ by race or income → ask whether that gap holds up "
-        "within individual service categories → and finally separate how much of it is "
-        "about *which* services an area requests versus how the same service is delivered."
+        "The dashboard has two parts. **Within Baltimore** tells one six-step story: "
+        "start with how the city is doing overall → zoom into individual service types "
+        "→ see which neighborhoods look alike → check whether outcomes differ by race or "
+        "income → ask whether that gap holds up within service categories → and finally "
+        "separate how much of it is about *which* services an area requests versus how "
+        "the same service is delivered. **Compare cities** *(coming in Phase 5)* sets "
+        "Baltimore against peer cities on the same metrics."
     )
     st.divider()
+    st.markdown("### Within Baltimore — the story")
     st.markdown(
         "**Operations** — start here\n\n"
         "*A citywide health check: request volume and performance trends.* "
@@ -103,6 +109,14 @@ with st.sidebar:
         "most unequally delivered types, and a fixed-effects regression as an "
         "independent check."
     )
+    st.divider()
+    st.markdown("### Compare cities — coming in Phase 5")
+    st.markdown(
+        "*Baltimore against peer and leading cities at the city level* — delivery "
+        "metrics, each city's own mix-adjusted equity score, and an open-data "
+        "maturity index. Different data, different caveats; a separate group so the "
+        "city-to-city comparison never gets confused with the within-Baltimore story."
+    )
     with st.expander("Key terms"):
         st.markdown(
             "**Closure rate** — the share of requests marked resolved. "
@@ -133,6 +147,8 @@ with st.sidebar:
 
 
 # ── Geographic unit — shared session state ────────────────────────────────────
+# State only here; the toggle widget lives inside the Within-Baltimore group below
+# (geo level is meaningless for the city-level Compare-cities group).
 if "geo_level" not in st.session_state:
     st.session_state["geo_level"] = "CSA"
 geo_level = st.session_state["geo_level"]
@@ -150,6 +166,7 @@ def available_years(gk: str) -> list[int]:
 years = available_years(geo_key)
 
 # ── Header + year navigation ──────────────────────────────────────────────────
+# Year is global to both groups (cross-city data is also city × year).
 st.title("Baltimore 311 Service Equity")
 
 if "ops_year_clicked" in st.session_state:
@@ -164,6 +181,11 @@ st.caption("Demographics from ACS 2023 5-Year Estimates")
 parquet_path = DATA_DIR / f"{geo_key}_metrics_{year}.parquet"
 geojson_path = DATA_DIR / f"{geo_key}_boundaries.geojson"
 data_ready = parquet_path.exists() and geojson_path.exists()
+
+_NO_DATA_MSG = (
+    f"No processed data found for **{year}** at **{geo_level}** level. "
+    "Run the pipeline to generate it."
+)
 
 
 @st.cache_data
@@ -192,229 +214,100 @@ else:
 
 demographics = load_demographics(DATA_DIR / f"{geo_key}_demographics.csv")
 
-# ── Tabs ──────────────────────────────────────────────────────────────────────
-tab_ops, tab_cat, tab_areas, tab_eq, tab_cat_eq, tab_adj = st.tabs([
-    "Operations", "Services", "Area Service Usage", "Equity", "Service Equity",
-    "Mix-Adjusted Equity",
-])
+# ── Two groups: the within-Baltimore story, and the cross-city comparison ─────
+grp_local, grp_cross = st.tabs(["🏙️ Within Baltimore", "🌐 Compare cities"])
 
-# ── Operations tab ────────────────────────────────────────────────────────────
-with tab_ops:
-    if not data_ready:
-        st.info(
-            f"No processed data found for **{year}** at **{geo_level}** level. "
-            "Run the pipeline to generate it."
+# ══ Within Baltimore — the sequenced six-step story ═══════════════════════════
+with grp_local:
+    st.caption(
+        "A six-step story: how Baltimore delivers 311 service, then whether it does so "
+        "equitably — read left to right."
+    )
+
+    # ── Geographic unit — one global control for the whole group ──────────────
+    # Writes the shared `geo_level` state every within-Baltimore tab reads. The Area
+    # Service Usage tab is the exception: it shows tracts and CSAs together and ignores
+    # this toggle.
+    geo_col, _ = st.columns([2, 8])
+    with geo_col:
+        new_geo = st.radio(
+            "Geographic unit",
+            ["Census Tract", "CSA"],
+            index=0 if geo_level == "Census Tract" else 1,
+            horizontal=True,
+            help="Applies to every tab in this group except Area Service Usage.",
         )
-    else:
-        render_operations(
-            DATA_DIR, geo_key, year,
-            df=df_full,
-            geojson=geojson,
-            geo_id_col="geoid",
-            featureidkey=featureidkey,
-            mapbox_token=MAPBOX_TOKEN,
-        )
+        if new_geo != geo_level:
+            st.session_state["geo_level"] = new_geo
+            st.rerun()
 
-# ── Service Category Explorer tab ─────────────────────────────────────────────
-with tab_cat:
-    if not data_ready:
-        st.info(
-            f"No processed data found for **{year}** at **{geo_level}** level. "
-            "Run the pipeline to generate it."
-        )
-    else:
-        render_category_explorer(DATA_DIR, year)
+    tab_ops, tab_cat, tab_areas, tab_eq, tab_cat_eq, tab_adj = st.tabs([
+        "Operations", "Services", "Area Service Usage", "Equity", "Service Equity",
+        "Mix-Adjusted Equity",
+    ])
 
-# ── Area Embedding tab ────────────────────────────────────────────────────────
-with tab_areas:
-    render_area_embedding(DATA_DIR, year)
-
-# ── Equity tab ────────────────────────────────────────────────────────────────
-with tab_eq:
-    if not data_ready:
-        st.info(
-            f"No processed data found for **{year}** at **{geo_level}** level.\n\n"
-            "Run the pipeline notebooks in order:\n"
-            "1. `notebooks/01_ingest.ipynb` — download raw data\n"
-            "2. `notebooks/02_clean.ipynb` — parse and clean\n"
-            "3. `notebooks/03_aggregate.ipynb` — aggregate to tract / CSA\n\n"
-            f"Expected output: `data/processed/{geo_key}_metrics_{year}.parquet`",
-            icon="ℹ️",
-        )
-    else:
-        st.caption(
-            "Does service quality differ systematically by where it's delivered and who "
-            "it's delivered to? *Note: differences here can reflect the kinds of services "
-            "delivered as much as delivery quality.*"
-        )
-        with st.expander("What to look for"):
-            st.markdown(
-                "- How much do outcomes differ between majority-Black and majority-White "
-                "neighborhoods? Between lower- and higher-income ones?\n"
-                "- Is the gap larger for some metrics (wait time vs. closure rate) than others?\n"
-                "- Is the gap getting larger or smaller over time? "
-                "The trend chart at the bottom of the page shows year-over-year movement."
-            )
-
-        # ── Inline controls above map ─────────────────────────────────────────
-        ctrl1, ctrl2, ctrl3 = st.columns([2, 3, 5])
-
-        with ctrl1:
-            _curr_geo_eq = st.session_state.get("geo_level", "Census Tract")
-            new_geo_eq = st.radio(
-                "Geographic unit",
-                ["Census Tract", "CSA"],
-                index=0 if _curr_geo_eq == "Census Tract" else 1,
-                horizontal=True,
-            )
-            if new_geo_eq != _curr_geo_eq:
-                st.session_state["geo_level"] = new_geo_eq
-                st.rerun()
-
-        with ctrl2:
-            metric_label = st.selectbox(
-                "Color map by",
-                list(METRIC_OPTIONS.keys()),
-                key="eq_metric",
-            )
-            metric_col = METRIC_OPTIONS[metric_label]
-
-        with ctrl3:
-            df = df_full
-            if "top_sr_type" in df_full.columns:
-                all_types = sorted(df_full["top_sr_type"].dropna().unique().tolist())
-                selected_types = st.multiselect(
-                    "Filter by top request type",
-                    all_types,
-                    default=[],
-                    placeholder="All geographies",
-                    key="eq_srtype",
-                )
-                if selected_types:
-                    df = df_full[df_full["top_sr_type"].isin(selected_types)]
-
-        # ── Choropleth map ────────────────────────────────────────────────────
-        if metric_col not in df.columns:
-            st.warning(f"Metric column `{metric_col}` not found in processed data.")
+    with tab_ops:
+        if not data_ready:
+            st.info(_NO_DATA_MSG)
         else:
-            col_map, col_panel = st.columns([3, 1])
-
-            fig = build_choropleth(
-                df=df,
+            render_operations(
+                DATA_DIR, geo_key, year,
+                df=df_full,
                 geojson=geojson,
                 geo_id_col="geoid",
                 featureidkey=featureidkey,
-                metric_col=metric_col,
-                metric_label=metric_label,
                 mapbox_token=MAPBOX_TOKEN,
             )
 
-            with col_map:
-                selection = st.plotly_chart(
-                    fig,
-                    use_container_width=True,
-                    on_select="rerun",
-                    key="map_select",
-                )
+    with tab_cat:
+        if not data_ready:
+            st.info(_NO_DATA_MSG)
+        else:
+            render_category_explorer(DATA_DIR, year)
 
-            selected_row = None
-            if selection and selection.get("selection", {}).get("points"):
-                pt = selection["selection"]["points"][0]
-                loc_val = pt.get("location")
-                if loc_val is not None:
-                    match = df[df["geoid"] == loc_val]
-                    if not match.empty:
-                        selected_row = match.iloc[0]
+    with tab_areas:
+        render_area_embedding(DATA_DIR, year)
 
-            with col_panel:
-                render_summary(selected_row)
+    with tab_eq:
+        if not data_ready:
+            st.info(_NO_DATA_MSG)
+        else:
+            render_equity(
+                DATA_DIR, geo_key, year,
+                df_full=df_full,
+                geojson=geojson,
+                featureidkey=featureidkey,
+                mapbox_token=MAPBOX_TOKEN,
+                demographics=demographics,
+            )
 
-            # ── Multi-neighborhood comparison ─────────────────────────────────
-            with st.expander("Compare neighborhoods side by side"):
-                st.caption(
-                    "Select up to 5 neighborhoods to compare their service metrics. "
-                    "Click a neighborhood on the map above, then add others here."
-                )
-                all_geo_names = sorted(df["geoid"].tolist())
-                compare_geos = st.multiselect(
-                    "Neighborhoods to compare",
-                    all_geo_names,
-                    default=(
-                        [str(selected_row["geoid"])]
-                        if selected_row is not None and "geoid" in selected_row.index
-                        else []
-                    ),
-                    max_selections=5,
-                    placeholder="Pick up to 5 neighborhoods",
-                    key="eq_compare_geos",
-                )
-                if compare_geos:
-                    cmp_rows = df[df["geoid"].isin(compare_geos)].set_index("geoid")
-                    cmp_metrics = [
-                        ("Closure rate", "closure_rate", ".1%"),
-                        ("Median days to close", "median_days_to_close", ".1f"),
-                        ("On-time rate", "on_time_rate", ".1%"),
-                        ("Requests / 1k", "requests_per_1k", ".1f"),
-                        ("Total requests", "total_requests", ",.0f"),
-                    ]
-                    tbl: dict[str, dict] = {}
-                    for lbl, col, fmt in cmp_metrics:
-                        if col not in cmp_rows.columns:
-                            continue
-                        tbl[lbl] = {
-                            geo: (
-                                f"{cmp_rows.loc[geo, col]:{fmt}}"
-                                if geo in cmp_rows.index and pd.notna(cmp_rows.loc[geo, col])
-                                else "—"
-                            )
-                            for geo in compare_geos
-                        }
-                    if tbl:
-                        st.dataframe(
-                            pd.DataFrame(tbl).T.rename_axis("Metric").reset_index(),
-                            use_container_width=True,
-                            hide_index=True,
-                        )
+    with tab_cat_eq:
+        if not data_ready:
+            st.info(_NO_DATA_MSG)
+        else:
+            render_category_equity_explorer(DATA_DIR, demographics, geo_key, year)
 
-            # ── Peer neighborhood comparison ──────────────────────────────────
-            if selected_row is not None and demographics is not None:
-                render_peer_comparison(selected_row, df, demographics)
+    with tab_adj:
+        if not data_ready:
+            st.info(_NO_DATA_MSG)
+        else:
+            # Carry over the Equity tab's metric selection so the two equity tabs stay
+            # aligned; falls back to days-to-close inside the component when that metric
+            # doesn't exist at the service-type grain.
+            render_equity_adjusted(
+                DATA_DIR, demographics, geo_key, year,
+                eq_metric_label=st.session_state.get("eq_metric"),
+            )
 
-            if demographics is not None:
-                st.divider()
-                render_equity_distributions(df, demographics, metric_col, metric_label)
-                st.divider()
-                render_equity_trend(DATA_DIR, demographics, geo_key, metric_label)
-            else:
-                st.divider()
-                st.caption(
-                    "Demographic equity charts unavailable — "
-                    f"`{geo_key}_demographics.csv` not found in `data/processed/`. "
-                    "Re-run the pipeline to generate it."
-                )
-
-# ── Service Category Equity Explorer tab ──────────────────────────────────────
-with tab_cat_eq:
-    if not data_ready:
-        st.info(
-            f"No processed data found for **{year}** at **{geo_level}** level. "
-            "Run the pipeline to generate it."
-        )
-    else:
-        render_category_equity_explorer(DATA_DIR, demographics, geo_key, year)
-
-# ── Mix-Adjusted Equity tab ───────────────────────────────────────────────────
-with tab_adj:
-    if not data_ready:
-        st.info(
-            f"No processed data found for **{year}** at **{geo_level}** level. "
-            "Run the pipeline to generate it."
-        )
-    else:
-        # Carry over the Equity tab's metric selection so the two tabs stay aligned;
-        # falls back to days-to-close inside the component when that metric doesn't
-        # exist at the service-type grain.
-        render_equity_adjusted(
-            DATA_DIR, demographics, geo_key, year,
-            eq_metric_label=st.session_state.get("eq_metric"),
-        )
+# ══ Compare cities — Phase 5 (scaffold) ═══════════════════════════════════════
+with grp_cross:
+    render_cross_city_intro()
+    cc_delivery, cc_equity, cc_maturity = st.tabs([
+        "Service Delivery", "Service Equity", "Maturity Index",
+    ])
+    with cc_delivery:
+        render_delivery_placeholder()
+    with cc_equity:
+        render_equity_placeholder()
+    with cc_maturity:
+        render_maturity_placeholder()

@@ -25,7 +25,12 @@ All current development is on `claude/review-requirements-AlGBm`. Push only to t
 
 ## App Structure
 
-Five-tab Streamlit app at `app/app.py`. Year selector is inline above the tabs as a horizontal radio. The Areas tab manages its own data loading internally; all other tabs share `geo_level` session state (Census Tract / CSA) set via the Equity tab's inline radio.
+Streamlit app at `app/app.py`, organized into **two nested-tab groups** that keep the two fundamentally different kinds of analysis distinct:
+
+- **🏙️ Within Baltimore** — the sequenced six-step story: Operations → Services → Area Service Usage → Equity → Service Equity → Mix-Adjusted Equity.
+- **🌐 Compare cities** — *(Phase 5 scaffold)* city-to-city comparison: Service Delivery → Service Equity → Maturity Index. Currently placeholders (`app/components/cross_city.py`); city-level only, so they do **not** use `geo_level`.
+
+The year selector is global (above both groups) — cross-city data is also city × year. The **geographic-unit toggle (Census Tract / CSA) is a single global control at the top of the Within-Baltimore group**, writing the shared `geo_level` session state every within-Baltimore tab reads (replacing the former per-tab toggles and the two-way-sync hack). The Areas tab manages its own data loading internally and ignores `geo_level` (it shows tracts and CSAs together in one embedding).
 
 ### Operations tab (`app/components/operations_panel.py`)
 - **Scope banner** — All requests received / Equity subset / Excluded; makes the filter explicit
@@ -113,7 +118,7 @@ Geo ID conventions: tract files use 11-digit GEOID strings in a `geoid` column. 
 
 **CSA rollup**: at CSA level, metric values are population-weighted means of tract values (not re-aggregated from raw records). This matches BNIA Vital Signs methodology.
 
-**Streamlit version**: must be ≥1.39.0 for `st.pills()` and `st.dataframe(on_select="rerun", selection_mode="single-row")`.
+**Streamlit version**: must be ≥1.40.0 for `st.pills()` (added in 1.40) and `st.dataframe(on_select="rerun", selection_mode="single-row")`.
 
 **Secrets**: Mapbox token in Streamlit Cloud Secrets (`mapbox.token`), never in repo. Census API key as GitHub Actions secret `CENSUS_API_KEY`, never in repo.
 
