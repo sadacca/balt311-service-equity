@@ -3,24 +3,27 @@
 Tabs 4 and 5 surfaced, informally, that the citywide equity gap shrinks sharply
 once you look within individual service types — the signature of a *usage-mix*
 effect (disadvantaged areas request structurally slower services more often)
-rather than a *delivery-difference* one (the same service delivered worse to
-some areas). This tab makes that separation formal:
+rather than a *delivery-difference* one. This tab makes the normalized picture
+concrete, in space and in time:
 
-1. **Raw vs. mix-adjusted score** (P4d-14) — the citywide score recomputed
-   *within* each service type and recombined volume-weighted, side by side with
-   the raw geo-level score. A higher adjusted score is direct evidence the gap is
-   partly mix-driven; a similar score means it's in delivery.
-2. **Within-type equity ranking** (P4d-15) — every service type ranked by its own
-   overlap score, color-coded; pick one to see the raw race/income distributions
-   behind its score.
-3. **Regression** (P4d-16) — an OLS/WLS panel with service-type and year fixed
-   effects: an independent check on whether a demographic gap survives once the
-   *kind* of service requested is held constant.
+1. **Normalized equity over time** — the citywide equity score recomputed *within*
+   each service type and recombined volume-weighted (the "mix-adjusted" score),
+   trended against the raw geo-level score across all years. Answers: once you
+   account for service mix, is the gap *actually* closing? This is also the exact
+   scalar the cross-city group compares, so it bridges to Phase 5.
+2. **Normalized delivery across neighborhoods** — each geography's metric relative
+   to the citywide norm *for the very services it requests* (volume-weighted across
+   its own mix), as a residual choropleth and an actual-vs-expected scatter. After
+   adjusting for what a neighborhood asks for, who is still over- or under-served?
+3. **Within-type equity ranking** + per-type distribution drill-down — which
+   specific services are delivered most unequally once isolated from the mix.
+4. **Regression** — a fixed-effects panel as an independent corroboration.
 """
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -30,9 +33,13 @@ import streamlit as st
 from components.category_equity_explorer import _subtype_current_year_scores
 from components.equity_distributions import _comparison_fig
 from components.equity_trend import compute_citywide_equity_trend
-from components.map_view import METRIC_OPTIONS
+from components.map_view import (
+    BALTIMORE_CENTER,
+    BALTIMORE_ZOOM,
+    MAPBOX_STYLE,
+    METRIC_OPTIONS,
+)
 from components.srtype_shared import (
-    CATEGORY_NAMES,
     MIN_GEO_SRTYPE_N,
     load_geo_srtype_history,
     load_srtype_history,
@@ -41,17 +48,22 @@ from components.utils import score_label
 
 # Only median-days and closure-rate roll up to the geo×SRType grain — on-time rate
 # and requests-per-1k need fields (DueDate, population) that don't, so the adjusted
-# score and ranking can only be computed for these two.
+# score, the normalized residual, and the ranking can only use these two.
 _SRTYPE_METRICS = {
     "Median days to close": "median_days_to_close",
     "Closure rate": "closure_rate",
 }
+_HIGHER_IS_BETTER = {"closure_rate", "on_time_rate"}
 
 # Eligibility for the within-type ranking — a low score only means something if it's
 # backed by enough geographic spread and volume that it isn't just a thin sample.
 _RANK_MIN_GEO_COVERAGE = 0.33
 _RANK_MIN_REQUESTS = 100
 _RANK_TOP_N = 20
+
+# A geography needs at least this many scoreable service types for its mix-normalized
+# value to be stable rather than a one- or two-service artifact.
+_NORM_MIN_TYPES = 3
 
 # Regression: drop the long tail of rarely-seen types (their fixed-effect dummy is
 # near-degenerate and only inflates the design matrix) and scale income so its
@@ -70,7 +82,38 @@ def _wmean(values: pd.Series, weights: pd.Series) -> float:
     return float((df["v"] * df["w"]).sum() / df["w"].sum())
 
 
-# ── Raw vs. adjusted score (P4d-14) ───────────────────────────────────────────
+def _short_label(srtype: str) -> str:
+    """'SW-Dirty Alley' -> 'Dirty Alley (SW)' — keeps the department visible while
+    dropping the redundant prefix from the descriptive part."""
+    if "-" in srtype:
+        prefix, rest = srtype.split("-", 1)
+        return f"{rest.strip()} ({prefix.strip()})"
+    return srtype
+
+
+def _add_score_bands(fig: go.Figure) -> None:
+    """Green/amber/red overlap-score threshold bands, drawn behind the data — same
+    convention and thresholds as the other equity tabs."""
+    fig.add_hrect(y0=0.7, y1=1.0, fillcolor="green", opacity=0.06, line_width=0)
+    fig.add_hrect(y0=0.4, y1=0.7, fillcolor="orange", opacity=0.06, line_width=0)
+    fig.add_hrect(y0=0.0, y1=0.4, fillcolor="red", opacity=0.06, line_width=0)
+
+
+def _score_layout(height: int) -> dict:
+    """Shared layout for the equity-score line charts — fixed [0,1] axis (scores are
+    bounded) and percent formatting."""
+    return dict(
+        height=height,
+        margin={"t": 8, "b": 8, "l": 55, "r": 8},
+        xaxis=dict(title="Year", dtick=1),
+        yaxis=dict(title="Equity score", range=[0, 1], tickformat=".0%", gridcolor="#eeeeee"),
+        plot_bgcolor="white", paper_bgcolor="white",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
+                    font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
+    )
+
+
+# ── Per-type scores → adjusted citywide score ─────────────────────────────────
 
 @st.cache_data
 def compute_adjusted_scores(
@@ -104,35 +147,202 @@ def compute_adjusted_scores(
     return wide[["SRType", "Race", "Income", "volume"]]
 
 
-def _raw_adj_fig(raw: float, adjusted: float) -> go.Figure:
-    """Two bars — raw citywide vs. mix-adjusted equity score — colored by
-    `score_label()`'s green/amber/red/gray convention."""
-    vals = [raw, adjusted]
-    colors = [score_label(v)[1] for v in vals]
-    fig = go.Figure(go.Bar(
-        x=["Raw<br>(citywide)", "Mix-adjusted<br>(within service type)"],
-        y=vals,
-        marker_color=colors,
-        text=[f"{v:.0%}" if not np.isnan(v) else "—" for v in vals],
-        textposition="outside",
-        hovertemplate="<b>%{x}</b><br>%{y:.0%}<extra></extra>",
-        width=0.5,
-    ))
-    fig.add_hrect(y0=0.7, y1=1.16, fillcolor="green", opacity=0.05, line_width=0)
-    fig.add_hrect(y0=0.4, y1=0.7, fillcolor="orange", opacity=0.05, line_width=0)
-    fig.add_hrect(y0=0.0, y1=0.4, fillcolor="red", opacity=0.05, line_width=0)
+@st.cache_data
+def compute_adjusted_equity_trend(
+    data_dir: Path,
+    geo_key: str,
+    demographics: pd.DataFrame,
+    metric_col: str,
+    metric_label: str,
+) -> pd.DataFrame:
+    """Long frame (year, dimension, kind, score) with one Raw and one Mix-adjusted
+    row per (year, Race|Income).
+
+    *Raw* is the geo-level citywide score (the Equity tab's number, from
+    `compute_citywide_equity_trend`). *Mix-adjusted* is the volume-weighted mean of
+    the within-type scores for that year (`compute_adjusted_scores` → `_wmean`).
+    Trending the two together shows whether the gap is closing for real or whether
+    the raw line is just tracking shifts in what neighborhoods request.
+    """
+    raw = compute_citywide_equity_trend(data_dir, demographics, geo_key)
+    years = sorted({
+        int(p.stem.split("_")[-1])
+        for p in data_dir.glob(f"{geo_key}_srtype_metrics_*.parquet")
+        if p.stem.split("_")[-1].isdigit()
+    })
+    recs = []
+    for yr in years:
+        per = compute_adjusted_scores(data_dir, geo_key, demographics, yr, metric_col)
+        for dim in ("Race", "Income"):
+            adj = _wmean(per[dim], per["volume"]) if not per.empty else float("nan")
+            recs.append({"year": yr, "dimension": dim, "kind": "Mix-adjusted", "score": adj})
+            r = raw[(raw["year"] == yr) & (raw["dimension"] == dim) & (raw["metric"] == metric_label)]["score"]
+            recs.append({"year": yr, "dimension": dim, "kind": "Raw", "score": float(r.mean()) if not r.empty else float("nan")})
+    return pd.DataFrame(recs)
+
+
+def _norm_trend_fig(trend: pd.DataFrame, dimension: str, year: int) -> go.Figure:
+    """Raw vs. mix-adjusted equity score for one dimension, across years — the
+    mix-adjusted line solid in the dimension color, the raw line dashed gray, on the
+    shared [0,1] axis with threshold bands and the selected year picked out."""
+    fig = go.Figure()
+    _add_score_bands(fig)
+    sub = trend[trend["dimension"] == dimension]
+
+    raw = sub[sub["kind"] == "Raw"].dropna(subset=["score"]).sort_values("year")
+    if not raw.empty:
+        fig.add_trace(go.Scatter(
+            x=raw["year"], y=raw["score"], mode="lines+markers", name="Raw (citywide)",
+            line=dict(width=2, dash="dash", color="#999999"),
+            marker=dict(size=6, color="#999999", symbol="diamond"),
+            hovertemplate="<b>Raw</b><br>%{x}: %{y:.0%}<extra></extra>",
+        ))
+    adj = sub[sub["kind"] == "Mix-adjusted"].dropna(subset=["score"]).sort_values("year")
+    if not adj.empty:
+        color = _DIM_COLORS[dimension]
+        fig.add_trace(go.Scatter(
+            x=adj["year"], y=adj["score"], mode="lines+markers", name="Mix-adjusted",
+            line=dict(width=2.4, color=color), marker=dict(size=7, color=color),
+            hovertemplate="<b>Mix-adjusted</b><br>%{x}: %{y:.0%}<extra></extra>",
+        ))
+    fig.add_vline(x=year, line_width=1, line_dash="dot", line_color="#999999")
+    fig.update_layout(**_score_layout(300))
+    return fig
+
+
+# ── Per-geography mix-normalized metric (residual map + scatter) ───────────────
+
+@st.cache_data
+def compute_normalized_geo_metrics(
+    data_dir: Path, geo_key: str, year: int, metric_col: str,
+) -> pd.DataFrame:
+    """Each geography's metric relative to the citywide norm for the services *it*
+    requests. For every `(geo, type)` cell we compare the geography's value to the
+    citywide value for that type, then volume-weight across the geography's own mix:
+
+    - `expected` — volume-weighted mean of the **citywide** per-type value (what the
+      city would deliver for this area's service mix)
+    - `actual`   — volume-weighted mean of the geography's **own** per-type value
+    - `residual` — `actual − expected`: over/under-performance once the mix that the
+      geography requests is held constant. A neighborhood that asks for structurally
+      slow services is not penalized for that here — only for handling them
+      differently than the city does on average.
+
+    Columns: `geoid`, `actual`, `expected`, `residual`, `volume`, `n_types`. Drops
+    geographies with fewer than `_NORM_MIN_TYPES` scoreable types.
+    """
+    cols = ["geoid", "actual", "expected", "residual", "volume", "n_types"]
+    hist = load_geo_srtype_history(data_dir, geo_key)
+    sr_path = data_dir / f"srtype_metrics_{year}.parquet"
+    if hist.empty or not sr_path.exists():
+        return pd.DataFrame(columns=cols)
+
+    cells = hist[(hist["year"] == year) & (hist["total_requests"] >= MIN_GEO_SRTYPE_N)]
+    city = pd.read_parquet(sr_path)[["SRType", metric_col]].rename(columns={metric_col: "_city"})
+    m = cells.merge(city, on="SRType", how="left").dropna(subset=[metric_col, "_city", "total_requests"])
+    m = m[m["total_requests"] > 0]
+    if m.empty:
+        return pd.DataFrame(columns=cols)
+
+    recs = []
+    for gid, grp in m.groupby("geoid"):
+        if grp["SRType"].nunique() < _NORM_MIN_TYPES:
+            continue
+        w = grp["total_requests"].to_numpy(float)
+        actual = float((grp[metric_col].to_numpy(float) * w).sum() / w.sum())
+        expected = float((grp["_city"].to_numpy(float) * w).sum() / w.sum())
+        recs.append({
+            "geoid": gid, "actual": actual, "expected": expected,
+            "residual": actual - expected, "volume": float(w.sum()),
+            "n_types": int(grp["SRType"].nunique()),
+        })
+    return pd.DataFrame(recs, columns=cols)
+
+
+def _residual_choropleth_fig(
+    df: pd.DataFrame, geojson: dict, featureidkey: str,
+    metric_label: str, higher_better: bool, mapbox_token: str,
+) -> go.Figure:
+    """Diverging residual map centered at 0 (on par with the city). Blue = better
+    than the citywide norm for this area's mix, red = worse — direction handled per
+    metric so 'better' always reads blue regardless of whether high or low is good."""
+    vals = df["residual"].dropna()
+    m = float(max(abs(vals.min()), abs(vals.max()))) if not vals.empty else 1.0
+    m = m or 1.0
+    # RdBu: low→red, high→blue. For a higher-is-better metric a positive residual is
+    # good, so RdBu already puts it on blue. For a lower-is-better metric flip it.
+    colorscale = "RdBu" if higher_better else "RdBu_r"
+    better_at_high = higher_better  # whether +residual is the "better" end
+    ticktext = (
+        ["Worse than city", "On par", "Better than city"]
+        if better_at_high else
+        ["Better than city", "On par", "Worse than city"]
+    )
+    fig = px.choropleth_mapbox(
+        df, geojson=geojson, locations="geoid", featureidkey=featureidkey,
+        color="residual", color_continuous_scale=colorscale,
+        color_continuous_midpoint=0.0, range_color=[-m, m],
+        mapbox_style=MAPBOX_STYLE, zoom=BALTIMORE_ZOOM, center=BALTIMORE_CENTER,
+        opacity=0.75, labels={"residual": f"{metric_label} vs. city norm"},
+        hover_data={"geoid": True, "actual": ":.3f", "expected": ":.3f", "residual": ":+.3f"},
+    )
     fig.update_layout(
-        height=260,
-        margin={"t": 8, "b": 8, "l": 50, "r": 8},
-        yaxis=dict(title="Equity score", range=[0, 1.16], tickformat=".0%", gridcolor="#eeeeee"),
-        xaxis=dict(title=None),
-        plot_bgcolor="white", paper_bgcolor="white",
-        showlegend=False,
+        margin={"r": 0, "t": 0, "l": 0, "b": 55}, height=560,
+        coloraxis_colorbar=dict(
+            orientation="h", x=0.5, xanchor="center", y=-0.04, yanchor="top",
+            thickness=12, len=0.85, title=dict(text=f"{metric_label} vs. city norm", side="top"),
+            tickvals=[-m, 0, m], ticktext=ticktext,
+        ),
+        mapbox_accesstoken=mapbox_token,
     )
     return fig
 
 
-# ── Within-type ranking (P4d-15) ──────────────────────────────────────────────
+def _actual_expected_scatter_fig(
+    df: pd.DataFrame, metric_label: str, metric_col: str, higher_better: bool,
+) -> go.Figure:
+    """One dot per neighborhood: expected (citywide norm for its mix) on x, actual on
+    y, with the y=x reference line. Off the diagonal = over/under-performing beyond
+    what the service mix predicts. Colored by share Black to surface the equity read."""
+    is_rate = metric_col in METRIC_OPTIONS.values() and metric_col in ("closure_rate", "on_time_rate")
+    fmt = ".0%" if is_rate else ".1f"
+    lo = float(min(df["expected"].min(), df["actual"].min()))
+    hi = float(max(df["expected"].max(), df["actual"].max()))
+    pad = (hi - lo) * 0.05 or 1.0
+
+    color_col = "pct_black" if "pct_black" in df.columns else None
+    fig = px.scatter(
+        df, x="expected", y="actual",
+        color=color_col,
+        color_continuous_scale="RdBu_r" if color_col else None,
+        size="volume", size_max=22,
+        hover_name="geoid",
+        hover_data={
+            "expected": f":{fmt}", "actual": f":{fmt}", "residual": ":+.3f",
+            "volume": ":,.0f", "pct_black": ":.0%" if color_col else False,
+        },
+        labels={
+            "expected": f"Expected {metric_label.lower()} (citywide norm for this mix)",
+            "actual": f"Actual {metric_label.lower()}",
+            "pct_black": "Share Black",
+        },
+    )
+    fig.add_trace(go.Scatter(
+        x=[lo - pad, hi + pad], y=[lo - pad, hi + pad], mode="lines",
+        line=dict(color="#888888", width=1, dash="dash"),
+        name="On par with mix", hoverinfo="skip", showlegend=False,
+    ))
+    fig.update_layout(
+        height=460, margin={"t": 8, "b": 8, "l": 8, "r": 8},
+        plot_bgcolor="white", paper_bgcolor="white",
+        xaxis=dict(gridcolor="#eeeeee", tickformat=fmt, range=[lo - pad, hi + pad]),
+        yaxis=dict(gridcolor="#eeeeee", tickformat=fmt, range=[lo - pad, hi + pad]),
+        coloraxis_colorbar=dict(title="Share<br>Black", tickformat=".0%"),
+    )
+    return fig
+
+
+# ── Within-type ranking ───────────────────────────────────────────────────────
 
 @st.cache_data
 def _eligible_types(data_dir: Path, geo_key: str, year: int) -> list[str]:
@@ -154,15 +364,6 @@ def _eligible_types(data_dir: Path, geo_key: str, year: int) -> list[str]:
     )
 
 
-def _short_label(srtype: str) -> str:
-    """'SW-Dirty Alley' -> 'Dirty Alley (SW)' — keeps the department visible while
-    dropping the redundant prefix from the descriptive part."""
-    if "-" in srtype:
-        prefix, rest = srtype.split("-", 1)
-        return f"{rest.strip()} ({prefix.strip()})"
-    return srtype
-
-
 def _ranking_fig(ranked: pd.DataFrame, dimension: str) -> go.Figure:
     """Horizontal dot-plot of within-type scores, worst at the bottom, each dot
     colored by `score_label()`. Threshold bands sit behind the dots."""
@@ -173,8 +374,7 @@ def _ranking_fig(ranked: pd.DataFrame, dimension: str) -> go.Figure:
     for x0, x1, c in [(0.7, 1.0, "green"), (0.4, 0.7, "orange"), (0.0, 0.4, "red")]:
         fig.add_vrect(x0=x0, x1=x1, fillcolor=c, opacity=0.05, line_width=0)
     fig.add_trace(go.Scatter(
-        x=d[dimension], y=labels,
-        mode="markers",
+        x=d[dimension], y=labels, mode="markers",
         marker=dict(size=11, color=colors, line=dict(width=1, color="#444444")),
         hovertemplate="<b>%{y}</b><br>" + dimension + " equity score: %{x:.0%}<extra></extra>",
     ))
@@ -183,8 +383,7 @@ def _ranking_fig(ranked: pd.DataFrame, dimension: str) -> go.Figure:
         margin={"t": 8, "b": 8, "l": 8, "r": 8},
         xaxis=dict(title=f"{dimension}-based equity score", range=[0, 1], tickformat=".0%", gridcolor="#eeeeee"),
         yaxis=dict(title=None, automargin=True),
-        plot_bgcolor="white", paper_bgcolor="white",
-        showlegend=False,
+        plot_bgcolor="white", paper_bgcolor="white", showlegend=False,
     )
     return fig
 
@@ -214,7 +413,7 @@ def _type_groups(
     }
 
 
-# ── Regression (P4d-16) ───────────────────────────────────────────────────────
+# ── Regression ────────────────────────────────────────────────────────────────
 
 @st.cache_data
 def compute_regression(
@@ -230,8 +429,7 @@ def compute_regression(
     within-year demographic gap — the formal counterpart to this tab's adjusted score.
 
     Returns `(coef_df, meta)` — small, cache-friendly objects rather than the full
-    statsmodels result. `coef_df` has one row per demographic predictor with `beta`,
-    `ci_low`, `ci_high`, `pvalue`; `meta` carries `nobs`, `n_types`, `rsquared`.
+    statsmodels result.
     """
     import statsmodels.formula.api as smf
 
@@ -246,8 +444,6 @@ def compute_regression(
     if panel.empty:
         return empty
 
-    # Drop the long tail of rarely-observed types — a fixed effect estimated from a
-    # handful of cells is noise, and the extra dummies balloon the design matrix.
     type_counts = panel["SRType"].value_counts()
     keep_types = type_counts[type_counts >= _REG_MIN_TYPE_ROWS].index
     panel = panel[panel["SRType"].isin(keep_types)]
@@ -295,13 +491,10 @@ def _coef_fig(coef: pd.DataFrame) -> go.Figure:
         fig.add_trace(go.Scatter(
             x=[r["beta"]], y=[r["term"]],
             error_x=dict(
-                type="data",
-                array=[r["ci_high"] - r["beta"]],
-                arrayminus=[r["beta"] - r["ci_low"]],
-                thickness=1.5, width=6, color=color,
+                type="data", array=[r["ci_high"] - r["beta"]],
+                arrayminus=[r["beta"] - r["ci_low"]], thickness=1.5, width=6, color=color,
             ),
-            mode="markers",
-            marker=dict(size=11, color=color),
+            mode="markers", marker=dict(size=11, color=color),
             hovertemplate=(
                 "<b>%{y}</b><br>coef: %{x:.4f}<br>"
                 f"95% CI: [{r['ci_low']:.4f}, {r['ci_high']:.4f}]<br>"
@@ -310,8 +503,7 @@ def _coef_fig(coef: pd.DataFrame) -> go.Figure:
             showlegend=False,
         ))
     fig.update_layout(
-        height=200,
-        margin={"t": 8, "b": 8, "l": 8, "r": 8},
+        height=200, margin={"t": 8, "b": 8, "l": 8, "r": 8},
         xaxis=dict(title="Coefficient on log(1 + days to close)", gridcolor="#eeeeee", zeroline=False),
         yaxis=dict(title=None, automargin=True),
         plot_bgcolor="white", paper_bgcolor="white",
@@ -326,7 +518,6 @@ def _regression_interpretation(coef: pd.DataFrame) -> str:
 
     black = lookup.get("% Black (0→100%)")
     if black is not None:
-        # Coefficient is per full 0→1 swing; report per +10 percentage points.
         pct = np.expm1(black["beta"] * 0.10)
         if black["pvalue"] >= 0.05:
             parts.append(
@@ -367,23 +558,28 @@ def render_equity_adjusted(
     demographics: pd.DataFrame | None,
     geo_key: str,
     year: int,
+    geojson: dict | None = None,
+    featureidkey: str = "properties.csa_name",
+    mapbox_token: str = "",
     eq_metric_label: str | None = None,
 ) -> None:
     st.caption(
         "The last tab showed the citywide equity gap shrinking when scored within "
-        "individual service categories. This tab makes that formal: it recomputes the "
-        "citywide score *within each service type* and recombines it volume-weighted, "
-        "then checks the result against a fixed-effects regression."
+        "individual service categories. This tab normalizes for service mix directly — "
+        "in time and in space — then checks the result against a fixed-effects regression."
     )
     with st.expander("What to look for"):
         st.markdown(
-            "- **Raw vs. mix-adjusted:** if the adjusted bar is higher, part of the citywide "
-            "gap is explained by *which* services a neighborhood requests (some are "
-            "structurally slower), not by how the same service is delivered.\n"
-            "- **The ranking:** which specific service types are delivered most unequally, "
-            "even after isolating them from the mix? Click one to see the raw distributions.\n"
-            "- **The regression:** an independent check — does a race or income gap survive "
-            "once service type and year are held constant?"
+            "- **Over time:** does the *mix-adjusted* equity line sit above the raw line, "
+            "and is it actually trending up? A flat or falling adjusted line means real "
+            "disparity, not just a shift in what neighborhoods request.\n"
+            "- **Across neighborhoods:** after adjusting for the services each area asks "
+            "for, who is still over- or under-served? On the scatter, points off the "
+            "diagonal are doing better or worse than their service mix predicts.\n"
+            "- **By service type:** which specific services are delivered most unequally "
+            "once isolated from the mix? Click one to see the raw distributions.\n"
+            "- **The regression:** does a race or income gap survive once service type and "
+            "year are held constant?"
         )
 
     if demographics is None or demographics.empty:
@@ -402,9 +598,6 @@ def render_equity_adjusted(
         return
 
     # ── Metric — align with the Equity tab when possible ──────────────────────
-    # The Equity tab can color by metrics (on-time rate, requests/1k) that don't roll
-    # up to the geo×SRType grain; when the user is on one of those, default to days
-    # to close and say so, rather than silently showing a different metric.
     eq_col = METRIC_OPTIONS.get(eq_metric_label or "")
     default_label = eq_metric_label if eq_col in _SRTYPE_METRICS.values() else "Median days to close"
     metric_label = st.radio(
@@ -415,56 +608,82 @@ def render_equity_adjusted(
         key="adj_metric",
     )
     metric_col = _SRTYPE_METRICS[metric_label]
+    higher_better = metric_col in _HIGHER_IS_BETTER
     if eq_metric_label and eq_col not in _SRTYPE_METRICS.values():
         st.caption(
             f"The Equity tab's **{eq_metric_label}** isn't available at the service-type "
             "grain — showing **Median days to close** instead. Closure rate is also available."
         )
 
-    # ── 1 — Raw vs. mix-adjusted citywide score ───────────────────────────────
-    st.subheader("Raw vs. mix-adjusted equity score")
+    # ── 1 — Normalized equity over time ───────────────────────────────────────
+    st.subheader("Normalized equity, year over year")
     st.caption(
-        f"The citywide **{metric_label.lower()}** equity score, computed two ways: the "
-        "**raw** geo-level score (the Equity tab's number), and the **mix-adjusted** "
-        "score — the same comparison run *within* each service type, then averaged "
-        "across types weighted by request volume. 100% = no gap between groups."
+        f"The citywide **{metric_label.lower()}** equity score computed two ways, across "
+        "every year: the **raw** geo-level score (the Equity tab's number, dashed) and the "
+        "**mix-adjusted** score — the same comparison run *within* each service type, then "
+        "averaged across types weighted by volume. The gap between the lines is the part "
+        "of the disparity that reflects *which* services neighborhoods request. 100% = no "
+        "gap between groups."
     )
-
-    per_type = compute_adjusted_scores(data_dir, geo_key, demographics, year, metric_col)
-    citywide = compute_citywide_equity_trend(data_dir, demographics, geo_key)
-
-    raw = {
-        dim: citywide.loc[
-            (citywide["year"] == year) & (citywide["dimension"] == dim)
-            & (citywide["metric"] == metric_label),
-            "score",
-        ].mean()
-        for dim in ("Race", "Income")
-    }
-    adjusted = {dim: _wmean(per_type[dim], per_type["volume"]) for dim in ("Race", "Income")}
-
+    with st.spinner("Scoring within-type equity across all years…"):
+        trend = compute_adjusted_equity_trend(data_dir, geo_key, demographics, metric_col, metric_label)
     col_r, col_i = st.columns(2)
     with col_r:
         st.markdown("**Race — majority-Black vs. majority-White**")
-        st.plotly_chart(_raw_adj_fig(raw["Race"], adjusted["Race"]), use_container_width=True,
-                        key="adj_raw_race", config={"displayModeBar": False})
+        st.plotly_chart(_norm_trend_fig(trend, "Race", year), use_container_width=True,
+                        key="adj_trend_race", config={"displayModeBar": False})
     with col_i:
         st.markdown("**Income — below vs. above median**")
-        st.plotly_chart(_raw_adj_fig(raw["Income"], adjusted["Income"]), use_container_width=True,
-                        key="adj_raw_income", config={"displayModeBar": False})
+        st.plotly_chart(_norm_trend_fig(trend, "Income", year), use_container_width=True,
+                        key="adj_trend_income", config={"displayModeBar": False})
 
-    st.caption(_adjusted_interpretation(raw, adjusted, year))
+    # ── 2 — Normalized delivery across neighborhoods ──────────────────────────
+    st.divider()
+    st.subheader(f"Normalized {metric_label.lower()} across neighborhoods · {year}")
+    st.caption(
+        "Each neighborhood's performance relative to the **citywide norm for the very "
+        "services it requests** (volume-weighted across its own mix). An area that asks "
+        "for structurally slow services isn't penalized for that here — only for handling "
+        "them differently than the city does on average."
+    )
 
-    # ── 2 — Within-type ranking ───────────────────────────────────────────────
+    norm = compute_normalized_geo_metrics(data_dir, geo_key, year, metric_col)
+    if norm.empty:
+        st.caption(
+            f"Not enough geo×SRType coverage to normalize **{metric_label.lower()}** "
+            f"for **{year}** at this geographic level."
+        )
+    else:
+        norm = norm.merge(demographics, on="geoid", how="left")
+        if geojson is not None:
+            st.markdown("**Residual map** — blue is better than the city norm, red is worse")
+            st.plotly_chart(
+                _residual_choropleth_fig(norm, geojson, featureidkey, metric_label, higher_better, mapbox_token),
+                use_container_width=True, key="adj_resid_map", config={"displayModeBar": False},
+            )
+        st.markdown("**Actual vs. expected** — each dot a neighborhood; the dashed line is "
+                    "exactly as its service mix predicts")
+        st.plotly_chart(
+            _actual_expected_scatter_fig(norm, metric_label, metric_col, higher_better),
+            use_container_width=True, key="adj_scatter", config={"displayModeBar": False},
+        )
+        better = "above" if higher_better else "below"
+        st.caption(
+            f"Points **{better}** the dashed line out-perform what their service mix "
+            f"predicts; points on the other side under-perform. Shading by share Black "
+            "shows whether off-diagonal performance lines up with demographics — the "
+            "equity question, asked on the mix-normalized metric."
+        )
+
+    # ── 3 — Within-type ranking ───────────────────────────────────────────────
     st.divider()
     st.subheader("Which service types are delivered most unequally?")
     st.caption(
         "Every eligible service type ranked by its own within-type equity score — the "
-        "gap that remains *after* the service-mix effect is stripped out. A type low on "
-        "this axis is one where the same service reaches different neighborhoods "
-        "differently. Pick one below to see the raw distributions behind its score."
+        "gap that remains *after* the service-mix effect is stripped out. Pick one below "
+        "to see the raw distributions behind its score."
     )
-
+    per_type = compute_adjusted_scores(data_dir, geo_key, demographics, year, metric_col)
     rank_dim = st.radio("Rank by", ["Race", "Income"], horizontal=True, key="adj_rank_dim")
     eligible = _eligible_types(data_dir, geo_key, year)
     ranked = per_type[per_type["SRType"].isin(eligible)].dropna(subset=[rank_dim])
@@ -483,13 +702,10 @@ def render_equity_adjusted(
         st.plotly_chart(_ranking_fig(worst, rank_dim), use_container_width=True,
                         key="adj_rank", config={"displayModeBar": False})
 
-        # Drill-down — raw distributions behind one type's score.
         options = ranked.sort_values(rank_dim)["SRType"].tolist()
         chosen = st.selectbox(
-            "Inspect a service type's distributions",
-            options,
-            format_func=_short_label,
-            key="adj_drill",
+            "Inspect a service type's distributions", options,
+            format_func=_short_label, key="adj_drill",
         )
         if chosen:
             groups = _type_groups(data_dir, geo_key, demographics, year, chosen, metric_col)
@@ -510,7 +726,7 @@ def render_equity_adjusted(
                 else:
                     st.caption("Too few geographies with income data for this type to compare.")
 
-    # ── 3 — Regression ────────────────────────────────────────────────────────
+    # ── 4 — Regression ────────────────────────────────────────────────────────
     st.divider()
     st.subheader("Regression — does the gap survive holding service type constant?")
     st.caption(
@@ -548,31 +764,3 @@ def render_equity_adjusted(
         interp = _regression_interpretation(coef)
         if interp:
             st.markdown(interp)
-
-
-def _adjusted_interpretation(raw: dict, adjusted: dict, year: int) -> str:
-    """Plain-language reading of how the adjusted scores moved relative to raw."""
-    msgs = []
-    for dim in ("Race", "Income"):
-        r, a = raw.get(dim), adjusted.get(dim)
-        if r is None or a is None or np.isnan(r) or np.isnan(a):
-            continue
-        gap = a - r
-        if gap >= 0.08:
-            msgs.append(
-                f"**{dim}:** the adjusted score ({a:.0%}) is well above the raw score "
-                f"({r:.0%}) — much of the {year} {dim.lower()} gap is **mix-driven**: "
-                "disadvantaged areas request structurally slower services more often."
-            )
-        elif gap <= -0.08:
-            msgs.append(
-                f"**{dim}:** the adjusted score ({a:.0%}) is *below* the raw score "
-                f"({r:.0%}) — the service mix was masking a within-type {dim.lower()} gap."
-            )
-        else:
-            msgs.append(
-                f"**{dim}:** adjusted ({a:.0%}) and raw ({r:.0%}) are close — the "
-                f"{dim.lower()} gap is mostly in **how the same service is delivered**, "
-                "not in the mix of services requested."
-            )
-    return "  \n".join(msgs)
