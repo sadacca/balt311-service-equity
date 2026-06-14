@@ -13,7 +13,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 _BALTIMORE_COLOR = "#C8102E"   # reference city — stands out from the muted peers
-_PEER_COLOR = "#9aa0a6"
+_PEER_COLOR = "#5f6368"        # dark enough that white in-bar labels stay legible
 
 # label → (column, value format, higher_is_better | None for neutral)
 _METRICS: dict[str, tuple[str, str, bool | None]] = {
@@ -30,20 +30,27 @@ def _is_baltimore(city: str) -> bool:
 
 
 def _bar(df: pd.DataFrame, col: str, label: str, fmt: str) -> go.Figure:
-    """Horizontal ranked bar, Baltimore highlighted, value labels on the bars."""
-    d = df.sort_values(col, ascending=True)  # plotly draws first row at the bottom
+    """Horizontal ranked bar, Baltimore highlighted. Value labels sit *inside* the bars
+    (not outside, which clipped at the right edge on narrow/mobile viewports); city names
+    on the y-axis use automargin so they're never cut off."""
+    d = df.sort_values(col, ascending=True)  # largest at the top
     colors = [_BALTIMORE_COLOR if _is_baltimore(c) else _PEER_COLOR for c in d["city"]]
     fig = go.Figure(go.Bar(
         x=d[col], y=d["city"], orientation="h",
         marker_color=colors,
-        text=[fmt.format(v) for v in d[col]], textposition="outside",
-        hovertemplate="<b>%{y}</b><br>" + label + ": " + "%{text}<extra></extra>",
+        text=[fmt.format(v) for v in d[col]],
+        textposition="inside", insidetextanchor="end",
+        textfont={"color": "white", "size": 15},
+        hovertemplate="<b>%{y}</b><br>" + label + ": %{text}<extra></extra>",
     ))
     fig.update_layout(
-        height=max(200, 64 * len(d) + 90),
-        margin={"t": 10, "b": 10, "l": 10, "r": 40},
-        xaxis_title=label, plot_bgcolor="white", paper_bgcolor="white", showlegend=False,
+        height=max(170, 78 * len(d) + 70),
+        margin={"t": 24, "b": 10, "l": 10, "r": 10},
+        xaxis_title=label, yaxis_title=None,
+        plot_bgcolor="white", paper_bgcolor="white", showlegend=False,
+        uniformtext={"mode": "show", "minsize": 11},  # never hide a value label
     )
+    fig.update_yaxes(automargin=True, tickfont={"size": 13})
     if col in _RATE_COLS:
         fig.update_xaxes(tickformat=".0%", range=[0, 1])
     else:
@@ -107,12 +114,21 @@ def render_city_delivery(data_dir: Path, year: int) -> None:
     if missing:
         st.caption(f"Not available for: {', '.join(missing)}.")
 
-    with st.expander("How each city defines a “closed” request (read before comparing)"):
+    with st.expander("Methodology & comparability (read before comparing)"):
+        st.markdown("**How each city defines a “closed” request:**")
         for _, r in sub.sort_values("city").iterrows():
             note = r.get("closure_definition") or "—"
             st.markdown(f"**{r['city']}** — {note}")
         st.caption(
             "Closure semantics differ by city, so closure rate and median days-to-close are "
             "directional, not exact. Volumes are compared per 1,000 residents (ACS county "
-            "population), never as raw counts."
+            "population), never as raw counts.\n\n"
+            "**Median days-to-close is a record-level pooled median here** — half of all the "
+            "city's requests closed within that many days — computed identically for every "
+            "city. This is intentionally *not* the same figure as the Operations tab's "
+            "“citizen-initiated” median, which is a geographic aggregation (a volume-weighted "
+            "mean of per-tract medians) and so reads a few hours different for Baltimore. The "
+            "pooled median is the only measure DC can match (it has no tract join), so it is "
+            "the one used for every cross-city comparison."
         )
+

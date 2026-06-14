@@ -38,6 +38,16 @@ class CityAdapter:
         """Return this city's records for `year`, already mapped to canonical fields."""
         raise NotImplementedError
 
+    def precomputed(self, year: int, proc_dir) -> dict | None:
+        """Optionally return delivery metrics already computed elsewhere, to avoid a
+        redundant fetch. Baltimore overrides this to read the within-app canonical pooled
+        metrics (so its cross-city row equals the Operations tab exactly and the ~12-min
+        re-fetch is skipped). Returns None by default — most cities fetch + compute.
+
+        The dict, when returned, holds: total_requests, median_days_to_close, closure_rate,
+        on_time_rate (population / requests_per_1k are added by the driver)."""
+        return None
+
     def scope(self, df: pd.DataFrame) -> pd.DataFrame:
         """Restrict to comparable "real service requests": non-ECC and geocoded.
         Subclasses extend with city-specific filters (e.g. resident-initiated)."""

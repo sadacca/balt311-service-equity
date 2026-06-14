@@ -40,19 +40,40 @@ def _citywide_value(df: pd.DataFrame, col: str) -> float:
 
 @st.cache_data
 def _build_equity_citywide_ts(data_dir: Path) -> pd.DataFrame:
-    """Aggregate citywide citizen-initiated (equity subset) metrics from tract_metrics files."""
+    """Citywide citizen-initiated (equity subset) metrics per year.
+
+    Prefers the canonical pooled metrics (`citywide_metrics_{year}.parquet`) so this figure
+    matches the cross-city Service Delivery tab exactly — a record-level pooled median, not
+    a geographic aggregate. Falls back to the legacy volume-weighted mean of per-tract
+    medians for any year whose pooled file hasn't been regenerated yet.
+    """
     records = []
     for path in sorted(data_dir.glob("tract_metrics_*.parquet")):
         try:
             year = int(path.stem.split("_")[-1])
         except ValueError:
             continue
+
+        pooled_path = data_dir / f"citywide_metrics_{year}.parquet"
+        if pooled_path.exists():
+            cw = pd.read_parquet(pooled_path)
+            if not cw.empty:
+                r = cw.iloc[0]
+                records.append({
+                    "year": year,
+                    "total_requests": float(r.get("total_requests", float("nan"))),
+                    "closure_rate": float(r.get("closure_rate", float("nan"))),
+                    "on_time_rate": float(r.get("on_time_rate", float("nan"))),
+                    "median_days_to_close": float(r.get("median_days_to_close", float("nan"))),
+                })
+                continue
+
+        # Legacy fallback: weighted mean of per-tract medians from tract_metrics
         df = pd.read_parquet(path)
         if "total_requests" not in df.columns:
             continue
         w = df["total_requests"].fillna(0)
-        total = w.sum()
-        row: dict = {"year": year, "total_requests": float(total)}
+        row: dict = {"year": year, "total_requests": float(w.sum())}
         for col in ("closure_rate", "on_time_rate", "median_days_to_close"):
             if col in df.columns:
                 mask = df[col].notna() & (w > 0)

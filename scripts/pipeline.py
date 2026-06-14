@@ -448,6 +448,7 @@ def stage_process(year: int, is_live: bool) -> None:
     import geopandas as gpd
     from balt311.metrics import (
         aggregate_tract,
+        citywide_pooled_metrics,
         clean_strings,
         compute_days_to_close,
         compute_due_date_gap,
@@ -531,6 +532,18 @@ def stage_process(year: int, is_live: bool) -> None:
     )
 
     tract_metrics = aggregate_tract(df_eq)
+
+    # ── Canonical citywide pooled metrics (single source of truth) ───────────
+    # Record-level pooled median over the equity subset — the figure both the Operations
+    # tab and the cross-city Service Delivery tab read, so they always agree.
+    citywide = {"year": year, **citywide_pooled_metrics(df_eq)}
+    out_citywide = PROC / f"citywide_metrics_{year}.parquet"
+    pd.DataFrame([citywide]).to_parquet(out_citywide, index=False)
+    log(
+        f"Saved citywide pooled metrics → {out_citywide.name} "
+        f"(total={citywide['total_requests']:,}, median_days={citywide['median_days_to_close']:.2f}, "
+        f"closure={citywide['closure_rate']:.3f})"
+    )
 
     # ── Population enrichment (optional — soft failure) ──────────────────────
     pop_path = RAW_DIR / "tract_population.csv"
