@@ -303,6 +303,17 @@ tract join deferred to Phase 5.5. **Requires re-running the `process` stage for 
 to overwrite the remaining stale rows (2024 still shows the pre-fix 0.004-day / 1.08M row);
 re-confirm each year as it lands.
 
+**Backfill cross-check (2026-06-14):** all 10 `citywide_metrics_{year}` (2016–2025) present;
+DC 2023–2025 sane and stable (~422–441k requests, 2.9–3.6 d median, 99% closure); 2024's
+pre-fix garbage row is gone (now 514k / 3.16 d). **One gap found:** the cross-city Baltimore
+rows do *not* yet equal the pooled `citywide_metrics` files — ~2.5% higher volume / a hair
+lower median (the lat/lon-vs-tract-join signature), because the cross-city backfill ran
+*before* the pooled files + `precomputed` code were on `main`, so it used the old fetch path.
+Fix: re-run the cross-city backfill with `cities=baltimore, force=true` — Baltimore then reads
+the pooled files (instant, no fetch) and Tab 1 == Tab 7 exactly. Canonical 2025 figures
+(pooled): Baltimore 459,906 requests, 3.04 d median, 92.2% closure, ~797 per 1k; DC 440,600,
+2.89 d, 98.8%, 656 per 1k.
+
 ### 6.2 — Delivery tab, MVP (Phase 5.2) — _tab shipped 2026-06-13; findings pending data_
 
 **Built:** `app/components/city_delivery.py` (`render_city_delivery`) wired into the
