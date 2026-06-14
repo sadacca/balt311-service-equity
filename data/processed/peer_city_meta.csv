@@ -1,3 +1,3 @@
 city,fips,population,portal_url,closure_definition
-"Baltimore, MD",24510,577193.0,https://data.baltimorecity.gov,"Scope matches the within-Baltimore equity subset: resident-initiated (Phone/API/Mail/Email), non-ECC, geocoded. Closed = SRStatus is 'Closed' / 'Closed (Transferred)'."
+"Baltimore, MD",24510,577193.0,https://data.baltimorecity.gov,"Same figures as the within-Baltimore tabs (single source of truth): equity subset — resident-initiated (Phone/API/Mail/Email), non-ECC, tract-geocoded; closed = SRStatus 'Closed' / 'Closed (Transferred)'; record-level pooled median."
 "Washington, DC",11001,672079.0,https://opendata.dc.gov/,"Closed = a resolution date (RESOLUTIONDATE) is present. DC auto-resolves some request types, so median days-to-close is directional, not exact."
