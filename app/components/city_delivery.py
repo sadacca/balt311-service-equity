@@ -13,7 +13,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 _BALTIMORE_COLOR = "#C8102E"   # reference city — stands out from the muted peers
-_PEER_COLOR = "#9aa0a6"
+_PEER_COLOR = "#5f6368"        # dark enough that white in-bar labels stay legible
 
 # label → (column, value format, higher_is_better | None for neutral)
 _METRICS: dict[str, tuple[str, str, bool | None]] = {
@@ -30,24 +30,31 @@ def _is_baltimore(city: str) -> bool:
 
 
 def _bar(df: pd.DataFrame, col: str, label: str, fmt: str) -> go.Figure:
-    """Horizontal ranked bar, Baltimore highlighted, value labels on the bars."""
-    d = df.sort_values(col, ascending=True)  # plotly draws first row at the bottom
+    """Vertical ranked bar, Baltimore highlighted. Value labels sit *inside* the bars and
+    city names on the x-axis, so nothing clips on a narrow (mobile) viewport — the failure
+    mode of horizontal bars with outside labels."""
+    d = df.sort_values(col, ascending=False)  # tallest on the left
     colors = [_BALTIMORE_COLOR if _is_baltimore(c) else _PEER_COLOR for c in d["city"]]
     fig = go.Figure(go.Bar(
-        x=d[col], y=d["city"], orientation="h",
+        x=d["city"], y=d[col],
         marker_color=colors,
-        text=[fmt.format(v) for v in d[col]], textposition="outside",
-        hovertemplate="<b>%{y}</b><br>" + label + ": " + "%{text}<extra></extra>",
+        text=[fmt.format(v) for v in d[col]],
+        textposition="inside", insidetextanchor="middle",
+        textfont={"color": "white", "size": 15},
+        hovertemplate="<b>%{x}</b><br>" + label + ": %{text}<extra></extra>",
     ))
     fig.update_layout(
-        height=max(200, 64 * len(d) + 90),
-        margin={"t": 10, "b": 10, "l": 10, "r": 40},
-        xaxis_title=label, plot_bgcolor="white", paper_bgcolor="white", showlegend=False,
+        height=360,
+        margin={"t": 20, "b": 10, "l": 10, "r": 10},
+        yaxis_title=label, xaxis_title=None,
+        plot_bgcolor="white", paper_bgcolor="white", showlegend=False,
+        uniformtext={"mode": "show", "minsize": 11},  # never hide a value label
     )
+    fig.update_xaxes(tickfont={"size": 13})
     if col in _RATE_COLS:
-        fig.update_xaxes(tickformat=".0%", range=[0, 1])
+        fig.update_yaxes(tickformat=".0%", rangemode="tozero")
     else:
-        fig.update_xaxes(rangemode="tozero")
+        fig.update_yaxes(rangemode="tozero")
     return fig
 
 
