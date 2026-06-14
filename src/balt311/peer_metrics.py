@@ -27,14 +27,19 @@ def compute_city_metrics(
     population: float | None = None,
     right_censor_days: int = 0,
     closure_definition: str = "",
+    scope_fn=None,
+    closed_fn=None,
 ) -> dict:
     """Delivery metrics for one city-year from canonical records.
 
-    `right_censor_days` drops requests created within that many days of the latest
-    request (Baltimore's live-year rule), so a city queried mid-year isn't penalized for
-    recently-opened, not-yet-closed requests. `population` (ACS county total) yields
-    requests-per-1k; omit it to leave that metric null. `on_time_rate` is null in the
-    MVP — not every city publishes a due-date standard.
+    `scope_fn(df) -> df` restricts to the city's comparable "real service request" set
+    (e.g. Baltimore's non-ECC, resident-initiated, geocoded subset) — without it, ECC
+    information-calls inflate Baltimore's volume and drag median days-to-close to ~0.
+    `closed_fn(df) -> bool Series` defines closure (Baltimore uses SRStatus; default is
+    "CloseDate present"). `right_censor_days` drops requests created within that many days
+    of the latest request (Baltimore's live-year rule). `population` (ACS county total)
+    yields requests-per-1k. `on_time_rate` is null in the MVP — not every city publishes a
+    due-date standard.
     """
     base = {
         "city": city, "year": int(year), "total_requests": 0,
@@ -45,27 +50,30 @@ def compute_city_metrics(
         return base
 
     df = pd.DataFrame(records)
-    created = pd.to_datetime(df.get("CreatedDate"), unit="ms", utc=True, errors="coerce")
-    closed = pd.to_datetime(df.get("CloseDate"), unit="ms", utc=True, errors="coerce")
+    df["_created"] = pd.to_datetime(df.get("CreatedDate"), unit="ms", utc=True, errors="coerce")
+    df["_closed"] = pd.to_datetime(df.get("CloseDate"), unit="ms", utc=True, errors="coerce")
 
-    if right_censor_days and created.notna().any():
-        cutoff = created.max() - pd.Timedelta(days=right_censor_days)
-        keep = created <= cutoff
-        created, closed = created[keep], closed[keep]
+    if scope_fn is not None:
+        df = scope_fn(df)
 
-    total = int(created.shape[0])
+    if right_censor_days and df["_created"].notna().any():
+        cutoff = df["_created"].max() - pd.Timedelta(days=right_censor_days)
+        df = df[df["_created"] <= cutoff]
+
+    total = int(len(df))
     if total == 0:
         return base
 
-    is_closed = closed.notna()
-    days = (closed - created).dt.total_seconds() / 86400.0
+    is_closed = closed_fn(df) if closed_fn is not None else df["_closed"].notna()
+    days = (df["_closed"] - df["_created"]).dt.total_seconds() / 86400.0
     days = days.where(days >= 0, 0.0)  # floor sub-second negatives (same-day closures)
+    closed_days = days[is_closed.astype(bool)].dropna()
 
     base.update(
         total_requests=total,
         requests_per_1k=(total / population * 1000.0) if population else None,
-        median_days_to_close=float(days[is_closed].median()) if is_closed.any() else None,
-        closure_rate=float(is_closed.mean()),
+        median_days_to_close=float(closed_days.median()) if not closed_days.empty else None,
+        closure_rate=float(is_closed.astype(bool).mean()),
     )
     return base
 
