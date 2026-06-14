@@ -53,6 +53,7 @@ jobs:
       - name: Fetch + compute cross-city metrics
         env:
           CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
+          SOCRATA_APP_TOKEN: ${{ secrets.SOCRATA_APP_TOKEN }}
         run: |
           FLAGS=""
           [ "${{ inputs.is_live_year }}" = "true" ] && FLAGS="$FLAGS --live"

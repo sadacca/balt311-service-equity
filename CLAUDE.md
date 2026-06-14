@@ -130,7 +130,7 @@ Geo ID conventions: tract files use 11-digit GEOID strings in a `geoid` column. 
 
 **Streamlit version**: must be ≥1.40.0 for `st.pills()` (added in 1.40) and `st.dataframe(on_select="rerun", selection_mode="single-row")`.
 
-**Secrets**: Mapbox token in Streamlit Cloud Secrets (`mapbox.token`), never in repo. Census API key as GitHub Actions secret `CENSUS_API_KEY`, never in repo.
+**Secrets**: Mapbox token in Streamlit Cloud Secrets (`mapbox.token`), never in repo. Census API key as GitHub Actions secret `CENSUS_API_KEY`, never in repo. `SOCRATA_APP_TOKEN` as an optional GitHub Actions secret — passed to the Socrata cities (NYC/Chicago/SF/Austin/Nashville/KC) to lift anonymous rate-limiting; the adapter works without it (just throttled), so it degrades gracefully if unset.
 
 ---
 
