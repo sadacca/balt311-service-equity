@@ -123,8 +123,8 @@ with st.sidebar:
         "*Baltimore vs. Washington, DC on the same delivery metrics* — requests per "
         "1,000 residents, median days to close, closure rate — as rates, never raw "
         "counts, with Baltimore highlighted. Median days-to-close is a record-level "
-        "pooled median computed the same way for every city, so it reads a few hours "
-        "different from the geographically-aggregated Operations-tab figure."
+        "pooled median computed the same way for every city — the same canonical figure "
+        "the Operations tab reports for Baltimore's citizen-initiated median."
     )
     st.markdown(
         "**Service Equity** · **Maturity index** — coming next\n\n"

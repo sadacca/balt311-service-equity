@@ -125,10 +125,10 @@ def render_city_delivery(data_dir: Path, year: int) -> None:
             "population), never as raw counts.\n\n"
             "**Median days-to-close is a record-level pooled median here** — half of all the "
             "city's requests closed within that many days — computed identically for every "
-            "city. This is intentionally *not* the same figure as the Operations tab's "
-            "“citizen-initiated” median, which is a geographic aggregation (a volume-weighted "
-            "mean of per-tract medians) and so reads a few hours different for Baltimore. The "
-            "pooled median is the only measure DC can match (it has no tract join), so it is "
-            "the one used for every cross-city comparison."
+            "city. For Baltimore this is the *same* canonical figure the Operations tab reports "
+            "as its “citizen-initiated” median (one source of truth). It is the only measure "
+            "DC can match (no tract join), so it anchors every cross-city comparison. It does "
+            "differ from the Operations “all requests received” headline, which is a broader, "
+            "differently-scoped figure."
         )
 
