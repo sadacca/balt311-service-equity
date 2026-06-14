@@ -464,12 +464,28 @@ validates the whole cross-city pipeline that equity then reuses.
   endpoint, server-side aggregation via SQL) + `cities/philadelphia.py` mapping
   `requested_datetime`/`closed_datetime`/`service_name`/`lat`/`lon`. Add Philadelphia rows to
   `peer_city_metrics`. *(Wave 1 — strongest demographic peer.)*
-- [ ] **P5.3-2: Socrata adapter** — `cities/socrata.py` using SODA `$select`/`$where`/`$group`
-  to aggregate **server-side** (never pull raw millions). One adapter, parameterized by domain +
-  dataset id + column map.
-- [ ] **P5.3-3: Add NYC / Chicago / SF** — `cities/{nyc,chicago,sf}.py` configs over the Socrata
-  adapter (`erm2-nwe9`, `v6vf-nfxy`, `vw6y-z8j6`). Add their rows to `peer_city_metrics`. *(Wave 2
-  — leading-practice benchmarks.)*
+- [ ] **P5.3-2: Socrata adapter** — `cities/socrata.py`, one adapter parameterized by domain +
+  dataset id. SoQL has no `median` aggregate, so it cannot compute the canonical pooled
+  median server-side; instead it pulls **lean record-level** rows (only the ~6 mapped columns
+  via `$select`, year-filtered via `$where`, offset-paged) — the same record-level methodology
+  as the Carto/ArcGIS cities, which is what keeps the pooled median comparable. Robust to
+  field-name drift: discovers the dataset's real columns (1-row probe) and resolves each
+  canonical field against an ordered candidate list, so a city whose schema names differ
+  slightly degrades gracefully instead of 400-ing. Optional `SOCRATA_APP_TOKEN` lifts throttling.
+- [ ] **P5.3-2c: CKAN adapter + Boston** — `cities/ckan.py` (Analyze Boston DataStore) +
+  `cities/boston.py`. Boston publishes one CKAN resource per year (UUID), so the adapter
+  resolves the year's `resource_id` via `package_show` at fetch time, then pages
+  `datastore_search`. Fields: `open_dt`/`closed_dt`/`type`/`latitude`/`longitude`/`case_status`.
+- [ ] **P5.3-3: Add the Socrata + CKAN cohort** — curated for platform, geographic, size, and
+  equity-profile diversity (so the comparison stresses both the adapter layer and the analysis):
+  - **NYC** `erm2-nwe9` (data.cityofnewyork.us) — largest system, leading-practice benchmark; 5-borough pop sum.
+  - **Chicago** `v6vf-nfxy` (data.cityofchicago.org) — large Midwest, unified since 2018.
+  - **San Francisco** `vw6y-z8j6` (data.sfgov.org) — earliest history (2008), Open311 leader, West-coast peer.
+  - **Austin** `xwdj-i9he` (data.austintexas.gov) — mid-size South, strong data culture.
+  - **Nashville** `7qhx-rexh` (data.nashville.gov) — consolidated city-county (exact ACS pop), Southern equity contrast.
+  - **Kansas City** `d4px-6rwg` (data.kcmo.org) — mid-size, newer (2021+) system.
+  - **Boston** (CKAN, via P5.3-2c) — Northeast peer, Open311, rich SLA/on-time fields.
+  Registered in `ADAPTERS`; added to both peer-city workflows' default city list.
 - [ ] **P5.3-4: Per-city onboarding QA** — for each city: confirm year coverage, validate a
   spot metric against the city's own published figure, record closure definition + channel scope.
 - [ ] **P5.3-5: Documentation checkpoint** — append `cross_city_comparison.md` §6.3 **one entry

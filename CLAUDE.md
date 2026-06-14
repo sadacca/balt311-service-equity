@@ -178,7 +178,8 @@ src/balt311/
   ingest.py                       # ArcGIS FeatureServer pagination (Baltimore)
   metrics.py                      # Cleaning, aggregation, CSA rollup, demographics rollup
   peer_metrics.py                 # City-agnostic cross-city delivery metrics + ACS county pop
-  cities/                         # Per-city adapters: base, arcgis + carto (reusable clients), baltimore, dc, philadelphia
+  cities/                         # Per-city adapters: base, arcgis + carto + socrata + ckan (reusable clients),
+                                  #   baltimore, dc, philadelphia, nyc, chicago, sf, austin, nashville, kansas_city, boston
 
 .github/workflows/
   update_data.yml                 # Single-year workflow

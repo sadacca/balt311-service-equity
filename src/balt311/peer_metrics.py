@@ -97,14 +97,11 @@ def compute_city_metrics(
     return base
 
 
-def fetch_county_population(fips: str, acs_year: int = 2023) -> float | None:
-    """ACS 5-year total population (B01003) for a 5-digit state+county FIPS. Reads
-    CENSUS_API_KEY from the environment if set. Returns None on failure (per-1k omitted)."""
-    state, county = fips[:2], fips[2:]
-    api_key = os.environ.get("CENSUS_API_KEY", "").strip()
+def _fetch_state_counties_pop(state: str, counties: list[str], acs_year: int, api_key: str) -> float | None:
+    """Summed ACS 5-year population (B01003) for one or more counties in a single state."""
     url = (
         f"https://api.census.gov/data/{acs_year}/acs/acs5"
-        f"?get=B01003_001E&for=county:{county}&in=state:{state}"
+        f"?get=B01003_001E&for=county:{','.join(counties)}&in=state:{state}"
         + (f"&key={api_key}" if api_key else "")
     )
     for attempt in range(1, 5):
@@ -112,12 +109,32 @@ def fetch_county_population(fips: str, acs_year: int = 2023) -> float | None:
             req = urllib.request.Request(url, headers={"Accept": "application/json"})
             with urllib.request.urlopen(req, timeout=30) as resp:
                 rows = json.loads(resp.read().decode("utf-8"))
-            return float(rows[1][0])  # header row, then the single county row
+            return float(sum(float(r[0]) for r in rows[1:]))  # skip header row
         except Exception:
             if attempt == 4:
                 return None
             time.sleep(2 ** attempt)
     return None
+
+
+def fetch_county_population(fips: str, acs_year: int = 2023) -> float | None:
+    """ACS 5-year total population (B01003) for a 5-digit state+county FIPS, or the SUM across
+    several comma-separated FIPS (e.g. NYC's five boroughs "36005,36047,36061,36081,36085").
+    Reads CENSUS_API_KEY from the environment if set. Returns None on failure (per-1k omitted)."""
+    parts = [f.strip() for f in str(fips).split(",") if f.strip()]
+    if not parts:
+        return None
+    api_key = os.environ.get("CENSUS_API_KEY", "").strip()
+    by_state: dict[str, list[str]] = {}
+    for f in parts:
+        by_state.setdefault(f[:2], []).append(f[2:])
+    total = 0.0
+    for state, counties in by_state.items():
+        pop = _fetch_state_counties_pop(state, counties, acs_year, api_key)
+        if pop is None:
+            return None
+        total += pop
+    return total
 
 
 def upsert_metrics(existing: pd.DataFrame, new_rows: list[dict]) -> pd.DataFrame:
