@@ -500,6 +500,13 @@ validates the whole cross-city pipeline that equity then reuses.
   comparison set; sort by the selected metric.
 - [ ] **P5.4-2: Year-alignment control** — default to the most recent year present in all
   selected cities; surface which years are shared vs. missing.
+- [ ] **P5.4-4: "Clean" median days-to-close (drop same-day closures)** — alongside the raw
+  pooled median (now ⚠-flagged for auto-close contamination via `pct_same_day_close`), compute
+  and offer a secondary median that **excludes 0-day closures**, giving a more comparable
+  delivery figure for cities that auto-close referral/duplicate/invalid records. Pipeline:
+  add `median_days_to_close_excl_same_day` in `compute_city_metrics`; tab: a toggle (raw vs.
+  same-day-excluded) or a paired bar, with the raw value still shown and flagged. *(Deferred per
+  user — revisit once same-day shares across the full cohort are visible; flag-only for now.)*
 - [ ] **P5.4-3: Documentation checkpoint** — append `cross_city_comparison.md` §6.4: cohort
   delivery findings — where Baltimore lands on each metric vs. peers and vs. leading cities.
   *(Gate for starting 5.5.)*
