@@ -164,7 +164,7 @@ of these dashboards.
 **Normalization rules** (applied in the per-city adapter layer; full list in
 `cross_city_comparison.md` §4):
 - Compare **rates** (per-1k, closure rate, median days), never raw counts — NYC dwarfs Baltimore.
-- For high-volume Socrata systems, aggregate **server-side** (`$select`/`$group`); never pull tens of millions of raw rows.
+- The canonical metric is a record-level **pooled median** days-to-close, and SoQL has no `median` aggregate, so server-side `$group` cannot produce it. Instead the Socrata adapter pulls **lean record-level** rows — only the ~6 mapped columns via `$select`, filtered to the year via `$where`, offset-paged — the same record-level basis as the ArcGIS/Carto cities. (An app token via `SOCRATA_APP_TOKEN` lifts anonymous throttling.)
 - Apply Baltimore's existing 30-day right-censoring exclusion per city for live-year queries.
 - Use **all geocoded requests** as the common denominator; apply the resident-initiated subset only where a channel field exists, and label it.
 - Compare on the set of years present in all cohort cities; default to the most recent shared year.
@@ -266,11 +266,12 @@ pipeline; equity follows because it reuses that pipeline plus the portable ACS-t
 (§3.6).
 
 **Reference-city framing.** Baltimore is the reference both in the UI (highlighted, pinned)
-and analytically (every value reads "relative to Baltimore's"). The cohort grows from a single
-pair (Baltimore + DC) at MVP to ~5 cities, sequenced by API family so each new adapter unlocks
-several cities at once (ArcGIS → Carto → Socrata; see `cross_city_comparison.md` §3). Placement
-— whether Tabs 7–8 append to the existing six-tab arc or form a dedicated "Compare cities"
-section — is decided during the MVP build (`TASKS.md` P5.2-3).
+and analytically (every value reads "relative to Baltimore's"). The cohort grew from a single
+pair (Baltimore + DC) at MVP to **10 cities across four API families**, each new adapter
+unlocking several cities at once (ArcGIS → Carto → Socrata → CKAN; see
+`cross_city_comparison.md` §3): Baltimore + DC (ArcGIS), Philadelphia (Carto), NYC / Chicago /
+San Francisco / Austin / Nashville / Kansas City (Socrata), Boston (CKAN). Tabs 7–8 form a
+dedicated **"Compare cities"** group, kept separate from the within-Baltimore six-tab arc.
 
 **New Phase 5 dependencies:** a per-city ingestion adapter layer (`src/balt311/cities/`), one
 adapter per API family; no new app runtime dependencies beyond `app/requirements.txt` (the

@@ -464,7 +464,7 @@ validates the whole cross-city pipeline that equity then reuses.
   endpoint, server-side aggregation via SQL) + `cities/philadelphia.py` mapping
   `requested_datetime`/`closed_datetime`/`service_name`/`lat`/`lon`. Add Philadelphia rows to
   `peer_city_metrics`. *(Wave 1 — strongest demographic peer.)*
-- [ ] **P5.3-2: Socrata adapter** — `cities/socrata.py`, one adapter parameterized by domain +
+- [x] **P5.3-2: Socrata adapter** — `cities/socrata.py`, one adapter parameterized by domain +
   dataset id. SoQL has no `median` aggregate, so it cannot compute the canonical pooled
   median server-side; instead it pulls **lean record-level** rows (only the ~6 mapped columns
   via `$select`, year-filtered via `$where`, offset-paged) — the same record-level methodology
@@ -472,11 +472,11 @@ validates the whole cross-city pipeline that equity then reuses.
   field-name drift: discovers the dataset's real columns (1-row probe) and resolves each
   canonical field against an ordered candidate list, so a city whose schema names differ
   slightly degrades gracefully instead of 400-ing. Optional `SOCRATA_APP_TOKEN` lifts throttling.
-- [ ] **P5.3-2c: CKAN adapter + Boston** — `cities/ckan.py` (Analyze Boston DataStore) +
+- [x] **P5.3-2c: CKAN adapter + Boston** — `cities/ckan.py` (Analyze Boston DataStore) +
   `cities/boston.py`. Boston publishes one CKAN resource per year (UUID), so the adapter
   resolves the year's `resource_id` via `package_show` at fetch time, then pages
   `datastore_search`. Fields: `open_dt`/`closed_dt`/`type`/`latitude`/`longitude`/`case_status`.
-- [ ] **P5.3-3: Add the Socrata + CKAN cohort** — curated for platform, geographic, size, and
+- [x] **P5.3-3: Add the Socrata + CKAN cohort** — curated for platform, geographic, size, and
   equity-profile diversity (so the comparison stresses both the adapter layer and the analysis):
   - **NYC** `erm2-nwe9` (data.cityofnewyork.us) — largest system, leading-practice benchmark; 5-borough pop sum.
   - **Chicago** `v6vf-nfxy` (data.cityofchicago.org) — large Midwest, unified since 2018.
@@ -647,9 +647,50 @@ index is built to show both truths honestly.
 
 ---
 
-## Phase 6 — Seasonality Tab *(Long-term)*
+## Phase 5.9 — Full numerical municipal rankings (top-40 metros) *(planned enhancement)*
 
-**Goal**: answer "when do requests spike, and does seasonal surge affect equitable delivery?"
+**Goal**: deepen the maturity index from today's **6-metro detailed scorecard + a coarse
+✅/🟡/❔ census** into a **full numerical ranking of all 40 largest US metros** (plus the
+mid-size enablers), every city scored 0–3 on the same 9-dimension rubric and assigned an
+ordinal rank — so the index gains both *usability* (a complete, sortable league table, not a
+6-row spotlight beside a status list) and *depth of 311 service-information* (per-dimension
+numbers and observed data-depth signals for every metro, not just the in-cohort six). The full
+40-metro scores are calibrated **against the existing 6-metro detailed ranking** so the two are
+one continuous scale, not two disconnected exercises.
+
+> Interpreting the request: "full numerical rankings for top 40 metros aligned to the current
+> detailed ranking for 6 metros" — the current detailed ranking covers 6 metros (Baltimore, DC,
+> Philadelphia, NYC, Chicago, SF); this phase extends that same numerical treatment to all 40.
+> (If the intent was 6 *metrics* rather than 6 *metros*, P5.9-1's dimension set is where that
+> would be pinned down.)
+
+- [ ] **P5.9-1: Score the full top-40 cohort numerically** — extend `peer_city_maturity.csv`
+  from 6 rows to all 40 metros + the 5 enablers, 0–3 per rubric dimension, anchored to the
+  existing 6-metro scores so they share one scale. Ground each row in the **verified census**
+  (`peer_city_coverage_census.csv`): the `evidence`/`endpoint_url`/`api_fields` columns feed
+  Availability, API access, and Field-completeness directly; partial/unconfirmed cities score
+  the data-availability dimensions low. Keep the `in_cohort` flag (the 10 ingested cities).
+- [ ] **P5.9-2: Rank + usability surface in the tab** — add a sortable/filterable **full
+  league table** to `maturity_index.py`: rank · city · total · per-dimension scores · evidence
+  tier, Baltimore pinned/highlighted, filterable to scoreable-only and sortable by any
+  dimension. Keep the existing detailed heatmap above it as the in-cohort "spotlight" so the
+  deep ranking and the ingested cities stay legible. (Depends on P5.9-1.)
+- [ ] **P5.9-3: Calibration / anchoring QA** — document what 0/1/2/3 means per dimension
+  (explicit anchors) so scores are reproducible and defensible, and verify no rank inversions
+  vs. known leaders (SF/NYC/Chicago stay top-tier; Baltimore's relative position is stable
+  against the 6-metro baseline). The anchors become the scoring rubric of record in §8.
+- [ ] **P5.9-4: Depth — observed service-information signals** — enrich each scoreable row with
+  data-depth signals captured from the live API probe (`scripts/verify_census.py`): published
+  **history span** (years), **field count**, and presence of the deeper fields (intake channel,
+  cost, reopen). Surface as columns and feed History-depth / Field-completeness numerically
+  rather than by judgment — this is the "depth of 311 service information" the ranking conveys.
+- [ ] **P5.9-5: Documentation checkpoint** — update `cross_city_comparison.md` §8 with the
+  full-ranking methodology, the per-dimension anchors, and the headline ("N of 40 fully
+  scoreable; Baltimore ranks #X of the scoreable set").
+
+---
+
+## Phase 6 — Seasonality Tab *(Long-term)*
 
 **Goal**: answer "when do requests spike, and does seasonal surge affect equitable delivery?"
 

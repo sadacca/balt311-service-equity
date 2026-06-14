@@ -10,7 +10,7 @@ This dashboard provides operational visibility into Baltimore's 311 service requ
 Four comparison axes drive every design decision:
 1. **Historical** — how does this year compare to prior years (2016–2025)
 2. **Geographic** — which neighborhoods get faster / slower service, and why
-3. **Cross-municipal** — how does Baltimore compare to peer cities on the same metrics *(Phase 5, not yet built)*
+3. **Cross-municipal** — how does Baltimore compare to peer cities on the same metrics *(Phase 5 — Service Delivery + Open-Data Maturity tabs live; per-city Service Equity in progress)*
 4. **Equity** — does service quality differ systematically by race or income of the requesting neighborhood
 
 The equity lens is not the only lens — operations clarity for managers is equally important and is the first tab.
@@ -28,7 +28,7 @@ All current development is on `claude/review-requirements-AlGBm`. Push only to t
 Streamlit app at `app/app.py`, organized into **two nested-tab groups** that keep the two fundamentally different kinds of analysis distinct:
 
 - **🏙️ Within Baltimore** — the sequenced six-step story: Operations → Services → Area Service Usage → Equity → Service Equity → Mix-Adjusted Equity.
-- **🌐 Compare cities** — *(Phase 5 scaffold)* city-to-city comparison: Service Delivery → Service Equity → Maturity Index. Currently placeholders (`app/components/cross_city.py`); city-level only, so they do **not** use `geo_level`.
+- **🌐 Compare cities** — *(Phase 5)* city-to-city comparison: Service Delivery → Service Equity → Maturity Index. **Service Delivery (`city_delivery.py`) and Maturity Index (`maturity_index.py`) are live**; Service Equity is still a placeholder (`cross_city.py`). Cohort = 10 cities across four platforms (ArcGIS, Carto, Socrata, CKAN). City-level only, so they do **not** use `geo_level`.
 
 The year selector is global (above both groups) — cross-city data is also city × year. The **geographic-unit toggle (Census Tract / CSA) is a single global control at the top of the Within-Baltimore group**, writing the shared `geo_level` session state every within-Baltimore tab reads (replacing the former per-tab toggles and the two-way-sync hack). The Areas tab manages its own data loading internally and ignores `geo_level` (it shows tracts and CSAs together in one embedding).
 
@@ -108,7 +108,7 @@ Everything else (System/Internal source, ECC types, ungeocoded) is excluded from
 | `peer_city_metrics.parquet` | city × year | cross-city delivery metrics (total_requests, requests_per_1k, median_days_to_close, closure_rate, on_time_rate, population, closure_definition) — Phase 5, built by `scripts/peer_city.py` |
 | `peer_city_meta.csv` | city | fips, ACS population, portal_url, closure_definition |
 | `peer_city_maturity.csv` | city | 311 open-data publishing maturity scorecard (9 rubric dimensions 0–3 + in_cohort flag) — Phase 5.8, curated canvass |
-| `peer_city_coverage_census.csv` | city | provisional scoreable/partial/unconfirmed status of the ~40 largest US cities — Phase 5.8 |
+| `peer_city_coverage_census.csv` | city | scoreable/partial/unconfirmed status of the 40 largest US cities + 5 mid-size enablers, each with an `evidence` tier (api/city_docs/third_party/none) and `endpoint_url` — Phase 5.8, verified canvass (`scripts/verify_census.py` re-probes the live endpoints) |
 
 `data/raw/` and `data/interim/` are gitignored and rebuilt by the pipeline.
 
@@ -144,7 +144,7 @@ See `TASKS.md` for full detail. Current phase status:
 | 4 / 4d | SRType-stratified equity — six-tab arc (Services, Areas, Service Equity, Mix-Adjusted Equity) | Complete — all tabs shipped |
 | 4e | Per-geography mix-adjusted metrics (record-level direct-standardization `adjusted` stage) | Stage shipped — Tab 6 consumes it; P4e-3→5 (Equity-tab surfacing) open |
 | 4b | Area Analysis tab — peer comparison for managers | Candidate next release |
-| 5 | Cross-municipality benchmarking | In progress — 5.1/5.2 MVP (Baltimore + DC) code shipped; data run + §6.1 cross-check pending CI |
+| 5 | Cross-municipality benchmarking | In progress — Delivery + Maturity tabs live; 10-city cohort across 4 platforms (ArcGIS/Carto/Socrata/CKAN); Baltimore+DC+Philadelphia data landed, Socrata/CKAN cities pending CI; per-city Service Equity (5.5/5.6) next |
 | 6 | Seasonality tab | Long-term |
 
 Key open investigations before heavy Phase 4 / 5 work:
