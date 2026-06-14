@@ -274,9 +274,24 @@ to Baltimore (where `MethodReceived` exists) but not DC (no channel field). So B
 cross-city scope equals its within-app equity subset, while DC's is all geocoded service
 requests. Footnoted in the closure-definition expander.
 
-**Still pending:** re-run the workflow to regenerate `peer_city_metrics.parquet` with the
-fix, then record the corrected DC/Baltimore rows and the Baltimore-row cross-check vs. the
-Equity-tab subset numbers (should now agree).
+**Cross-check (2026-06-14, on the corrected 2025 rows — 2024 still backfilling):** the
+cross-city Baltimore figures agree with the within-Baltimore tabs up to two *intentional,
+quantified* methodology differences — confirmed not to be bugs:
+
+| 2025 Baltimore | cross-city tab | within-app | why |
+|---|---|---|---|
+| median days-to-close | **2.99** (record-level pooled) | 3.12 (Operations “citizen-initiated”: volume-weighted mean of per-tract medians) | different aggregation of the same records (~3 h apart) |
+| total requests | **471,504** (resident, non-ECC, lat/lon present) | 459,905 (equity subset: same, but geocoded = spatially joined to a tract) | ~2.5% of records have coordinates that fall outside tract polygons |
+
+The cross-city tab **must** use the pooled median: it is the correct citywide statistic and
+the only one DC can match (no tract join). So these are documented as expected differences
+(tab "Methodology & comparability" expander + sidebar) rather than reconciled. Real finding,
+2025: Baltimore vs DC — median 2.99 vs 2.90 d (comparable), closure 92.2% vs 98.8% (DC
+closes more), 817 vs 648 requests per 1k residents (Baltimore higher demand per capita).
+
+**Still pending:** the multi-year backfill (`peer_city_backfill.yml --force`) is in progress
+to overwrite the remaining stale rows (2024 still shows the pre-fix 0.004-day / 1.08M row);
+re-confirm each year as it lands.
 
 ### 6.2 — Delivery tab, MVP (Phase 5.2) — _tab shipped 2026-06-13; findings pending data_
 

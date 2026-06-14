@@ -56,8 +56,9 @@ with st.sidebar:
         "→ see which neighborhoods look alike → check whether outcomes differ by race or "
         "income → ask whether that gap holds up within service categories → and finally "
         "separate how much of it is about *which* services an area requests versus how "
-        "the same service is delivered. **Compare cities** *(coming in Phase 5)* sets "
-        "Baltimore against peer cities on the same metrics."
+        "the same service is delivered. **Compare cities** sets Baltimore against peer "
+        "cities on the same metrics — its Service Delivery view is live (Baltimore vs. "
+        "Washington, DC); Service Equity and the maturity index are still being built."
     )
     st.divider()
     st.markdown("### Within Baltimore — the story")
@@ -111,12 +112,24 @@ with st.sidebar:
         "unequally delivered types, and a fixed-effects regression as an independent check."
     )
     st.divider()
-    st.markdown("### Compare cities — coming in Phase 5")
+    st.markdown("### Compare cities")
     st.markdown(
-        "*Baltimore against peer and leading cities at the city level* — delivery "
-        "metrics, each city's own mix-adjusted equity score, and an open-data "
-        "maturity index. Different data, different caveats; a separate group so the "
-        "city-to-city comparison never gets confused with the within-Baltimore story."
+        "*Baltimore against peer and leading cities at the city level.* Different data, "
+        "different caveats; a separate group so the city-to-city comparison never gets "
+        "confused with the within-Baltimore story."
+    )
+    st.markdown(
+        "**Service Delivery** — live\n\n"
+        "*Baltimore vs. Washington, DC on the same delivery metrics* — requests per "
+        "1,000 residents, median days to close, closure rate — as rates, never raw "
+        "counts, with Baltimore highlighted. Median days-to-close is a record-level "
+        "pooled median computed the same way for every city, so it reads a few hours "
+        "different from the geographically-aggregated Operations-tab figure."
+    )
+    st.markdown(
+        "**Service Equity** · **Maturity index** — coming next\n\n"
+        "*Each city's own mix-adjusted equity score, and an open-data maturity index.* "
+        "Still being built."
     )
     with st.expander("Key terms"):
         st.markdown(

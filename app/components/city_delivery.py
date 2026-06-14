@@ -107,12 +107,21 @@ def render_city_delivery(data_dir: Path, year: int) -> None:
     if missing:
         st.caption(f"Not available for: {', '.join(missing)}.")
 
-    with st.expander("How each city defines a “closed” request (read before comparing)"):
+    with st.expander("Methodology & comparability (read before comparing)"):
+        st.markdown("**How each city defines a “closed” request:**")
         for _, r in sub.sort_values("city").iterrows():
             note = r.get("closure_definition") or "—"
             st.markdown(f"**{r['city']}** — {note}")
         st.caption(
             "Closure semantics differ by city, so closure rate and median days-to-close are "
             "directional, not exact. Volumes are compared per 1,000 residents (ACS county "
-            "population), never as raw counts."
+            "population), never as raw counts.\n\n"
+            "**Median days-to-close is a record-level pooled median here** — half of all the "
+            "city's requests closed within that many days — computed identically for every "
+            "city. This is intentionally *not* the same figure as the Operations tab's "
+            "“citizen-initiated” median, which is a geographic aggregation (a volume-weighted "
+            "mean of per-tract medians) and so reads a few hours different for Baltimore. The "
+            "pooled median is the only measure DC can match (it has no tract join), so it is "
+            "the one used for every cross-city comparison."
         )
+

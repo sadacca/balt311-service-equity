@@ -123,6 +123,8 @@ Geo ID conventions: tract files use 11-digit GEOID strings in a `geoid` column. 
 
 **CSA rollup**: at CSA level, metric values are population-weighted means of tract values (not re-aggregated from raw records). This matches BNIA Vital Signs methodology.
 
+**Cross-city median (Phase 5) is a record-level *pooled* median**, computed identically for every city in `peer_metrics.compute_city_metrics` ("half of all the city's requests close within X days"). It intentionally differs from the within-Baltimore Operations-tab medians, which are *geographic aggregations* of per-tract / per-SRType medians (volume-weighted means in `operations_panel._build_equity_citywide_ts` / `_build_timeseries`). For 2025 Baltimore the gap is ~3 hours (2.99 vs 3.12 d). The pooled median is the only measure DC can match (no tract join), so cross-city tabs always use it; the difference is surfaced in the tab's "Methodology & comparability" expander and the sidebar — do not try to reconcile them. Baltimore's cross-city scope mirrors the equity subset but counts lat/lon-geocoded records (vs the within-app tract-joined geocoding), ~2.5% more records.
+
 **Streamlit version**: must be ≥1.40.0 for `st.pills()` (added in 1.40) and `st.dataframe(on_select="rerun", selection_mode="single-row")`.
 
 **Secrets**: Mapbox token in Streamlit Cloud Secrets (`mapbox.token`), never in repo. Census API key as GitHub Actions secret `CENSUS_API_KEY`, never in repo.
