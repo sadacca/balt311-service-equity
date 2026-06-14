@@ -1,41 +1,46 @@
-rank,city,status,note
-1,"New York, NY",scoreable,"Socrata erm2-nwe9; 24M+ records, daily"
-2,"Los Angeles, CA",scoreable,"MyLA311 on Socrata, per-year datasets"
-3,"Chicago, IL",scoreable,"Socrata v6vf-nfxy, unified since 2018"
-4,"Houston, TX",partial,"Open data portal exists; full record-level 311 appears limited (subset datasets)"
-5,"Phoenix, AZ",partial,"Limited 311 publishing; verify scope"
-6,"Philadelphia, PA",scoreable,"Carto public_cases_fc, since 2014"
-7,"San Antonio, TX",scoreable,"Open Data SA 311 All Service Calls, 2011-present"
-8,"San Diego, CA",scoreable,"Get It Done 311 open dataset (app-channel)"
-9,"Dallas, TX",scoreable,"Socrata, 2018-present, 400+ types"
-10,"San Jose, CA",partial,"311 dataset on portal; confirm fields/history"
-11,"Austin, TX",scoreable,"Austin 311 Public Data on Socrata"
-12,"Jacksonville, FL",unconfirmed,"No open record-level 311 found this pass"
-13,"Fort Worth, TX",unconfirmed,"Open data portal; 311 record-level unconfirmed"
-14,"Columbus, OH",partial,"311 map present; record-level/API unconfirmed"
-15,"Charlotte, NC",scoreable,"Service Requests 311 w/ type, lat/long, date (WWC Gold city)"
-16,"San Francisco, CA",scoreable,"Socrata vw6y-z8j6, since 2008, nightly"
-17,"Indianapolis, IN",partial,"RequestIndy; open scope unconfirmed"
-18,"Seattle, WA",scoreable,"Customer Service Requests open data"
-19,"Denver, CO",partial,"311 dataset is rolling 12 months only - limited history"
-20,"Oklahoma City, OK",unconfirmed,"Unconfirmed"
-21,"Nashville, TN",scoreable,"hubNashville on Socrata"
-22,"Washington, DC",scoreable,"Open Data DC, per-year ArcGIS layers (MVP pair)"
-23,"El Paso, TX",unconfirmed,"Unconfirmed"
-24,"Boston, MA",scoreable,"Analyze Boston / CKAN (mid-2026 backend migration)"
-25,"Detroit, MI",partial,"Improve Detroit = app-channel subset, not full 311"
-26,"Portland, OR",partial,"Limited; verify"
-27,"Memphis, TN",unconfirmed,"Unconfirmed"
-28,"Louisville, KY",scoreable,"Metro Open Data, ArcGIS, Open311-based"
-29,"Baltimore, MD",scoreable,"Reference - ArcGIS per-year layers, 2016-present"
-30,"Milwaukee, WI",unconfirmed,"Unconfirmed"
-31,"Albuquerque, NM",partial,"Verify"
-32,"Sacramento, CA",scoreable,"Sacramento 311 on Socrata"
-33,"Kansas City, MO",scoreable,"data.kcmo.org / Socrata (since 2021 system)"
-34,"Atlanta, GA",partial,"ATL311 exists; open record-level 311 not clearly published"
-35,"Colorado Springs, CO",unconfirmed,"Unconfirmed"
-36,"Fresno, CA",unconfirmed,"Unconfirmed"
-37,"Tucson, AZ",partial,"Verify"
-38,"Mesa, AZ",unconfirmed,"Unconfirmed"
-39,"Omaha, NE",unconfirmed,"Unconfirmed"
-40,"Raleigh, NC",scoreable,"Raleigh open data 311"
+rank,city,status,evidence,endpoint_url,note
+1,"New York, NY",scoreable,city_docs,https://data.cityofnewyork.us/Social-Services/311-Service-Requests-from-2020-to-Present/erm2-nwe9,"Socrata erm2-nwe9; created_date, closed_date, lat/lon"
+2,"Los Angeles, CA",scoreable,city_docs,https://data.lacity.org/City-Infrastructure-Service-Requests/MyLA311-Service-Request-Data-2024/b7dx-7gc3,MyLA311 Socrata; annual datasets 2018–2025
+3,"Chicago, IL",scoreable,city_docs,https://data.cityofchicago.org/Service-Requests/311-Service-Requests/v6vf-nfxy,"Socrata v6vf-nfxy; created_date, closed_date, lat/lon"
+4,"Houston, TX",partial,city_docs,https://houston-mycity.opendata.arcgis.com/datasets/MyCity::feature-layer-houston-311-weekly-cases-layer,ArcGIS; rolling 7-day closed cases only
+5,"Phoenix, AZ",partial,city_docs,https://www.phoenixopendata.com/dataset/311-service-request-data,ArcGIS; 7-day lookback per docs
+6,"Philadelphia, PA",scoreable,city_docs,https://phl.carto.com/api/v2/sql,"Carto public_cases_fc; requested_datetime, API"
+7,"San Antonio, TX",scoreable,city_docs,https://opendata-cosagis.opendata.arcgis.com/datasets/CoSAGIS::311-all-service-calls,ArcGIS Open Data SA; since 2011
+8,"San Diego, CA",scoreable,city_docs,https://data.sandiego.gov/datasets/get-it-done-311/,Get It Done; annual CSV + rolling; lat/lng
+9,"Dallas, TX",scoreable,city_docs,https://www.dallasopendata.com/Services/311-Service-Requests/gc4d-8a49,Socrata; since Oct 2018
+10,"San Jose, CA",partial,city_docs,https://data.sanjoseca.gov/dataset/311-service-request-data,Open Data; daily; limited doc
+11,"Austin, TX",scoreable,city_docs,https://data.austintexas.gov/Utilities-and-City-Services/Austin-311-Public-Data/xwdj-i9he,Socrata xwdj-i9he; since 2014; half-hourly
+12,"Jacksonville, FL",unconfirmed,third_party,https://andrew-friedman.github.io/jkan/datasets/311-City-of-Jacksonville/,National 311 Data Portal; no direct API
+13,"Fort Worth, TX",partial,city_docs,https://data.fortworthtexas.gov/,Socrata portal; 311 unclear
+14,"Columbus, OH",partial,city_docs,https://gis.columbus.gov/coc311map/,GIS map; no downloadable dataset
+15,"Charlotte, NC",scoreable,city_docs,https://data.charlottenc.gov/datasets/service-requests-311/api,ArcGIS ServiceRequests311 MapServer
+16,"San Francisco, CA",scoreable,city_docs,https://data.sfgov.org/widgets/vw6y-z8j6,Socrata vw6y-z8j6; since 2008; daily
+17,"Indianapolis, IN",partial,city_docs,https://data.indy.gov/,Open Indy portal; 311 not confirmed
+18,"Seattle, WA",scoreable,city_docs,https://data.seattle.gov/City-Administration/Customer-Service-Request-Tracking-Data/43nw-pkdq,Socrata 43nw-pkdq; Find It Fix It
+19,"Denver, CO",partial,city_docs,https://opendata-geospatialdenver.hub.arcgis.com/datasets/311-service-requests,ArcGIS; rolling 12 months only
+20,"Oklahoma City, OK",unconfirmed,city_docs,https://data.okc.gov/,data.okc.gov; 311 not published
+21,"Nashville, TN",scoreable,city_docs,https://data.nashville.gov/Public-Services/hubNashville-311-Service-Requests/7qhx-rexh,hubNashville ArcGIS; annual + current
+22,"Washington, DC",scoreable,city_docs,https://datahub-dc-dcgis.hub.arcgis.com/maps/DCGIS::311-city-service-requests-in-2024,ArcGIS per-year since 2016
+23,"El Paso, TX",unconfirmed,city_docs,https://city-of-el-paso-open-data-coepgis.hub.arcgis.com/,Open data portal; 311 not clearly listed
+24,"Boston, MA",scoreable,api,https://data.boston.gov/dataset/311-service-requests,Analyze Boston; multiple years; Open311 API
+25,"Detroit, MI",partial,api,https://data-detroitmi.hub.arcgis.com/datasets/improve-detroit-issues,Improve Detroit ArcGIS; app-channel only
+26,"Portland, OR",partial,api,https://seeclickfix.com/web_portal/9Sds4Ebv9yf9nC8e9yhDf5MP/,SeeClickFix; Open311 API; no bulk export
+27,"Memphis, TN",scoreable,api,https://data.memphistn.gov/Good-Government/311-Generated-Service-Requests/5r9g-bwpp,Memphis Data Hub Socrata; 2M+ rows; daily
+28,"Louisville, KY",scoreable,api,https://louisville-metro-opendata-lojic.hub.arcgis.com/datasets/LOJIC::louisville-metro-ky-metro-311-service-request-2025,LOJIC ArcGIS Hub; 2014-2025; weekly
+29,"Baltimore, MD",scoreable,api,https://services.arcgisonline.com/arcgis/rest/services/311_Customer_Service_Requests_2024/FeatureServer/0,Per-year ArcGIS; 2016-present; API confirmed
+30,"Milwaukee, WI",unconfirmed,city_docs,https://data.milwaukee.gov/,Portal exists; 311 status unclear
+31,"Albuquerque, NM",partial,third_party,https://seeclickfix.com/web_portal/Y2UDAwYmghxaeq4V337k2sau/issues/map,ABQ311 via SeeClickFix; no central export
+32,"Sacramento, CA",scoreable,city_docs,https://data.cityofsacramento.org/search?tags=311,Sacramento 311 Socrata portal
+33,"Kansas City, MO",scoreable,api,https://data.kcmo.org/311,OpenData KC Socrata; daily; API
+34,"Atlanta, GA",partial,city_docs,https://www.atlantaga.gov/government/mayor-s-office/executive-offices/office-of-innovation-delivery-and-performance/dataatlanta,DataAtlanta portal; ATL311 not API-accessible
+35,"Colorado Springs, CO",unconfirmed,none,https://coloradosprings.gov/gocos,GoCOS portal; CORA records only
+36,"Fresno, CA",partial,city_docs,https://city-of-fresno-gis-hub-cityoffresno.hub.arcgis.com/,Fresno GIS Hub ArcGIS; no 311 export
+37,"Tucson, AZ",partial,api,https://gisdata.tucsonaz.gov/,Tucson GIS portal; 311 API unclear
+38,"Mesa, AZ",unconfirmed,city_docs,https://data.mesaaz.gov/,Mesa Data Hub; no 311-specific dataset
+39,"Omaha, NE",unconfirmed,third_party,https://www.omahahotline.com/,Omaha Hotline; interactive map; no API
+40,"Raleigh, NC",scoreable,api,https://data.raleighnc.gov/,Open Data Raleigh ArcGIS; 311 present
+0,"Cincinnati, OH",scoreable,api,https://data.cincinnati-oh.gov/thriving-neighborhoods/Cincinnati-311-Non-Emergency-Service-Requests/4cjh-bm8b,Tyler Data & Insights Socrata; 2012-present; daily
+0,"Pittsburgh, PA",scoreable,api,https://data.wprdc.org/dataset/311-data,WPRDC CKAN; historical + new system Feb 2025
+0,"Minneapolis, MN",scoreable,api,https://opendata.minneapolismn.gov/,ArcGIS FeatureServer; 525K+ records; Jan 2021+
+0,"New Orleans, LA",scoreable,api,https://datadriven.nola.gov/open-data/featured/311-calls/,DataDriven ArcGIS Hub; GIS API support
+0,"St. Louis, MO",scoreable,api,https://www.stlouis-mo.gov/data/datasets/dataset.cfm?id=5,CSB Request API (Open311 v2); requires key

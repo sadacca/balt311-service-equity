@@ -87,7 +87,7 @@ def _gap_profile(df: pd.DataFrame) -> list[str]:
         gap = int(leader[col]) - int(balt[col])
         if gap > 0:
             clean = label.replace("<br>", " ")
-            rows.append(f"**{clean}** ({int(balt[col])} → {int(leader[col])}) — {_GAP_HINTS[col]}")
+            rows.append(f"**{clean}** ({int(balt[col])} -> {int(leader[col])}) — {_GAP_HINTS[col]}")
     return rows
 
 
@@ -149,7 +149,7 @@ def render_maturity_index(data_dir: Path) -> None:
             "1. **It measures publishing maturity, not service quality.** A city can publish "
             "beautifully and still deliver inequitably — only the open cities can even be "
             "*evaluated*. A high score is a precondition for accountability, not a substitute.\n\n"
-            "2. **“All US cities” means “US cities with public 311 open data”** — a few dozen — "
+            "2. **All US cities means US cities with public 311 open data** — a few dozen — "
             "the only defensible denominator. Most municipalities run no 311 system, or publish "
             "nothing.\n\nScores are a provisional canvass (rubric §8), to be hardened in P5.8."
         )
@@ -161,7 +161,7 @@ def _render_census(data_dir: Path) -> None:
         return
     census = pd.read_csv(path)
     counts = census["status"].value_counts()
-    n = len(census)
+    n = len(census[census["rank"] <= 40])  # top 40 only, exclude enablers in count
     parts = []
     for code in ("scoreable", "partial", "unconfirmed"):
         emoji, label = _STATUS[code]
@@ -172,11 +172,20 @@ def _render_census(data_dir: Path) -> None:
         f"Of the **{n} largest US cities**, only " + ", ".join(parts) + ". A smaller subset "
         "match Baltimore's combination of **record-level data + a decade of history + an open "
         "API**. Several cities far larger than Baltimore simply **cannot be evaluated this "
-        "way** — the data isn't open, isn't record-level, or doesn't exist publicly. The ❔ "
-        "cities aren't “better,” only less visible."
+        "way** — the data isn't open, isn't record-level, or doesn't exist publicly. The "
+        "unconfirmed cities aren't better, only less visible."
     )
-    with st.expander(f"Full census of the {n} largest US cities"):
+    with st.expander(f"Full census of the {n} largest US cities + 5 mid-size enablers"):
         disp = census.copy()
         disp["status"] = disp["status"].map(lambda s: f"{_STATUS.get(s, ('', s))[0]} {_STATUS.get(s, ('', s))[1]}")
-        disp = disp.rename(columns={"rank": "Rank", "city": "City", "status": "Status", "note": "Note"})
-        st.dataframe(disp, hide_index=True, use_container_width=True)
+        # Show evidence tier if present
+        if "evidence" in disp.columns:
+            disp = disp.rename(columns={
+                "rank": "Rank", "city": "City", "status": "Status",
+                "evidence": "Evidence", "note": "Note"
+            })
+            st.dataframe(disp[["Rank", "City", "Status", "Evidence", "Note"]],
+                        hide_index=True, use_container_width=True)
+        else:
+            disp = disp.rename(columns={"rank": "Rank", "city": "City", "status": "Status", "note": "Note"})
+            st.dataframe(disp[["Rank", "City", "Status", "Note"]], hide_index=True, use_container_width=True)
