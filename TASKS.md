@@ -602,12 +602,12 @@ many far larger ones); What Works Cities Silver (2021). A pioneer that, on the *
 axis specifically, the Socrata leaders now edge out on unification/cadence/documentation — the
 index is built to show both truths honestly.
 
-- [ ] **P5.8-1: Define the maturity rubric + weights** — finalize the dimension list and 0–N
+- [x] **P5.8-1: Define the maturity rubric + weights** — finalize the dimension list and 0–N
   scoring scale (`cross_city_comparison.md` §8): availability & open license; granularity
   (record-level vs. aggregate); history depth; update cadence; API access (SODA/ArcGIS/Carto
   vs. download-only); Open311 GeoReport v2 standardization; field completeness (created/closed
   timestamps, geo, type, status, channel, reopen, cost); geocoding coverage; documentation quality.
-- [ ] **P5.8-2: Score the cohort** — populate a scorecard (one row per city, per-dimension
+- [x] **P5.8-2: Score the cohort** — populate a scorecard (one row per city, per-dimension
   subscores + total) from the onboarding assessments (5.1/5.3); fill remaining gaps (geocoding %,
   Open311 compliance check, license). Output: `data/processed/peer_city_maturity.csv`.
 - [ ] **P5.8-2b: Harden the largest-metros coverage census** — validate and finalize the
@@ -617,10 +617,10 @@ index is built to show both truths honestly.
   40 largest can be scored"). This is the inverse of the scorecard — it names the cities that
   *cannot* be evaluated this way, which is what makes the scoreable cities (Baltimore foremost)
   notable. Anchor on the National 311 Data Portal + US City Open Data Census (§7).
-- [ ] **P5.8-3: Baltimore gap profile** — for each dimension where Baltimore trails the leader,
+- [x] **P5.8-3: Baltimore gap profile** — for each dimension where Baltimore trails the leader,
   name the specific field/practice that would close it; cross-reference `requirements.md` §5.
   Turns "publish better data" into a measured, prioritized list.
-- [ ] **P5.8-4: "Credit where due" framing in-app and in docs** — surface the standing with
+- [x] **P5.8-4: "Credit where due" framing in-app and in docs** — surface the standing with
   explicit positive framing: name the enabling openness *before* any critical finding. A small
   panel on the cross-city tabs (or the sidebar) that credits the cities whose openness permits
   the analysis, Baltimore's first-mover and Open311 leadership highlighted. (The README and

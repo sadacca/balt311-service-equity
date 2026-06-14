@@ -13,9 +13,9 @@ from components.category_explorer import render_category_explorer
 from components.cross_city import (
     render_cross_city_intro,
     render_equity_placeholder,
-    render_maturity_placeholder,
 )
 from components.city_delivery import render_city_delivery
+from components.maturity_index import render_maturity_index
 from components.equity_adjusted import render_equity_adjusted
 from components.equity_panel import render_equity
 from components.operations_panel import render_operations
@@ -127,9 +127,14 @@ with st.sidebar:
         "the Operations tab reports for Baltimore's citizen-initiated median."
     )
     st.markdown(
-        "**Service Equity** · **Maturity index** — coming next\n\n"
-        "*Each city's own mix-adjusted equity score, and an open-data maturity index.* "
-        "Still being built."
+        "**Maturity index** — live\n\n"
+        "*How maturely each city publishes its 311 open data* — a scored rubric that "
+        "credits the openness making this analysis possible, Baltimore's rank and gap "
+        "profile, and a census of how few large US cities can be scored at all."
+    )
+    st.markdown(
+        "**Service Equity** — coming next\n\n"
+        "*Each city's own race/income service gaps.* Still being built."
     )
     with st.expander("Key terms"):
         st.markdown(
@@ -327,4 +332,4 @@ with grp_cross:
     with cc_equity:
         render_equity_placeholder()
     with cc_maturity:
-        render_maturity_placeholder()
+        render_maturity_index(DATA_DIR)

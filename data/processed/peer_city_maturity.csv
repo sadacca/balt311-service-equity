@@ -1,0 +1,7 @@
+city,in_cohort,availability_license,granularity,history_depth,update_cadence,api_access,standardization,field_completeness,geocoding_coverage,documentation,note
+"Baltimore, MD",True,3,3,3,2,3,3,3,2,2,"Reference / first-mover: first US 311 (1996), early Open311 GeoReport v2 (~2011), WWC Silver. Publishes channel (MethodReceived) — rare. Trails the Socrata leaders on update cadence, geocoding completeness, and documentation."
+"Washington, DC",True,3,3,2,3,3,1,2,3,3,"Open Data DC, per-year ArcGIS layers — older history is fragmented across layers; no Open311 endpoint; no intake-channel field."
+"Philadelphia, PA",True,3,3,3,3,3,2,2,2,3,"OpenDataPhilly Carto, unified public_cases_fc since ~2014; daily; strong data dictionary; no intake-channel or cost fields."
+"New York, NY",False,3,3,3,3,3,2,3,3,3,"Reference (canvassed, not ingested): Socrata erm2-nwe9, 2010-present, 24M+ records, daily; rich fields incl channel + agency."
+"Chicago, IL",False,3,3,2,3,3,2,3,3,3,"Reference (canvassed): Socrata v6vf-nfxy, unified since 2018 (pre-2018 in legacy datasets); daily; rich schema."
+"San Francisco, CA",False,3,3,3,3,3,3,3,3,3,"Reference (canvassed): Socrata vw6y-z8j6, 2008-present, nightly; Open311 leader; full field set — current cohort ceiling."
