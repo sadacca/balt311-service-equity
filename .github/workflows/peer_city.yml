@@ -18,6 +18,11 @@ on:
         required: false
         default: false
         type: boolean
+      force:
+        description: "Refetch cities even if their (city, year) row already exists"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   peer_city:
@@ -43,11 +48,13 @@ jobs:
         env:
           CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
         run: |
-          LIVE_FLAG=""
-          [ "${{ inputs.is_live_year }}" = "true" ] && LIVE_FLAG="--live"
-          python scripts/peer_city.py --year ${{ inputs.year }} --cities "${{ inputs.cities }}" $LIVE_FLAG
+          FLAGS=""
+          [ "${{ inputs.is_live_year }}" = "true" ] && FLAGS="$FLAGS --live"
+          [ "${{ inputs.force }}" = "true" ] && FLAGS="$FLAGS --force"
+          python scripts/peer_city.py --year ${{ inputs.year }} --cities "${{ inputs.cities }}" $FLAGS
 
       - name: Commit and push cross-city outputs
+        if: always()  # persist cities that succeeded even if another city's fetch failed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

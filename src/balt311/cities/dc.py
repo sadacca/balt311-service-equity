@@ -37,7 +37,6 @@ class DCAdapter(CityAdapter):
         layer_id = arcgis.discover_year_layer(SERVICE_URL, year)
         layer_url = f"{SERVICE_URL}/{layer_id}"
         print(f"  DC {year} → layer {layer_id}")
-        raw = arcgis.fetch_layer(
-            layer_url, out_fields=",".join(FIELD_MAP), order_by="ADDDATE DESC",
-        )
+        # Keyset (OID) paging — DC's ~440k-row layers time out on deep offset paging.
+        raw = arcgis.fetch_layer_keyset(layer_url, out_fields=",".join(FIELD_MAP))
         return apply_field_map(raw, FIELD_MAP)

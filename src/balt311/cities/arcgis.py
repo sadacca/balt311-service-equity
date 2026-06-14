@@ -13,7 +13,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 DEFAULT_PAGE_SIZE = 2000
 DEFAULT_WORKERS = 4
-FETCH_TIMEOUT = 60
+FETCH_TIMEOUT = 120
+DEFAULT_RETRIES = 6
 # Some ArcGIS hosts (DCGIS among them) reject urllib's default User-Agent.
 _HEADERS = {"User-Agent": "Mozilla/5.0 (balt311-cross-city)"}
 
@@ -64,44 +65,88 @@ def _total_count(layer_url: str) -> int | None:
         return None
 
 
-def _fetch_page(layer_url: str, out_fields: str, order_by: str, offset: int,
-                page_size: int, retries: int = 4) -> list[dict]:
-    params = {
-        "where": "1=1", "outFields": out_fields, "resultOffset": offset,
-        "resultRecordCount": page_size, "f": "json",
-    }
-    if order_by:
-        params["orderByFields"] = order_by
+def _object_id_field(layer_url: str) -> str:
+    """The layer's OID field name (usually OBJECTID) — the stable key for keyset paging."""
+    try:
+        return _get_json(f"{layer_url}?f=json").get("objectIdField") or "OBJECTID"
+    except Exception:
+        return "OBJECTID"
+
+
+def _query_features(layer_url: str, params: dict, retries: int = DEFAULT_RETRIES) -> list[dict]:
+    """Run one /query and return its feature attributes, retrying on transient errors.
+    Geometry is never requested — we only need attribute fields, and dropping geometry
+    sharply cuts payload size and the read timeouts that killed deep DC pages."""
+    params = {"returnGeometry": "false", "f": "json", **params}
     url = f"{layer_url}/query?{urllib.parse.urlencode(params)}"
     for attempt in range(1, retries + 1):
         try:
             req = urllib.request.Request(url, headers=_HEADERS)
             with urllib.request.urlopen(req, timeout=FETCH_TIMEOUT) as r:
-                return [f["attributes"] for f in json.loads(r.read()).get("features", [])]
+                data = json.loads(r.read())
+            if data.get("error"):
+                raise RuntimeError(str(data["error"])[:200])
+            return [f["attributes"] for f in data.get("features", [])]
         except Exception as exc:
             if attempt == retries:
                 raise
-            wait = 2 ** attempt
-            print(f"  offset={offset} attempt {attempt} failed ({exc}); retrying in {wait}s")
+            wait = min(2 ** attempt, 30)
+            print(f"  query attempt {attempt} failed ({exc}); retrying in {wait}s")
             time.sleep(wait)
     return []
 
 
+def fetch_layer_keyset(layer_url: str, out_fields: str = "*",
+                       page_size: int | None = None) -> list[dict]:
+    """All records via keyset pagination on the OID field (where OID > last, ordered).
+
+    Preferred over offset paging for large layers: ArcGIS re-scans on every `resultOffset`,
+    so deep offsets get progressively slower and time out (DC, 440k rows). Keyset uses an
+    indexed `OBJECTID > last` filter, so every page is cheap regardless of depth. Sequential
+    by nature (each page needs the previous max id), but reliable. The OID is appended to
+    `out_fields` if absent and is harmless downstream (adapters keep only mapped fields)."""
+    if page_size is None:
+        page_size = min(_max_record_count(layer_url), 2000)
+    oid = _object_id_field(layer_url)
+    fields = out_fields if (out_fields == "*" or oid in out_fields) else f"{out_fields},{oid}"
+
+    records: list[dict] = []
+    last_id = -1
+    while True:
+        page = _query_features(layer_url, {
+            "where": f"{oid}>{last_id}", "outFields": fields,
+            "orderByFields": f"{oid} ASC", "resultRecordCount": page_size,
+        })
+        if not page:
+            break
+        records.extend(page)
+        last_id = max(int(r[oid]) for r in page)
+        print(f"  keyset {oid}>{last_id - page_size}  +{len(page):>5,}  total={len(records):>7,}")
+        if len(page) < page_size:
+            break
+    return records
+
+
 def fetch_layer(layer_url: str, out_fields: str = "*", order_by: str = "",
                 page_size: int | None = None, workers: int = DEFAULT_WORKERS) -> list[dict]:
-    """All records from one FeatureServer layer. Pre-fetches the total count to dispatch
-    pages concurrently (reassembled in order); falls back to sequential paging when the
-    count is unavailable. A stable `order_by` is recommended for consistent offsets."""
+    """All records via concurrent offset paging. Faster than keyset when it works, but
+    degrades on very large layers (deep offsets); prefer `fetch_layer_keyset` there."""
     if page_size is None:
         page_size = min(_max_record_count(layer_url), 2000)
     total = _total_count(layer_url)
 
+    def page_at(offset: int) -> list[dict]:
+        params = {"where": "1=1", "outFields": out_fields,
+                  "resultOffset": offset, "resultRecordCount": page_size}
+        if order_by:
+            params["orderByFields"] = order_by
+        return _query_features(layer_url, params)
+
     if total is None:
         records, offset = [], 0
         while True:
-            page = _fetch_page(layer_url, out_fields, order_by, offset, page_size)
+            page = page_at(offset)
             records.extend(page)
-            print(f"  offset={offset:>7,}  +{len(page):>5,}  total={len(records):>7,}")
             if len(page) < page_size:
                 break
             offset += page_size
@@ -111,8 +156,7 @@ def fetch_layer(layer_url: str, out_fields: str = "*", order_by: str = "",
     print(f"  Total reported: {total:,} → {len(offsets)} pages (workers={workers})")
     out: dict[int, list[dict]] = {}
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        fut = {pool.submit(_fetch_page, layer_url, out_fields, order_by, off, page_size): off
-               for off in offsets}
+        fut = {pool.submit(page_at, off): off for off in offsets}
         for future in as_completed(fut):
             out[fut[future]] = future.result()
     records = []
