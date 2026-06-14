@@ -610,7 +610,7 @@ index is built to show both truths honestly.
 - [x] **P5.8-2: Score the cohort** — populate a scorecard (one row per city, per-dimension
   subscores + total) from the onboarding assessments (5.1/5.3); fill remaining gaps (geocoding %,
   Open311 compliance check, license). Output: `data/processed/peer_city_maturity.csv`.
-- [ ] **P5.8-2b: Harden the largest-metros coverage census** — validate and finalize the
+- [x] **P5.8-2b: Harden the largest-metros coverage census** — validate and finalize the
   provisional ✅/🟡/❔ census of the ~40 largest US cities in `cross_city_comparison.md` §8.1:
   confirm each city's open-311 status against its portal (record-level? timestamps? geo? API?
   history?), resolve every ❔ to a definite ✅/🟡/❌, and record the headline count ("only N of the

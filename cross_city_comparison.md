@@ -456,6 +456,12 @@ to be hardened in task P5.8-2.
 - 🟡 **Partial / limited** — open data exists but constrained: short rolling history, app-channel subset only, aggregate-only, no API, or missing key fields.
 - ❔ **None found / unconfirmed** — no open record-level 311 located in this pass. Provisional: this flags either a genuine gap *or* a discoverability problem — and under a maturity lens, hard-to-find data is itself a low score.
 
+**Evidence tier** (how verified):
+- `api` — we fetched the live dataset API and confirmed the real field names.
+- `city_docs` — confirmed via the city's own open-data portal page, but API fetch was not possible or skipped.
+- `third_party` — only found via an aggregator (National 311 Data Portal, US City Open Data Census, SeeClickFix), not the city's official portal.
+- `none` — no open data found; typically the city's open-data portal exists but does not publish 311.
+
 | Rank | City | Status | Note (provisional) |
 |---|---|---|---|
 | 1 | New York, NY | ✅ | Socrata `erm2-nwe9`; 24M+ records, daily |
@@ -503,12 +509,23 @@ to be hardened in task P5.8-2.
 population but with mature, scoreable open 311 — several are close demographic peers of
 Baltimore): Cincinnati ✅, Pittsburgh ✅ (WPRDC), Minneapolis ✅, New Orleans ✅, St. Louis ✅.
 
-**What the census shows.** Of the ~40 largest US cities, only on the order of **half publish
-311 open data mature enough to support this analysis**, and a smaller subset match Baltimore's
-combination of **record-level data + a decade of history + an open API**. The rest — including
-several cities far larger than Baltimore — simply **cannot be evaluated this way**: the data
-isn't open, isn't record-level, or doesn't exist publicly at all. That is the point worth
-underscoring. When this dashboard scrutinizes Baltimore, it is scrutinizing one of the
-relatively few American cities that has *chosen to be scrutinizable*. The cities that score
-✅ here — Baltimore foremost, as a first-mover — deserve credit precisely for accepting the
-exposure that openness brings; the ❔ rows are not "better" cities, only less visible ones.
+**What the census shows** (hardened 2026-06-14). Of the **40 largest US cities + 5 mid-size
+enablers (45 total)**:
+- **25 scoreable** (56%): open record-level 311 with created + closed timestamps, geo, and a
+  programmatic API. Data confirmed via live API fetch (14 cities) or official city portal page (11 cities).
+  Includes all cohort members: Baltimore, DC, Philadelphia.
+- **13 partial** (29%): open data exists but constrained — rolling short history (e.g., 7-day or
+  12-month lookback), app-channel subset only, no closed-timestamp field, or no public API.
+- **7 unconfirmed** (16%): no open record-level 311 dataset found in official portals — either the
+  city has no 311 system, no open-data portal, or publishes 311 to a third-party aggregator only
+  (e.g., SeeClickFix) without a dedicated export.
+
+The key finding: of the largest American cities, only on the order of **half publish 311 open
+data mature enough to support delivery + equity analysis**, and a smaller subset match
+Baltimore's combination of **record-level + a decade of history + an open API**. Several cities
+far larger than Baltimore — Houston, Atlanta, Denver, Miami, etc. — simply cannot be evaluated
+this way: the data isn't open, isn't record-level, or doesn't exist publicly. When this
+dashboard scrutinizes Baltimore, it is scrutinizing one of the relatively few American cities
+that has *chosen to be scrutinizable*. The cities that score ✅ here deserve credit for
+accepting the exposure that openness brings; the ❔ rows are not "better" cities, only less
+visible ones.
