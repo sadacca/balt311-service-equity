@@ -9,9 +9,14 @@ metadata (FIPS, ACS population, portal, closure definition).
 ArcGIS endpoints are unreachable from sandboxed dev environments, so this is designed to
 run in CI (see .github/workflows/peer_city.yml), exactly like the Baltimore backfill.
 
+By default a (city, year) already in `peer_city_metrics.parquet` is reused, not refetched
+(Baltimore alone is a ~12-min pull) — so adding a new city is cheap. `--force` reprocesses.
+
 Usage:
-    python scripts/peer_city.py --year 2024                    # all registered cities
-    python scripts/peer_city.py --year 2024 --cities dc        # one city
+    python scripts/peer_city.py --year 2024                    # all registered cities (skip existing)
+    python scripts/peer_city.py --year 2024 --cities dc,philly # add cities; cached ones reused
+    python scripts/peer_city.py --year 2025 --force            # reprocess all (e.g. after a fix)
+    python scripts/peer_city.py --year 2025 --cities dc --force  # reprocess just DC
     python scripts/peer_city.py --year 2026 --live             # 30-day right-censoring
 """
 import argparse
@@ -41,11 +46,15 @@ def log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
-def run(year: int, cities: list[str], is_live: bool) -> None:
+def run(year: int, cities: list[str], is_live: bool, force: bool = False) -> None:
     PROC.mkdir(parents=True, exist_ok=True)
     right_censor_days = 30 if is_live else 0
 
     existing = pd.read_parquet(METRICS_PATH) if METRICS_PATH.exists() else None
+    have = (
+        set(zip(existing["city"], existing["year"]))
+        if existing is not None and not existing.empty else set()
+    )
     meta = (
         pd.read_csv(META_PATH, dtype={"fips": str}).set_index("city").to_dict("index")
         if META_PATH.exists() else {}
@@ -53,11 +62,20 @@ def run(year: int, cities: list[str], is_live: bool) -> None:
 
     new_rows = []
     failures = []
+    skipped = []
     for slug in cities:
         if slug not in ADAPTERS:
             log(f"SKIP unknown city '{slug}' (known: {', '.join(ADAPTERS)})")
             continue
         adapter = ADAPTERS[slug]()
+
+        # Smart reuse: keep an existing (city, year) row instead of re-fetching it (Baltimore
+        # alone is a ~12-min pull), so adding a new city is cheap. --force overrides.
+        if not force and (adapter.city, year) in have:
+            log(f"CACHED — {adapter.city} {year} already present; skipping (use --force to refetch)")
+            skipped.append(slug)
+            continue
+
         log(f"=== {adapter.city} ({slug}) · {year} ===")
 
         # Isolate each city: a network failure on one (DC's ArcGIS can time out) must not
@@ -90,8 +108,12 @@ def run(year: int, cities: list[str], is_live: bool) -> None:
             failures.append(slug)
 
     if not new_rows:
-        log("No cities processed successfully — nothing written.")
-        sys.exit(1)
+        if failures:
+            log(f"All fetches failed: {', '.join(failures)} — nothing written.")
+            sys.exit(1)
+        log(f"Nothing to do — all requested cities already present ({', '.join(skipped)}). "
+            "Use --force to reprocess.")
+        return
 
     metrics = upsert_metrics(existing, new_rows)
     metrics.to_parquet(METRICS_PATH, index=False)
@@ -118,5 +140,7 @@ if __name__ == "__main__":
     p.add_argument("--cities", default=",".join(ADAPTERS),
                    help="Comma-separated city slugs (default: all registered)")
     p.add_argument("--live", action="store_true", help="Apply 30-day right-censoring")
+    p.add_argument("--force", action="store_true",
+                   help="Refetch even if a (city, year) row already exists (default: skip existing)")
     args = p.parse_args()
-    run(args.year, [c.strip() for c in args.cities.split(",") if c.strip()], args.live)
+    run(args.year, [c.strip() for c in args.cities.split(",") if c.strip()], args.live, args.force)
