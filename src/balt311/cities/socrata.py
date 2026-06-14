@@ -28,15 +28,15 @@ RETRIES = 6
 
 # Ordered candidate raw column names per canonical field; first present one wins.
 CANDIDATES: dict[str, list[str]] = {
-    "CreatedDate": ["created_date", "requested_datetime", "creation_date",
+    "CreatedDate": ["created_date", "requested_datetime", "creation_date", "open_date_time",
                     "date_time_opened", "open_dt", "opened_date", "sr_created_date"],
-    "CloseDate": ["closed_date", "close_date", "closed_datetime", "date_time_closed",
-                  "closed_dt", "sr_closed_date"],
-    "SRType": ["complaint_type", "sr_type", "service_name", "request_type",
-               "sr_type_desc", "category", "type", "case_title", "reason"],
+    "CloseDate": ["closed_date", "close_date", "closed_datetime", "resolved_date",
+                  "date_time_closed", "closed_dt", "sr_closed_date"],
+    "SRType": ["complaint_type", "sr_type", "service_name", "request_type", "issue_type",
+               "issue_sub_type", "sr_type_desc", "category", "type", "case_title", "reason"],
     "Latitude": ["latitude", "lat", "y_coordinate"],
     "Longitude": ["longitude", "long", "x_coordinate"],
-    "status": ["status", "status_description", "sr_status", "case_status"],
+    "status": ["status", "status_description", "sr_status", "case_status", "current_status"],
 }
 
 

@@ -56,9 +56,9 @@ with st.sidebar:
         "→ see which neighborhoods look alike → check whether outcomes differ by race or "
         "income → ask whether that gap holds up within service categories → and finally "
         "separate how much of it is about *which* services an area requests versus how "
-        "the same service is delivered. **Compare cities** sets Baltimore against peer "
-        "cities on the same metrics — its Service Delivery view is live (Baltimore vs. "
-        "Washington, DC); Service Equity and the maturity index are still being built."
+        "the same service is delivered. **Compare cities** sets Baltimore against a cohort "
+        "of peer cities on the same metrics — its Service Delivery and Open-Data Maturity "
+        "views are live; per-city Service Equity is still being built."
     )
     st.divider()
     st.markdown("### Within Baltimore — the story")
@@ -120,9 +120,10 @@ with st.sidebar:
     )
     st.markdown(
         "**Service Delivery** — live\n\n"
-        "*Baltimore vs. Washington, DC on the same delivery metrics* — requests per "
+        "*Baltimore vs. a cohort of peer cities on the same delivery metrics* — requests per "
         "1,000 residents, median days to close, closure rate — as rates, never raw "
-        "counts, with Baltimore highlighted. Median days-to-close is a record-level "
+        "counts, with Baltimore highlighted. The cohort spans four data platforms "
+        "(ArcGIS, Carto, Socrata, CKAN). Median days-to-close is a record-level "
         "pooled median computed the same way for every city — the same canonical figure "
         "the Operations tab reports for Baltimore's citizen-initiated median."
     )

@@ -24,19 +24,46 @@ _METRICS: dict[str, tuple[str, str, bool | None]] = {
 }
 _RATE_COLS = {"closure_rate", "on_time_rate"}
 
+# Data-quality heuristics: open 311 datasets are often contaminated by auto-closed /
+# same-timestamp records (referrals, duplicates, invalids closed the instant they open),
+# which inflate closure rate and crush median days-to-close toward zero. We don't silently
+# drop them (we can't tell gamed from genuinely-fast cross-city), but we flag the cities
+# whose numbers look implausible so the comparison is read with appropriate suspicion.
+_SUSPICIOUS_SAME_DAY = 0.50     # ≥half of closed requests close the same instant they open
+_SUSPICIOUS_MEDIAN_DAYS = 1.0   # a sub-day citywide median is implausible for real delivery
+_SUSPICIOUS_CLOSURE = 0.99      # near-total closure usually means auto-close, not performance
+
 
 def _is_baltimore(city: str) -> bool:
     return str(city).lower().startswith("baltimore")
 
 
-def _bar(df: pd.DataFrame, col: str, label: str, fmt: str) -> go.Figure:
+def _quality_flags(row) -> list[str]:
+    """Reasons a city-year's delivery numbers look auto-close-contaminated (empty = clean)."""
+    reasons = []
+    sd = row.get("pct_same_day_close")
+    if sd is not None and pd.notna(sd) and sd >= _SUSPICIOUS_SAME_DAY:
+        reasons.append(f"{sd:.0%} of closed requests close the same instant they open (likely auto-close)")
+    md = row.get("median_days_to_close")
+    if md is not None and pd.notna(md) and md < _SUSPICIOUS_MEDIAN_DAYS:
+        reasons.append(f"sub-day median time-to-close ({md:.1f} d)")
+    cr = row.get("closure_rate")
+    if cr is not None and pd.notna(cr) and cr >= _SUSPICIOUS_CLOSURE:
+        reasons.append(f"near-total closure ({cr:.0%})")
+    return reasons
+
+
+def _bar(df: pd.DataFrame, col: str, label: str, fmt: str, flagged: set | None = None) -> go.Figure:
     """Horizontal ranked bar, Baltimore highlighted. Value labels sit *inside* the bars
     (not outside, which clipped at the right edge on narrow/mobile viewports); city names
-    on the y-axis use automargin so they're never cut off."""
+    on the y-axis use automargin so they're never cut off. Cities in `flagged` get a ⚠
+    appended so data-quality concerns travel with the bar, not just a footnote."""
+    flagged = flagged or set()
     d = df.sort_values(col, ascending=True)  # largest at the top
     colors = [_BALTIMORE_COLOR if _is_baltimore(c) else _PEER_COLOR for c in d["city"]]
+    ylabels = [f"{c}  ⚠" if c in flagged else c for c in d["city"]]
     fig = go.Figure(go.Bar(
-        x=d[col], y=d["city"], orientation="h",
+        x=d[col], y=ylabels, orientation="h",
         marker_color=colors,
         text=[fmt.format(v) for v in d[col]],
         textposition="inside", insidetextanchor="end",
@@ -99,6 +126,10 @@ def render_city_delivery(data_dir: Path, year: int) -> None:
         if chosen:
             sub = sub[sub["city"].isin(chosen)]
 
+    # Flag cities whose delivery numbers look auto-close-contaminated (see _quality_flags).
+    flags = {r["city"]: _quality_flags(r) for _, r in sub.iterrows()}
+    flagged = {c for c, rs in flags.items() if rs}
+
     metric_label = st.radio("Metric", list(_METRICS), horizontal=True, key="cc_delivery_metric")
     col, fmt, higher_better = _METRICS[metric_label]
 
@@ -110,7 +141,8 @@ def render_city_delivery(data_dir: Path, year: int) -> None:
             "(e.g. no published due-date standard for on-time rate)."
         )
     else:
-        st.plotly_chart(_bar(valid, col, metric_label, fmt), use_container_width=True,
+        st.plotly_chart(_bar(valid, col, metric_label, fmt, flagged=flagged),
+                        use_container_width=True,
                         key="cc_delivery_bar", config={"displayModeBar": False})
         if higher_better is True:
             st.caption("Higher is better.")
@@ -120,6 +152,20 @@ def render_city_delivery(data_dir: Path, year: int) -> None:
             st.caption("Request volume normalized by population — higher means more 311 demand, not better or worse.")
     if missing:
         st.caption(f"Not available for: {', '.join(missing)}.")
+
+    if flagged:
+        st.warning(
+            "⚠ **Some cities' numbers look contaminated by auto-closed requests.** Many open "
+            "311 systems close referral / duplicate / invalid records the instant they open, "
+            "which inflates closure rate and pushes the median time-to-close toward zero — so "
+            "these figures reflect data practices as much as service speed. Flagged cities are "
+            "marked ⚠ above; treat their closure rate and median days-to-close as upper bounds, "
+            "not delivery performance.",
+            icon="⚠️",
+        )
+        with st.expander("Why each flagged city is flagged"):
+            for city in sorted(flagged):
+                st.markdown(f"**{city}** — " + "; ".join(flags[city]) + ".")
 
     with st.expander("Methodology & comparability (read before comparing)"):
         st.markdown("**How each city defines a “closed” request:**")

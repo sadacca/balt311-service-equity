@@ -144,14 +144,19 @@ def render_maturity_index(data_dir: Path) -> None:
 
     _render_census(data_dir)
 
-    with st.expander("Two standing caveats"):
+    with st.expander("Three standing caveats"):
         st.markdown(
             "1. **It measures publishing maturity, not service quality.** A city can publish "
             "beautifully and still deliver inequitably — only the open cities can even be "
             "*evaluated*. A high score is a precondition for accountability, not a substitute.\n\n"
             "2. **All US cities means US cities with public 311 open data** — a few dozen — "
             "the only defensible denominator. Most municipalities run no 311 system, or publish "
-            "nothing.\n\nScores are a provisional canvass (rubric §8), to be hardened in P5.8."
+            "nothing.\n\n"
+            "3. **Publishing maturely ≠ publishing *trustworthy* data.** A complete, open feed "
+            "can still be contaminated or gamed — most often by auto-closing records the instant "
+            "they open (which inflates closure rate and crushes median time-to-close; see the ⚠ "
+            "flags on the Service Delivery tab). A high publishing score is not a clean bill of "
+            "data health.\n\nScores are a provisional canvass (rubric §8), to be hardened in P5.8."
         )
 
 

@@ -342,8 +342,8 @@ Philadelphia data has since landed and confirms it runs a more limited 311 publi
 than Baltimore (no intake-channel field; status-based closure).
 
 **Socrata + CKAN cohort (Wave 2, 2026-06-14).** Added a reusable **Socrata** SODA client
-(`cities/socrata.py`) and six configs over it — NYC `erm2-nwe9`, Chicago `v6vf-nfxy`, SF
-`vw6y-z8j6`, Austin `xwdj-i9he`, Nashville `7qhx-rexh`, Kansas City `d4px-6rwg` — plus a
+(`cities/socrata.py`) and five configs over it — NYC `erm2-nwe9`, Chicago `v6vf-nfxy`, SF
+`vw6y-z8j6`, Austin `xwdj-i9he`, Kansas City `d4px-6rwg` — plus a
 **CKAN** client (`cities/ckan.py`) for Boston (Analyze Boston, per-year resource resolved via
 `package_show`). The set is curated for diversity so the comparison stresses both the adapter
 layer (three platforms now: ArcGIS, Carto, Socrata, CKAN) and the analysis: West (SF), Midwest
@@ -354,9 +354,18 @@ offset-paged) — same record-level basis as the other cities, preserving the po
 comparability. The Socrata adapter **auto-discovers** each dataset's real columns (1-row probe)
 and resolves canonical fields against ordered candidate lists, so minor schema-name differences
 degrade gracefully. `fetch_county_population` now sums comma-separated counties (NYC's five
-boroughs). **Pending:** CI ingest run (Socrata/CKAN unreachable from the dev sandbox — Socrata
-even 403s WebFetch). Unit-tested with synthetic rows: field resolution, scope/closure,
-multi-county population, ISO-date metrics.
+boroughs). Unit-tested with synthetic rows: field resolution, scope/closure, multi-county
+population, ISO-date metrics.
+
+**First backfill (2026-06-14) — two corrections.** Baltimore, DC, Philadelphia, NYC, Chicago,
+SF, Austin, Boston ran clean (Austin e.g. 354k rows/2023, median 1.8d). Two failed and were
+fixed: (1) **Kansas City** — real columns are `open_date_time`/`resolved_date`/`issue_type`/
+`current_status` (added to the candidate lists + KC overrides). (2) **Nashville** — migrated
+off Socrata onto **ArcGIS Hub**, so the SODA endpoint returns an empty body; rebuilt as an
+ArcGIS-Hub adapter (`cities/nashville.py`) configured by the stable Hub **item id**
+(`9fe11d5a…`) — it resolves the FeatureServer URL, discovers the layer's fields, and
+year-filters the single 2017-present layer via a new `where` arg on `arcgis.fetch_layer_keyset`.
+So the platform split is now ArcGIS = Baltimore/DC/Nashville, Socrata = NYC/Chicago/SF/Austin/KC.
 
 ### 6.4 — Delivery tab, cohort (Phase 5.4) — _tab already N-city; verified with 3 cities_
 
@@ -424,7 +433,7 @@ weights) and P5.8-2b (resolve the ❔ census rows against portals) remain open.
 that publish 311 open data — and, equally, **credit** the cities whose openness makes analysis
 like this repository possible. This is recognition with a measurement attached, not a gotcha.
 
-**Two caveats baked into every use of the index:**
+**Three caveats baked into every use of the index:**
 
 1. **It measures publishing maturity, not service quality.** A city can publish beautifully and
    still deliver inequitably — indeed, only the open cities can even be *evaluated* for delivery
@@ -432,6 +441,14 @@ like this repository possible. This is recognition with a measurement attached, 
 2. **"All US cities" is scoped to "US cities with public 311 open data"** — a few dozen — the only
    defensible denominator. Ranking against all ~19,000 municipalities is neither feasible nor
    meaningful; most run no 311 system, and most that do publish nothing.
+3. **Publishing maturely ≠ publishing *trustworthy* data.** A city can expose a complete,
+   well-documented record-level feed that is nonetheless contaminated or gamed — most commonly
+   by auto-closing referral/duplicate/invalid records the instant they open, which inflates
+   closure rate and crushes median time-to-close toward zero (NYC and Chicago both show a ~0-day
+   pooled median for this reason). The Service Delivery tab already flags this via
+   `pct_same_day_close` (≥50% same-day closes / sub-day median / ≥99% closure → ⚠); the full
+   metro ranking (P5.9-6) carries the same plausibility flag, so a high *publishing* score is
+   never read as a clean bill of *data* health.
 
 **Baltimore's standing (the reference point):** first US 311 system (1996); CitiStat pioneer
 (1999); early Open311 GeoReport v2 adopter (~2011, among only ~a dozen US cities); What Works

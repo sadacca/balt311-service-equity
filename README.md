@@ -160,6 +160,18 @@ A year-over-year line chart tracks the Mann-Whitney overlap score for each metri
 
 ---
 
+### Compare cities
+
+*Baltimore against a cohort of peer cities, at the city level.* A separate tab group — different data, different caveats — so city-to-city comparison never gets confused with the within-Baltimore story. The cohort spans **four data platforms** through a pluggable per-city adapter layer: ArcGIS (Baltimore, DC), Carto (Philadelphia), Socrata (NYC, Chicago, San Francisco, Austin, Nashville, Kansas City), and CKAN (Boston).
+
+**Service Delivery** *(live)* — Baltimore against the cohort on the same delivery metrics — requests per 1,000 residents, median days to close, closure rate, on-time rate — shown as **rates, never raw counts**, with Baltimore highlighted and a city multiselect to focus the comparison. Median days-to-close is a **record-level pooled median computed identically for every city**, the same canonical figure the Operations tab reports for Baltimore's citizen-initiated median, so the cross-city row and the within-Baltimore figure never disagree. Each city's closure definition and channel scope is footnoted, because native 311 semantics differ.
+
+**Open-Data Maturity** *(live)* — how maturely each city *publishes* its 311 open data (not how well it delivers service). A scored 9-dimension rubric ranks the cohort, with Baltimore's rank and a per-dimension **gap profile** naming the specific practice that would close each gap. A **coverage census** of the 40 largest US cities (plus mid-size enablers) records which can be evaluated at all — scoreable / partial / unconfirmed — each tagged with an **evidence tier** (live API check, city portal, or third-party). The framing leads with credit: openness is the precondition for accountability, and the cities that publish openly deserve recognition for accepting the scrutiny that brings.
+
+**Service Equity** *(coming next)* — each city's own race/income service-delivery gaps, on the same overlap-score basis as the within-Baltimore Equity tab. Requires per-city demographic joins and is still being built.
+
+---
+
 ## Data sources
 
 | Source | What | How accessed |
@@ -168,6 +180,8 @@ A year-over-year line chart tracks the Mann-Whitney overlap score for each metri
 | [Census Bureau GENZ2023](https://www.census.gov/geographies/mapping-files/time-series/geo/cartographic-boundary.html) | Census tract boundaries (2020 definitions) | Cartographic boundary shapefile ZIP |
 | [BNIA VitalSigns](https://github.com/BNIA/VitalSigns) | Tract → CSA crosswalk | GitHub raw CSV |
 | [Census ACS 2023 5-Year](https://www.census.gov/data/developers/data-sets/acs-5year.html) | Tract population (B01003), race (B02001), median household income (B19013) | Census Data API |
+| **Cross-city 311** (peer cohort) | DC, Philadelphia, NYC, Chicago, San Francisco, Austin, Nashville, Kansas City, Boston | Per-city adapters over ArcGIS REST, Carto SQL, Socrata SODA, and CKAN DataStore APIs |
+| [Census ACS county population](https://www.census.gov/data/developers/data-sets/acs-5year.html) | Per-city denominator for requests-per-1k (B01003, county; NYC = 5-borough sum) | Census Data API |
 
 ---
 
