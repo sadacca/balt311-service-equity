@@ -19,6 +19,25 @@ METRIC_COLUMNS = [
 ]
 
 
+def _parse_dt(values) -> pd.Series:
+    """Parse a created/closed column to UTC datetime, accepting either ArcGIS millisecond
+    epochs (numeric — Baltimore, DC) or ISO 8601 strings (Carto/Socrata — Philadelphia).
+    Cohort cities span platforms, so the aggregator stays format-agnostic.
+
+    Inspects the first non-null value rather than the column dtype: a `CloseDate` with open
+    requests is object-dtype even when its values are ms-epoch ints, so a dtype check would
+    misparse those ints as nanoseconds."""
+    s = pd.Series(values)
+    nonnull = s.dropna()
+    if nonnull.empty:
+        return pd.to_datetime(s, utc=True, errors="coerce")
+    if pd.api.types.is_number(nonnull.iloc[0]):
+        return pd.to_datetime(pd.to_numeric(s, errors="coerce"), unit="ms", utc=True, errors="coerce")
+    # format="mixed" parses each string independently, tolerating rows that vary in tz
+    # suffix / precision rather than coercing the odd one out to NaT.
+    return pd.to_datetime(s, utc=True, errors="coerce", format="mixed")
+
+
 def compute_city_metrics(
     records: list[dict],
     *,
@@ -50,8 +69,8 @@ def compute_city_metrics(
         return base
 
     df = pd.DataFrame(records)
-    df["_created"] = pd.to_datetime(df.get("CreatedDate"), unit="ms", utc=True, errors="coerce")
-    df["_closed"] = pd.to_datetime(df.get("CloseDate"), unit="ms", utc=True, errors="coerce")
+    df["_created"] = _parse_dt(df.get("CreatedDate"))
+    df["_closed"] = _parse_dt(df.get("CloseDate"))
 
     if scope_fn is not None:
         df = scope_fn(df)

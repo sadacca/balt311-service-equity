@@ -460,7 +460,7 @@ validates the whole cross-city pipeline that equity then reuses.
 
 ### Phase 5.3 — Cohort expansion (Philadelphia, then NYC / Chicago / SF)
 
-- [ ] **P5.3-1: Carto adapter + Philadelphia** — `cities/carto.py` (one `phl.carto.com/api/v2/sql`
+- [x] **P5.3-1: Carto adapter + Philadelphia** — `cities/carto.py` (one `phl.carto.com/api/v2/sql`
   endpoint, server-side aggregation via SQL) + `cities/philadelphia.py` mapping
   `requested_datetime`/`closed_datetime`/`service_name`/`lat`/`lon`. Add Philadelphia rows to
   `peer_city_metrics`. *(Wave 1 — strongest demographic peer.)*
@@ -479,7 +479,7 @@ validates the whole cross-city pipeline that equity then reuses.
 
 ### Phase 5.4 — Cross-City Service Delivery tab (cohort)
 
-- [ ] **P5.4-1: Generalize Tab 7 to N cities** — the delivery component renders the full cohort,
+- [x] **P5.4-1: Generalize Tab 7 to N cities** — the delivery component renders the full cohort,
   Baltimore still highlighted as reference; add a cohort/city multiselect so the user can focus a
   comparison set; sort by the selected metric.
 - [ ] **P5.4-2: Year-alignment control** — default to the most recent year present in all

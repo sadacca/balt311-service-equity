@@ -92,6 +92,13 @@ def render_city_delivery(data_dir: Path, year: int) -> None:
     if use_year != year:
         st.caption(f"Showing **{use_year}** — the most recent year shared across the compared cities.")
 
+    # Let the user focus a comparison set once the cohort grows; Baltimore stays the reference.
+    cities_present = sorted(sub["city"], key=lambda c: (not _is_baltimore(c), c))
+    if len(cities_present) > 2:
+        chosen = st.multiselect("Cities", cities_present, default=cities_present, key="cc_delivery_cities")
+        if chosen:
+            sub = sub[sub["city"].isin(chosen)]
+
     metric_label = st.radio("Metric", list(_METRICS), horizontal=True, key="cc_delivery_metric")
     col, fmt, higher_better = _METRICS[metric_label]
 

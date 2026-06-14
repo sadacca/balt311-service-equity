@@ -22,7 +22,7 @@ on:
       cities:
         description: "Comma-separated city slugs"
         required: false
-        default: "baltimore,dc"
+        default: "baltimore,dc,philadelphia"
         type: string
       pause_seconds:
         description: "Pause between years (seconds) — courtesy delay for the portals"
