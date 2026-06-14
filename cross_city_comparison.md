@@ -433,7 +433,7 @@ weights) and P5.8-2b (resolve the ❔ census rows against portals) remain open.
 that publish 311 open data — and, equally, **credit** the cities whose openness makes analysis
 like this repository possible. This is recognition with a measurement attached, not a gotcha.
 
-**Two caveats baked into every use of the index:**
+**Three caveats baked into every use of the index:**
 
 1. **It measures publishing maturity, not service quality.** A city can publish beautifully and
    still deliver inequitably — indeed, only the open cities can even be *evaluated* for delivery
@@ -441,6 +441,14 @@ like this repository possible. This is recognition with a measurement attached, 
 2. **"All US cities" is scoped to "US cities with public 311 open data"** — a few dozen — the only
    defensible denominator. Ranking against all ~19,000 municipalities is neither feasible nor
    meaningful; most run no 311 system, and most that do publish nothing.
+3. **Publishing maturely ≠ publishing *trustworthy* data.** A city can expose a complete,
+   well-documented record-level feed that is nonetheless contaminated or gamed — most commonly
+   by auto-closing referral/duplicate/invalid records the instant they open, which inflates
+   closure rate and crushes median time-to-close toward zero (NYC and Chicago both show a ~0-day
+   pooled median for this reason). The Service Delivery tab already flags this via
+   `pct_same_day_close` (≥50% same-day closes / sub-day median / ≥99% closure → ⚠); the full
+   metro ranking (P5.9-6) carries the same plausibility flag, so a high *publishing* score is
+   never read as a clean bill of *data* health.
 
 **Baltimore's standing (the reference point):** first US 311 system (1996); CitiStat pioneer
 (1999); early Open311 GeoReport v2 adopter (~2011, among only ~a dozen US cities); What Works

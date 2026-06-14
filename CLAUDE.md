@@ -105,7 +105,7 @@ Everything else (System/Internal source, ECC types, ungeocoded) is excluded from
 | `csa_boundaries.geojson` | — | CSA boundaries dissolved from tract polygons via BNIA crosswalk |
 | `tract_demographics.csv` | tract | pct_black, pct_white, median_income (ACS 2023 5-year; year-independent) |
 | `csa_demographics.csv` | CSA | population-weighted rollup of tract demographics |
-| `peer_city_metrics.parquet` | city × year | cross-city delivery metrics (total_requests, requests_per_1k, median_days_to_close, closure_rate, on_time_rate, population, closure_definition) — Phase 5, built by `scripts/peer_city.py` |
+| `peer_city_metrics.parquet` | city × year | cross-city delivery metrics (total_requests, requests_per_1k, median_days_to_close, closure_rate, on_time_rate, pct_same_day_close, population, closure_definition) — Phase 5, built by `scripts/peer_city.py` |
 | `peer_city_meta.csv` | city | fips, ACS population, portal_url, closure_definition |
 | `peer_city_maturity.csv` | city | 311 open-data publishing maturity scorecard (9 rubric dimensions 0–3 + in_cohort flag) — Phase 5.8, curated canvass |
 | `peer_city_coverage_census.csv` | city | scoreable/partial/unconfirmed status of the 40 largest US cities + 5 mid-size enablers, each with an `evidence` tier (api/city_docs/third_party/none) and `endpoint_url` — Phase 5.8, verified canvass (`scripts/verify_census.py` re-probes the live endpoints) |
@@ -121,6 +121,8 @@ Geo ID conventions: tract files use 11-digit GEOID strings in a `geoid` column. 
 **Overlap score**: Mann-Whitney probability of superiority, `1 − 2 × |P(A > B) − 0.5|`. Ranges 0–1; 1 = fully interleaved distributions, 0 = complete separation. Implemented in `app/components/utils.py:overlap_score()`. Thresholds: >0.7 "not bad", >0.4 "could be better", ≤0.4 "needs review". Requires ≥3 non-null values per group; returns NaN otherwise.
 
 **Delta colors**: all year-over-year deltas in the Operations tab use `delta_color="off"` (neutral). A decrease in days-to-close is good; a decrease in requests could be good or bad. Direction is left for the reader to interpret.
+
+**Auto-close contamination flag (cross-city)**: many open 311 systems close referral/duplicate/invalid records the instant they open (NYC/Chicago have a ~0-day pooled median for exactly this reason — the same instant-close contamination Baltimore excludes via its ECC/scope filter, but other cities have no equivalent prefix to strip). The cross-city median calc is *correct*; the data is contaminated. Rather than apply arbitrary per-city exclusions, `compute_city_metrics` records `pct_same_day_close` (share of closed requests closing in 0 days), and the Service Delivery tab flags any city with ≥50% same-day closes, a sub-day median, or ≥99% closure (`_quality_flags` in `city_delivery.py`) — marked ⚠ on the bar with a per-city reason, so implausible/gamed figures are surfaced, not silently trusted. The metro-ranking work (P5.9) folds the same plausibility check into scoring.
 
 **Sparse cell suppression**: `_MIN_GEO_SRTYPE_N = 5` in `operations_panel.py`. Geo × SRType cells with fewer than 5 requests are filtered out in the UI before map rendering. Threshold is a UI constant — change it without rerunning the pipeline.
 

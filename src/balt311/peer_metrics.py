@@ -15,7 +15,7 @@ import pandas as pd
 METRIC_COLUMNS = [
     "city", "year", "total_requests", "requests_per_1k",
     "median_days_to_close", "closure_rate", "on_time_rate",
-    "population", "closure_definition",
+    "pct_same_day_close", "population", "closure_definition",
 ]
 
 
@@ -63,7 +63,8 @@ def compute_city_metrics(
     base = {
         "city": city, "year": int(year), "total_requests": 0,
         "requests_per_1k": None, "median_days_to_close": None, "closure_rate": None,
-        "on_time_rate": None, "population": population, "closure_definition": closure_definition,
+        "on_time_rate": None, "pct_same_day_close": None,
+        "population": population, "closure_definition": closure_definition,
     }
     if not records:
         return base
@@ -93,6 +94,11 @@ def compute_city_metrics(
         requests_per_1k=(total / population * 1000.0) if population else None,
         median_days_to_close=float(closed_days.median()) if not closed_days.empty else None,
         closure_rate=float(is_closed.astype(bool).mean()),
+        # Share of CLOSED requests that close the same instant they open — a direct measure of
+        # auto-close / same-timestamp contamination. A high value means median days-to-close and
+        # closure rate are inflated by instantly-resolved (often referral/duplicate/invalid)
+        # records rather than real service delivery; the delivery tab flags it.
+        pct_same_day_close=float((closed_days == 0).mean()) if not closed_days.empty else None,
     )
     return base
 

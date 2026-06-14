@@ -684,9 +684,17 @@ one continuous scale, not two disconnected exercises.
   **history span** (years), **field count**, and presence of the deeper fields (intake channel,
   cost, reopen). Surface as columns and feed History-depth / Field-completeness numerically
   rather than by judgment — this is the "depth of 311 service information" the ranking conveys.
+- [ ] **P5.9-6: Data-integrity / plausibility flag in the rankings** — open data can be
+  *published* maturely yet be unrealistic or gamed (auto-closed records inflating closure and
+  crushing median time-to-close — see the `pct_same_day_close` flag already live on the Service
+  Delivery tab). Fold a **plausibility check** into the ranking so a city whose delivery figures
+  are implausible (≥50% same-day closures, sub-day median, or ≥99% closure) is annotated — and,
+  where the rubric rewards delivery-data usability, not credited as if those figures were sound.
+  Surface the flag in the league table (a ⚠ column with the reason) so the ranking distinguishes
+  *publishing* maturity from *trustworthy* data. Reuses `city_delivery._quality_flags`.
 - [ ] **P5.9-5: Documentation checkpoint** — update `cross_city_comparison.md` §8 with the
-  full-ranking methodology, the per-dimension anchors, and the headline ("N of 40 fully
-  scoreable; Baltimore ranks #X of the scoreable set").
+  full-ranking methodology, the per-dimension anchors, the data-integrity flag (P5.9-6), and the
+  headline ("N of 40 fully scoreable; Baltimore ranks #X of the scoreable set").
 
 ---
 
