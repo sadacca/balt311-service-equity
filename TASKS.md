@@ -482,8 +482,8 @@ validates the whole cross-city pipeline that equity then reuses.
   - **Chicago** `v6vf-nfxy` (data.cityofchicago.org) — large Midwest, unified since 2018.
   - **San Francisco** `vw6y-z8j6` (data.sfgov.org) — earliest history (2008), Open311 leader, West-coast peer.
   - **Austin** `xwdj-i9he` (data.austintexas.gov) — mid-size South, strong data culture.
-  - **Nashville** `7qhx-rexh` (data.nashville.gov) — consolidated city-county (exact ACS pop), Southern equity contrast.
-  - **Kansas City** `d4px-6rwg` (data.kcmo.org) — mid-size, newer (2021+) system.
+  - **Nashville** (ArcGIS Hub item `9fe11d5a…`, *not* Socrata — migrated; rebuilt as an ArcGIS-Hub adapter) — consolidated city-county (exact ACS pop), Southern equity contrast.
+  - **Kansas City** `d4px-6rwg` (data.kcmo.org; `open_date_time`/`resolved_date`/`issue_type`) — mid-size, newer (2021+) system.
   - **Boston** (CKAN, via P5.3-2c) — Northeast peer, Open311, rich SLA/on-time fields.
   Registered in `ADAPTERS`; added to both peer-city workflows' default city list.
 - [ ] **P5.3-4: Per-city onboarding QA** — for each city: confirm year coverage, validate a

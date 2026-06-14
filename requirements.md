@@ -269,8 +269,9 @@ pipeline; equity follows because it reuses that pipeline plus the portable ACS-t
 and analytically (every value reads "relative to Baltimore's"). The cohort grew from a single
 pair (Baltimore + DC) at MVP to **10 cities across four API families**, each new adapter
 unlocking several cities at once (ArcGIS → Carto → Socrata → CKAN; see
-`cross_city_comparison.md` §3): Baltimore + DC (ArcGIS), Philadelphia (Carto), NYC / Chicago /
-San Francisco / Austin / Nashville / Kansas City (Socrata), Boston (CKAN). Tabs 7–8 form a
+`cross_city_comparison.md` §3): Baltimore / DC / Nashville (ArcGIS — Nashville on ArcGIS Hub),
+Philadelphia (Carto), NYC / Chicago / San Francisco / Austin / Kansas City (Socrata), Boston
+(CKAN). Tabs 7–8 form a
 dedicated **"Compare cities"** group, kept separate from the within-Baltimore six-tab arc.
 
 **New Phase 5 dependencies:** a per-city ingestion adapter layer (`src/balt311/cities/`), one

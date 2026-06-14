@@ -342,8 +342,8 @@ Philadelphia data has since landed and confirms it runs a more limited 311 publi
 than Baltimore (no intake-channel field; status-based closure).
 
 **Socrata + CKAN cohort (Wave 2, 2026-06-14).** Added a reusable **Socrata** SODA client
-(`cities/socrata.py`) and six configs over it — NYC `erm2-nwe9`, Chicago `v6vf-nfxy`, SF
-`vw6y-z8j6`, Austin `xwdj-i9he`, Nashville `7qhx-rexh`, Kansas City `d4px-6rwg` — plus a
+(`cities/socrata.py`) and five configs over it — NYC `erm2-nwe9`, Chicago `v6vf-nfxy`, SF
+`vw6y-z8j6`, Austin `xwdj-i9he`, Kansas City `d4px-6rwg` — plus a
 **CKAN** client (`cities/ckan.py`) for Boston (Analyze Boston, per-year resource resolved via
 `package_show`). The set is curated for diversity so the comparison stresses both the adapter
 layer (three platforms now: ArcGIS, Carto, Socrata, CKAN) and the analysis: West (SF), Midwest
@@ -354,9 +354,18 @@ offset-paged) — same record-level basis as the other cities, preserving the po
 comparability. The Socrata adapter **auto-discovers** each dataset's real columns (1-row probe)
 and resolves canonical fields against ordered candidate lists, so minor schema-name differences
 degrade gracefully. `fetch_county_population` now sums comma-separated counties (NYC's five
-boroughs). **Pending:** CI ingest run (Socrata/CKAN unreachable from the dev sandbox — Socrata
-even 403s WebFetch). Unit-tested with synthetic rows: field resolution, scope/closure,
-multi-county population, ISO-date metrics.
+boroughs). Unit-tested with synthetic rows: field resolution, scope/closure, multi-county
+population, ISO-date metrics.
+
+**First backfill (2026-06-14) — two corrections.** Baltimore, DC, Philadelphia, NYC, Chicago,
+SF, Austin, Boston ran clean (Austin e.g. 354k rows/2023, median 1.8d). Two failed and were
+fixed: (1) **Kansas City** — real columns are `open_date_time`/`resolved_date`/`issue_type`/
+`current_status` (added to the candidate lists + KC overrides). (2) **Nashville** — migrated
+off Socrata onto **ArcGIS Hub**, so the SODA endpoint returns an empty body; rebuilt as an
+ArcGIS-Hub adapter (`cities/nashville.py`) configured by the stable Hub **item id**
+(`9fe11d5a…`) — it resolves the FeatureServer URL, discovers the layer's fields, and
+year-filters the single 2017-present layer via a new `where` arg on `arcgis.fetch_layer_keyset`.
+So the platform split is now ArcGIS = Baltimore/DC/Nashville, Socrata = NYC/Chicago/SF/Austin/KC.
 
 ### 6.4 — Delivery tab, cohort (Phase 5.4) — _tab already N-city; verified with 3 cities_
 

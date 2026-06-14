@@ -37,6 +37,21 @@ def list_layers(service_url: str) -> list[dict]:
     return _get_json(f"{service_url}?f=json").get("layers", []) or []
 
 
+def item_service_url(item_id: str, portal: str = "https://www.arcgis.com") -> str:
+    """Resolve an ArcGIS Hub/Online item id to its hosted service URL (FeatureServer root).
+    Lets a Hub-published city be configured by its stable item id rather than a brittle
+    services<N>.arcgis.com org URL (Nashville)."""
+    url = _get_json(f"{portal}/sharing/rest/content/items/{item_id}?f=json").get("url")
+    if not url:
+        raise RuntimeError(f"no service url for ArcGIS item {item_id}")
+    return url
+
+
+def layer_field_names(layer_url: str) -> list[str]:
+    """Field names on a layer (for candidate-based canonical field resolution)."""
+    return [f.get("name", "") for f in _get_json(f"{layer_url}?f=json").get("fields", [])]
+
+
 def discover_year_layer(service_url: str, year: int) -> int:
     """Layer id whose name contains the 4-digit `year` (e.g. 'All Service Requests -
     2024'). Prefers the shortest matching name to avoid substring collisions. Raises if
@@ -97,24 +112,28 @@ def _query_features(layer_url: str, params: dict, retries: int = DEFAULT_RETRIES
 
 
 def fetch_layer_keyset(layer_url: str, out_fields: str = "*",
-                       page_size: int | None = None) -> list[dict]:
+                       page_size: int | None = None, where: str = "1=1") -> list[dict]:
     """All records via keyset pagination on the OID field (where OID > last, ordered).
 
     Preferred over offset paging for large layers: ArcGIS re-scans on every `resultOffset`,
     so deep offsets get progressively slower and time out (DC, 440k rows). Keyset uses an
     indexed `OBJECTID > last` filter, so every page is cheap regardless of depth. Sequential
     by nature (each page needs the previous max id), but reliable. The OID is appended to
-    `out_fields` if absent and is harmless downstream (adapters keep only mapped fields)."""
+    `out_fields` if absent and is harmless downstream (adapters keep only mapped fields).
+
+    `where` adds a filter ANDed with the keyset clause — e.g. a year range for a single
+    multi-year layer (Nashville), so each year is pulled without per-year layers."""
     if page_size is None:
         page_size = min(_max_record_count(layer_url), 2000)
     oid = _object_id_field(layer_url)
     fields = out_fields if (out_fields == "*" or oid in out_fields) else f"{out_fields},{oid}"
+    base_where = f"({where}) AND " if where and where != "1=1" else ""
 
     records: list[dict] = []
     last_id = -1
     while True:
         page = _query_features(layer_url, {
-            "where": f"{oid}>{last_id}", "outFields": fields,
+            "where": f"{base_where}{oid}>{last_id}", "outFields": fields,
             "orderByFields": f"{oid} ASC", "resultRecordCount": page_size,
         })
         if not page:
