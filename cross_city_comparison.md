@@ -284,10 +284,20 @@ quantified* methodology differences — confirmed not to be bugs:
 | total requests | **471,504** (resident, non-ECC, lat/lon present) | 459,905 (equity subset: same, but geocoded = spatially joined to a tract) | ~2.5% of records have coordinates that fall outside tract polygons |
 
 The cross-city tab **must** use the pooled median: it is the correct citywide statistic and
-the only one DC can match (no tract join). So these are documented as expected differences
-(tab "Methodology & comparability" expander + sidebar) rather than reconciled. Real finding,
-2025: Baltimore vs DC — median 2.99 vs 2.90 d (comparable), closure 92.2% vs 98.8% (DC
-closes more), 817 vs 648 requests per 1k residents (Baltimore higher demand per capita).
+the only one DC can match (no tract join). Real finding, 2025: Baltimore vs DC — median
+~2.97 vs 2.90 d (comparable), closure 92% vs 99% (DC closes more), ~797 vs 648 requests per
+1k residents (Baltimore higher demand per capita).
+
+**Update (2026-06-14) — reconciled via single source of truth.** Rather than leaving the
+~3-hour / ~2.5% gap documented, the pooled median is now the canonical citywide figure:
+`metrics.citywide_pooled_metrics` writes `citywide_metrics_{year}.parquet` in the `process`
+stage; the Operations citizen-initiated figure reads it (`_build_equity_citywide_ts`, legacy
+weighted-mean fallback for un-regenerated years) and the cross-city Baltimore row reads the
+*same* file (`BaltimoreAdapter.precomputed`, which also skips the ~12-min re-fetch). So Tab 1
+and Tab 7 now agree by construction. The Operations "all requests" headline stays a
+geographic weighted-mean (a pooled median over all requests is ~0 — ECC instant-closes). DC
+tract join deferred to Phase 5.5. **Requires re-running the `process` stage for each year**
+(citywide files don't exist until then; both consumers fall back gracefully meanwhile).
 
 **Still pending:** the multi-year backfill (`peer_city_backfill.yml --force`) is in progress
 to overwrite the remaining stale rows (2024 still shows the pre-fix 0.004-day / 1.08M row);

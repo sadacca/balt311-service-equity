@@ -142,6 +142,29 @@ def aggregate_tract(df: pd.DataFrame, geo_col: str = "tract_geoid") -> pd.DataFr
 _CLOSED_STATUSES = {"closed", "closed (transferred)"}
 
 
+def citywide_pooled_metrics(df: pd.DataFrame) -> dict:
+    """Record-level *pooled* citywide metrics over the equity subset — the canonical
+    "median days to close" for the whole city ("half of all requests close within X days").
+
+    This is the single source of truth shared by the Operations tab's citizen-initiated
+    figure and the cross-city Service Delivery tab, so the two never disagree. It is
+    deliberately a pooled record-level median, NOT a geographic aggregate of per-tract
+    medians (which reads a few hours different and can't be reproduced for cities without
+    a tract join). Same closure definition (SRStatus) as `aggregate_tract`. Expects the
+    equity-subset frame with `days_to_close` and `is_on_time` already computed.
+    """
+    total = len(df)
+    closed = df["SRStatus"].astype(str).str.strip().str.lower().isin(_CLOSED_STATUSES)
+    on_time_valid = df["is_on_time"].notna() if "is_on_time" in df.columns else pd.Series(False, index=df.index)
+    return {
+        "total_requests": int(total),
+        "closed_requests": int(closed.sum()),
+        "closure_rate": float(closed.mean()) if total else float("nan"),
+        "median_days_to_close": float(df.loc[closed, "days_to_close"].median()) if closed.any() else float("nan"),
+        "on_time_rate": float(df.loc[on_time_valid, "is_on_time"].mean()) if on_time_valid.any() else float("nan"),
+    }
+
+
 def weighted_median(values, weights) -> float:
     """Interpolated weighted median — the value at cumulative weight = half the total,
     linearly interpolated between the straddling observations. Reduces to numpy's

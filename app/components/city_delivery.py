@@ -30,31 +30,31 @@ def _is_baltimore(city: str) -> bool:
 
 
 def _bar(df: pd.DataFrame, col: str, label: str, fmt: str) -> go.Figure:
-    """Vertical ranked bar, Baltimore highlighted. Value labels sit *inside* the bars and
-    city names on the x-axis, so nothing clips on a narrow (mobile) viewport — the failure
-    mode of horizontal bars with outside labels."""
-    d = df.sort_values(col, ascending=False)  # tallest on the left
+    """Horizontal ranked bar, Baltimore highlighted. Value labels sit *inside* the bars
+    (not outside, which clipped at the right edge on narrow/mobile viewports); city names
+    on the y-axis use automargin so they're never cut off."""
+    d = df.sort_values(col, ascending=True)  # largest at the top
     colors = [_BALTIMORE_COLOR if _is_baltimore(c) else _PEER_COLOR for c in d["city"]]
     fig = go.Figure(go.Bar(
-        x=d["city"], y=d[col],
+        x=d[col], y=d["city"], orientation="h",
         marker_color=colors,
         text=[fmt.format(v) for v in d[col]],
-        textposition="inside", insidetextanchor="middle",
+        textposition="inside", insidetextanchor="end",
         textfont={"color": "white", "size": 15},
-        hovertemplate="<b>%{x}</b><br>" + label + ": %{text}<extra></extra>",
+        hovertemplate="<b>%{y}</b><br>" + label + ": %{text}<extra></extra>",
     ))
     fig.update_layout(
-        height=360,
-        margin={"t": 20, "b": 10, "l": 10, "r": 10},
-        yaxis_title=label, xaxis_title=None,
+        height=max(170, 78 * len(d) + 70),
+        margin={"t": 24, "b": 10, "l": 10, "r": 10},
+        xaxis_title=label, yaxis_title=None,
         plot_bgcolor="white", paper_bgcolor="white", showlegend=False,
         uniformtext={"mode": "show", "minsize": 11},  # never hide a value label
     )
-    fig.update_xaxes(tickfont={"size": 13})
+    fig.update_yaxes(automargin=True, tickfont={"size": 13})
     if col in _RATE_COLS:
-        fig.update_yaxes(tickformat=".0%", rangemode="tozero")
+        fig.update_xaxes(tickformat=".0%", range=[0, 1])
     else:
-        fig.update_yaxes(rangemode="tozero")
+        fig.update_xaxes(rangemode="tozero")
     return fig
 
 

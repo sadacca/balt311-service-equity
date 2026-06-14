@@ -84,15 +84,29 @@ def run(year: int, cities: list[str], is_live: bool, force: bool = False) -> Non
             population = fetch_county_population(adapter.fips)
             log(f"  ACS population (FIPS {adapter.fips}): {population}")
 
-            t0 = time.time()
-            records = adapter.fetch(year)
-            log(f"  fetched {len(records):,} records in {time.time() - t0:.0f}s")
-
-            row = compute_city_metrics(
-                records, city=adapter.city, year=year, population=population,
-                right_censor_days=right_censor_days, closure_definition=adapter.closure_definition,
-                scope_fn=adapter.scope, closed_fn=adapter.is_closed,
-            )
+            # Prefer metrics already computed by the within-app pipeline (Baltimore) so the
+            # cross-city row equals the Operations tab and no re-fetch is needed.
+            pre = adapter.precomputed(year, PROC)
+            if pre is not None:
+                log(f"  using within-app pooled metrics for {adapter.city} {year} (no re-fetch)")
+                row = {
+                    "city": adapter.city, "year": int(year),
+                    "total_requests": pre["total_requests"],
+                    "requests_per_1k": (pre["total_requests"] / population * 1000.0) if population else None,
+                    "median_days_to_close": pre["median_days_to_close"],
+                    "closure_rate": pre["closure_rate"],
+                    "on_time_rate": pre["on_time_rate"],
+                    "population": population, "closure_definition": adapter.closure_definition,
+                }
+            else:
+                t0 = time.time()
+                records = adapter.fetch(year)
+                log(f"  fetched {len(records):,} records in {time.time() - t0:.0f}s")
+                row = compute_city_metrics(
+                    records, city=adapter.city, year=year, population=population,
+                    right_censor_days=right_censor_days, closure_definition=adapter.closure_definition,
+                    scope_fn=adapter.scope, closed_fn=adapter.is_closed,
+                )
             log(
                 f"  total={row['total_requests']:,}  per_1k="
                 f"{row['requests_per_1k']}  median_days={row['median_days_to_close']}  "
