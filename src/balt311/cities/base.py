@@ -6,7 +6,8 @@ Baltimore's canonical field names, so the city-agnostic aggregator
 
 Canonical fields — Baltimore's own names, adopted as the shared vocabulary:
     SRType, CreatedDate, CloseDate, Latitude, Longitude
-`CreatedDate` / `CloseDate` are millisecond-epoch integers (the ArcGIS convention);
+`CreatedDate` / `CloseDate` are either millisecond-epoch integers (ArcGIS — Baltimore, DC)
+or ISO 8601 strings (Carto/Socrata — Philadelphia); `peer_metrics._parse_dt` accepts both.
 `CloseDate` is null/absent for still-open requests. The uniform cross-city closure rule
 is "a request is closed iff it has a CloseDate" — recorded per city in
 `closure_definition` and footnoted in the tab, because native closure semantics differ.

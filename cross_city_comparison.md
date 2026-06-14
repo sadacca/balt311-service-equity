@@ -323,9 +323,28 @@ rates-only, per-city closure-definition expander, soft-degrade for null metrics 
 years not shared across cities, and a "run the workflow" notice until `peer_city_metrics`
 exists. **Findings (what Baltimore-vs-DC actually shows) pending the data run.**
 
-### 6.3 — Cohort expansion (Phase 5.3) — _pending_
+### 6.3 — Cohort expansion (Phase 5.3) — _Philadelphia adapter shipped 2026-06-14; data run pending_
 
-### 6.4 — Delivery tab, cohort (Phase 5.4) — _pending_
+**First non-ArcGIS city — proves the adapter layer generalizes across platforms.**
+Philadelphia 311 lives on **Carto** (OpenDataPhilly SQL API), not ArcGIS, so this added a
+reusable Carto client (`cities/carto.py`, keyset paging on `cartodb_id`, mirroring
+`arcgis.py`) and the `PhiladelphiaAdapter` (`cities/philadelphia.py`: table
+`public_cases_fc`; `service_name→SRType`, `requested_datetime→CreatedDate`,
+`closed_datetime→CloseDate`, `lat/lon`, `status`; closed = status 'Closed'; FIPS 42101).
+Carto returns **ISO-8601 timestamps** rather than ArcGIS ms-epoch, so
+`peer_metrics._parse_dt` now accepts both (inspecting the first non-null value, since a
+`CloseDate` with open requests is object-dtype even when numeric; `format="mixed"` for
+robustness). Registered in `ADAPTERS` as `philadelphia` and added to both workflows' default
+city list. **Pending:** the CI ingest run (`peer_city_backfill.yml`, default cities now
+`baltimore,dc,philadelphia`) — Carto is unreachable from the dev sandbox, same as ArcGIS.
+Unit-tested: ISO+ms parsing, Carto keyset paging, Philly scope/closure, ms-epoch regression.
+
+### 6.4 — Delivery tab, cohort (Phase 5.4) — _tab already N-city; verified with 3 cities_
+
+The delivery component was built city-count-agnostic (ranked bars, Baltimore highlighted,
+null-metric soft-degrade), so Philadelphia appears with no code change once its data lands —
+confirmed by rendering the tab with a synthetic 3-city table (Baltimore stays the red
+reference, peers gray, ranked by the selected metric).
 
 ### 6.5 — Equity methodology (Phase 5.5) — _pending_
 

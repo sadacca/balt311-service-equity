@@ -7,11 +7,13 @@ cities register their adapter class in `ADAPTERS` and are then ingestible by
 from .baltimore import BaltimoreAdapter
 from .base import CityAdapter
 from .dc import DCAdapter
+from .philadelphia import PhiladelphiaAdapter
 
 # Registry keyed by the short slug used on the command line / in the workflow.
 ADAPTERS: dict[str, type[CityAdapter]] = {
     "baltimore": BaltimoreAdapter,
     "dc": DCAdapter,
+    "philadelphia": PhiladelphiaAdapter,
 }
 
-__all__ = ["CityAdapter", "BaltimoreAdapter", "DCAdapter", "ADAPTERS"]
+__all__ = ["CityAdapter", "BaltimoreAdapter", "DCAdapter", "PhiladelphiaAdapter", "ADAPTERS"]

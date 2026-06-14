@@ -17,7 +17,7 @@ on:
       cities:
         description: "Comma-separated city slugs (e.g. 'baltimore,dc')"
         required: false
-        default: "baltimore,dc"
+        default: "baltimore,dc,philadelphia"
         type: string
       is_live_year:
         description: "Live current-year file? (applies 30-day right-censoring)"
