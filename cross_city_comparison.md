@@ -257,11 +257,26 @@ map: `SERVICECODEDESCRIPTION→SRType`, `ADDDATE→CreatedDate`, `RESOLUTIONDATE
 `LATITUDE/LONGITUDE`. Uniform closure rule across cities: **closed iff a CloseDate is
 present** (Baltimore's native SRStatus rule differs slightly — footnoted, not used here).
 
-**Still pending (gates 5.2's checkpoint, needs the first CI run):** P5.1-5 — run the MVP
-pair on real data and record DC's row counts, closure-semantics finding, any field-map
-surprises, and the **Baltimore-row cross-check vs. the Operations KPI total** (must match).
-ArcGIS is unreachable from the dev sandbox (403), so this runs in CI like the Baltimore
-backfill. Fill in the findings here once the workflow has run.
+**First run (2026-06-14) surfaced a scoping bug, now fixed.** The MVP pair ran, but
+Baltimore's `median_days_to_close` came back ≈0.0045 d (~6 min) and volume ≈1.08M
+(per-1k 1874 vs DC's 628), while DC looked sane. Root cause: the aggregator ran over
+*all* Baltimore records, so **ECC information-calls (closed instantly) and system /
+non-resident records** dominated — exactly what the within-Baltimore `filter_equity_subset`
++ `aggregate_tract` exclude. DC's feed has no ECC/instant-close equivalent, so it was
+unaffected. **Fix:** per-adapter `scope()` / `is_closed()` hooks (`cities/base.py`).
+Baltimore now mirrors the within-Baltimore equity subset (resident-initiated, non-ECC,
+geocoded) and SRStatus-based closure; DC keeps the generic defaults (non-ECC, geocoded;
+closed = CloseDate present). Verified on synthetic data: contamination reproduced the
+≈0 median, the scoped path recovers a clean multi-day median.
+
+**Methodology caveat (intentional asymmetry):** the resident-initiated filter is applied
+to Baltimore (where `MethodReceived` exists) but not DC (no channel field). So Baltimore's
+cross-city scope equals its within-app equity subset, while DC's is all geocoded service
+requests. Footnoted in the closure-definition expander.
+
+**Still pending:** re-run the workflow to regenerate `peer_city_metrics.parquet` with the
+fix, then record the corrected DC/Baltimore rows and the Baltimore-row cross-check vs. the
+Equity-tab subset numbers (should now agree).
 
 ### 6.2 — Delivery tab, MVP (Phase 5.2) — _tab shipped 2026-06-13; findings pending data_
 

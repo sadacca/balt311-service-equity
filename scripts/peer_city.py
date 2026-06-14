@@ -69,6 +69,7 @@ def run(year: int, cities: list[str], is_live: bool) -> None:
         row = compute_city_metrics(
             records, city=adapter.city, year=year, population=population,
             right_censor_days=right_censor_days, closure_definition=adapter.closure_definition,
+            scope_fn=adapter.scope, closed_fn=adapter.is_closed,
         )
         log(
             f"  total={row['total_requests']:,}  per_1k="
