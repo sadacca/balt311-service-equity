@@ -1,0 +1,100 @@
+name: Backfill cross-city 311 metrics (Phase 5)
+
+# Multi-year analogue of the Cross-city 311 metrics workflow: processes several years
+# sequentially, committing after each so a mid-run failure never loses completed years.
+# Honors peer_city.py's smart reuse — without --force, years/cities already present are
+# skipped, so this is safe to re-run to "fill in whatever's missing."
+
+on:
+  workflow_dispatch:
+    inputs:
+      years:
+        description: "Space-separated years to process, oldest first"
+        required: false
+        default: "2023 2024 2025"
+        type: string
+      cities:
+        description: "Comma-separated city slugs"
+        required: false
+        default: "baltimore,dc"
+        type: string
+      pause_seconds:
+        description: "Pause between years (seconds) — courtesy delay for the portals"
+        required: false
+        default: "120"
+        type: string
+      force:
+        description: "Refetch even years/cities already present (repopulate everything)"
+        required: false
+        default: false
+        type: boolean
+      is_live_year:
+        description: "Treat each year as live (30-day right-censoring)"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  backfill:
+    name: "Backfill cross-city ${{ inputs.years }} — ${{ inputs.cities }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pandas pyarrow
+
+      - name: Process years sequentially
+        env:
+          CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          FLAGS=""
+          [ "${{ inputs.is_live_year }}" = "true" ] && FLAGS="$FLAGS --live"
+          [ "${{ inputs.force }}" = "true" ] && FLAGS="$FLAGS --force"
+
+          first=true
+          for year in ${{ inputs.years }}; do
+            if [ "$first" = "false" ]; then
+              echo "--- Pausing ${{ inputs.pause_seconds }}s before $year ---"
+              sleep ${{ inputs.pause_seconds }}
+            fi
+            first=false
+
+            echo "=============================="
+            echo "  Year: $year"
+            echo "=============================="
+
+            # peer_city.py isolates each city and writes whatever succeeded; a non-zero
+            # exit means some city failed that year. Capture it but still commit + continue,
+            # so one bad portal/year doesn't abort the rest of the backfill.
+            rc=0
+            python scripts/peer_city.py --year "$year" --cities "${{ inputs.cities }}" $FLAGS || rc=$?
+
+            # Commit this year's outputs before moving on
+            git pull --rebase --autostash origin main
+            git add data/processed/peer_city_metrics.parquet data/processed/peer_city_meta.csv
+            if git diff --staged --quiet; then
+              echo "No cross-city changes for $year"
+            else
+              git commit -m "peer: backfill cross-city metrics for ${{ inputs.cities }} ($year)"
+              git push origin main
+            fi
+
+            if [ "$rc" != "0" ]; then
+              echo "WARNING: year $year had city failures (rc=$rc) — continuing to next year"
+            fi
+          done
