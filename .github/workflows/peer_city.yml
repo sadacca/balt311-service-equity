@@ -48,6 +48,7 @@ jobs:
           python scripts/peer_city.py --year ${{ inputs.year }} --cities "${{ inputs.cities }}" $LIVE_FLAG
 
       - name: Commit and push cross-city outputs
+        if: always()  # persist cities that succeeded even if another city's fetch failed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

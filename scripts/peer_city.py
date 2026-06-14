@@ -52,6 +52,7 @@ def run(year: int, cities: list[str], is_live: bool) -> None:
     )
 
     new_rows = []
+    failures = []
     for slug in cities:
         if slug not in ADAPTERS:
             log(f"SKIP unknown city '{slug}' (known: {', '.join(ADAPTERS)})")
@@ -59,33 +60,38 @@ def run(year: int, cities: list[str], is_live: bool) -> None:
         adapter = ADAPTERS[slug]()
         log(f"=== {adapter.city} ({slug}) · {year} ===")
 
-        population = fetch_county_population(adapter.fips)
-        log(f"  ACS population (FIPS {adapter.fips}): {population}")
+        # Isolate each city: a network failure on one (DC's ArcGIS can time out) must not
+        # discard the others' completed work — write what succeeded, flag the rest.
+        try:
+            population = fetch_county_population(adapter.fips)
+            log(f"  ACS population (FIPS {adapter.fips}): {population}")
 
-        t0 = time.time()
-        records = adapter.fetch(year)
-        log(f"  fetched {len(records):,} records in {time.time() - t0:.0f}s")
+            t0 = time.time()
+            records = adapter.fetch(year)
+            log(f"  fetched {len(records):,} records in {time.time() - t0:.0f}s")
 
-        row = compute_city_metrics(
-            records, city=adapter.city, year=year, population=population,
-            right_censor_days=right_censor_days, closure_definition=adapter.closure_definition,
-            scope_fn=adapter.scope, closed_fn=adapter.is_closed,
-        )
-        log(
-            f"  total={row['total_requests']:,}  per_1k="
-            f"{row['requests_per_1k']}  median_days={row['median_days_to_close']}  "
-            f"closure_rate={row['closure_rate']}"
-        )
-        new_rows.append(row)
-
-        meta[adapter.city] = {
-            "fips": adapter.fips, "population": population,
-            "portal_url": adapter.portal_url, "closure_definition": adapter.closure_definition,
-        }
+            row = compute_city_metrics(
+                records, city=adapter.city, year=year, population=population,
+                right_censor_days=right_censor_days, closure_definition=adapter.closure_definition,
+                scope_fn=adapter.scope, closed_fn=adapter.is_closed,
+            )
+            log(
+                f"  total={row['total_requests']:,}  per_1k="
+                f"{row['requests_per_1k']}  median_days={row['median_days_to_close']}  "
+                f"closure_rate={row['closure_rate']}"
+            )
+            new_rows.append(row)
+            meta[adapter.city] = {
+                "fips": adapter.fips, "population": population,
+                "portal_url": adapter.portal_url, "closure_definition": adapter.closure_definition,
+            }
+        except Exception as exc:
+            log(f"  ERROR processing {slug} ({year}): {exc!r} — continuing with other cities")
+            failures.append(slug)
 
     if not new_rows:
-        log("No cities processed — nothing written.")
-        return
+        log("No cities processed successfully — nothing written.")
+        sys.exit(1)
 
     metrics = upsert_metrics(existing, new_rows)
     metrics.to_parquet(METRICS_PATH, index=False)
@@ -98,6 +104,12 @@ def run(year: int, cities: list[str], is_live: bool) -> None:
     )
     meta_df.to_csv(META_PATH, index=False)
     log(f"Wrote {len(meta_df)} rows → {META_PATH.name}")
+
+    if failures:
+        # Successful cities are already written/committed; exit non-zero so CI flags the
+        # gap and the failed city can be re-run on its own.
+        log(f"FAILED cities (re-run these): {', '.join(failures)}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
