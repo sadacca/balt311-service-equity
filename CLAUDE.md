@@ -107,6 +107,8 @@ Everything else (System/Internal source, ECC types, ungeocoded) is excluded from
 | `csa_demographics.csv` | CSA | population-weighted rollup of tract demographics |
 | `peer_city_metrics.parquet` | city × year | cross-city delivery metrics (total_requests, requests_per_1k, median_days_to_close, closure_rate, on_time_rate, population, closure_definition) — Phase 5, built by `scripts/peer_city.py` |
 | `peer_city_meta.csv` | city | fips, ACS population, portal_url, closure_definition |
+| `peer_city_maturity.csv` | city | 311 open-data publishing maturity scorecard (9 rubric dimensions 0–3 + in_cohort flag) — Phase 5.8, curated canvass |
+| `peer_city_coverage_census.csv` | city | provisional scoreable/partial/unconfirmed status of the ~40 largest US cities — Phase 5.8 |
 
 `data/raw/` and `data/interim/` are gitignored and rebuilt by the pipeline.
 
@@ -164,6 +166,8 @@ app/
     equity_distributions.py       # Race + income distribution comparison
     equity_trend.py               # Year-over-year overlap score trend
     operations_panel.py           # Full Operations tab
+    city_delivery.py              # Cross-City Service Delivery tab (Phase 5)
+    maturity_index.py             # 311 Open-Data Maturity tab (Phase 5.8)
     utils.py                      # overlap_score, score_label, format_metric, hex_to_rgba
 
 scripts/

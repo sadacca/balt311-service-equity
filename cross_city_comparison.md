@@ -352,7 +352,19 @@ reference, peers gray, ranked by the selected metric).
 
 ### 6.7 — Within-type comparison (Phase 5.7) — _pending_
 
-### 6.8 — 311 open-data maturity index (Phase 5.8) — _pending_
+### 6.8 — 311 open-data maturity index (Phase 5.8) — _Tab 9 shipped 2026-06-14 (provisional scores)_
+
+Built the Maturity tab (`app/components/maturity_index.py`) and two curated CSVs:
+`peer_city_maturity.csv` (the §8 rubric scored 0–3 across 9 dimensions for the 3 onboarded
+cities + NYC/Chicago/SF as canvassed reference leaders) and `peer_city_coverage_census.csv`
+(the §8.1 census of the 40 largest US cities). The tab leads with the credit framing, then a
+scorecard heatmap (rank + total, Baltimore starred), Baltimore's gap profile against the
+leader (the specific practice that closes each gap), the coverage census headline, and the
+two standing caveats. Current scores rank **SF 27 · NYC 26 · Chicago 25 · Baltimore 24 ·
+Philadelphia 24 · DC 23** — Baltimore a strong mid-tier first-mover the Socrata leaders edge
+out on cadence / geocoding / documentation; census shows **19 of 40 scoreable, 11 partial,
+10 unconfirmed**. Scores are a provisional canvass (equal-weight 0–3) — P5.8-1 (finalize
+weights) and P5.8-2b (resolve the ❔ census rows against portals) remain open.
 
 ---
 
