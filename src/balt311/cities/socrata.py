@@ -26,6 +26,10 @@ PAGE_SIZE = 50000
 TIMEOUT = 120
 RETRIES = 6
 
+# Terminal/"closed" status values across the Socrata cohort — they don't agree on the word:
+# NYC/SF say "Closed", Chicago "Completed", Kansas City "Resolved". Matched case-insensitively.
+CLOSED_STATES = {"closed", "resolved", "completed", "done", "closed - resolved"}
+
 # Ordered candidate raw column names per canonical field; first present one wins.
 CANDIDATES: dict[str, list[str]] = {
     "CreatedDate": ["created_date", "requested_datetime", "creation_date", "open_date_time",
@@ -138,11 +142,17 @@ class SocrataAdapter(CityAdapter):
         return apply_field_map(rows, field_map)
 
     def is_closed(self, df):
-        # A Socrata request is closed iff it carries a close timestamp (the cohort-wide rule);
-        # fall back to a status column only if no CloseDate was mapped.
+        # Closed if it carries a close timestamp OR a terminal status — combined, because some
+        # systems don't reliably populate a close date for resolved records (Kansas City leaves
+        # `resolved_date` empty yet marks `current_status` = "resolved"), which otherwise
+        # collapses the closure rate to 0. `_closed` is the parsed CloseDate (compute adds it
+        # before calling this).
         import pandas as pd
-        if "CloseDate" in df.columns and df["CloseDate"].notna().any():
-            return df["CloseDate"].notna()
+        closed = pd.Series(False, index=df.index)
+        if "_closed" in df.columns:
+            closed = closed | df["_closed"].notna()
+        elif "CloseDate" in df.columns:
+            closed = closed | df["CloseDate"].notna()
         if "status" in df.columns:
-            return df["status"].astype(str).str.strip().str.lower().eq("closed")
-        return pd.Series(False, index=df.index)
+            closed = closed | df["status"].astype(str).str.strip().str.lower().isin(CLOSED_STATES)
+        return closed

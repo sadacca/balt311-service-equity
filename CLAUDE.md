@@ -188,6 +188,7 @@ src/balt311/
   backfill.yml                    # Multi-year sequential backfill
   peer_city.yml                   # Cross-city metrics, single year (Phase 5)
   peer_city_backfill.yml          # Cross-city metrics, multi-year sequential (Phase 5)
+  peer_city_matrix.yml            # Cross-city metrics, one job PER CITY in parallel + single merge/commit (Phase 5)
 
 data/processed/                   # Committed — app reads only from here
 data/raw/                         # Gitignored

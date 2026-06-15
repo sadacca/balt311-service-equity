@@ -1,0 +1,144 @@
+name: Parallel cross-city 311 backfill (Phase 5)
+
+# Fan-out analogue of the sequential backfill: one job PER CITY, so every city's API
+# (ArcGIS / Carto / Socrata / CKAN) is hit concurrently instead of one-after-another. Each
+# matrix job writes its own per-city artifact (no shared file), then a single merge job
+# upserts them all into the canonical peer_city_metrics.parquet and commits ONCE — so the
+# 10 parallel fetches never race on the binary file or on git push.
+#
+# Matrix jobs always (re)fetch their city for the requested years (each starts from an empty
+# per-city file). Use the sequential backfill workflow when you want smart "skip what's
+# already present" reuse instead.
+
+concurrency:
+  group: peer-city-data        # shares the lane with the other peer-city workflows (no races)
+  cancel-in-progress: false
+
+on:
+  workflow_dispatch:
+    inputs:
+      years:
+        description: "Space-separated years to process"
+        required: false
+        default: "2023 2024 2025"
+        type: string
+      cities:
+        description: "Comma-separated city slugs (one matrix job each)"
+        required: false
+        default: "baltimore,dc,philadelphia,nyc,chicago,sf,austin,nashville,kansas_city,boston"
+        type: string
+      force:
+        description: "Refetch even if a (city, year) row already exists"
+        required: false
+        default: true
+        type: boolean
+      is_live_year:
+        description: "Treat each year as live (30-day right-censoring)"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  setup:
+    name: Build city matrix
+    runs-on: ubuntu-latest
+    outputs:
+      cities: ${{ steps.parse.outputs.cities }}
+    steps:
+      - id: parse
+        run: |
+          python3 -c "import json; cs='${{ inputs.cities }}'.split(','); print('cities=' + json.dumps([c.strip() for c in cs if c.strip()]))" >> "$GITHUB_OUTPUT"
+
+  fetch:
+    name: "Fetch ${{ matrix.city }}"
+    needs: setup
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false          # one city's portal failing must not cancel the others
+      max-parallel: 10
+      matrix:
+        city: ${{ fromJSON(needs.setup.outputs.cities) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pandas pyarrow
+
+      - name: Fetch ${{ matrix.city }} for all years
+        env:
+          CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
+          SOCRATA_APP_TOKEN: ${{ secrets.SOCRATA_APP_TOKEN }}
+        run: |
+          mkdir -p out
+          FLAGS=""
+          [ "${{ inputs.is_live_year }}" = "true" ] && FLAGS="$FLAGS --live"
+          [ "${{ inputs.force }}" = "true" ] && FLAGS="$FLAGS --force"
+          for year in ${{ inputs.years }}; do
+            echo "===== ${{ matrix.city }} · $year ====="
+            python scripts/peer_city.py --year "$year" --cities "${{ matrix.city }}" \
+              --metrics-path "out/${{ matrix.city }}.parquet" \
+              --meta-path "out/${{ matrix.city }}.meta.csv" $FLAGS \
+              || echo "WARNING: ${{ matrix.city }} $year failed (rc=$?) — continuing"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: peer-${{ matrix.city }}
+          path: out/
+          if-no-files-found: ignore
+
+  merge:
+    name: Merge + commit
+    needs: fetch
+    if: always()                # commit whatever cities succeeded, even if some failed
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pandas pyarrow
+
+      - name: Download per-city artifacts
+        continue-on-error: true   # no artifacts (every city failed) → nothing to merge
+        uses: actions/download-artifact@v4
+        with:
+          path: merged
+          pattern: peer-*
+
+      - name: Merge artifacts and commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          python scripts/peer_city.py --merge merged
+
+          git add data/processed/peer_city_metrics.parquet data/processed/peer_city_meta.csv
+          if git diff --staged --quiet; then
+            echo "No cross-city changes to commit."
+          else
+            git commit -m "peer: parallel backfill cross-city metrics (${{ inputs.cities }} · ${{ inputs.years }})"
+            for attempt in 1 2 3 4 5; do
+              if git pull --rebase --autostash origin main && git push origin main; then
+                echo "Pushed on attempt $attempt"; break
+              fi
+              echo "Push attempt $attempt failed — retrying in $((attempt * 5))s"
+              sleep $((attempt * 5))
+            done
+          fi

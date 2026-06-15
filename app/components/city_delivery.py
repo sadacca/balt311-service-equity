@@ -32,6 +32,7 @@ _RATE_COLS = {"closure_rate", "on_time_rate"}
 _SUSPICIOUS_SAME_DAY = 0.50     # ≥half of closed requests close the same instant they open
 _SUSPICIOUS_MEDIAN_DAYS = 1.0   # a sub-day citywide median is implausible for real delivery
 _SUSPICIOUS_CLOSURE = 0.99      # near-total closure usually means auto-close, not performance
+_SUSPICIOUS_LOW_CLOSURE = 0.05  # near-zero closure usually means a closed-status mapping gap
 
 
 def _is_baltimore(city: str) -> bool:
@@ -50,6 +51,8 @@ def _quality_flags(row) -> list[str]:
     cr = row.get("closure_rate")
     if cr is not None and pd.notna(cr) and cr >= _SUSPICIOUS_CLOSURE:
         reasons.append(f"near-total closure ({cr:.0%})")
+    if cr is not None and pd.notna(cr) and cr <= _SUSPICIOUS_LOW_CLOSURE and row.get("total_requests", 0) > 1000:
+        reasons.append(f"near-zero closure ({cr:.0%}) — likely a closed-status mapping gap, not real performance")
     return reasons
 
 
@@ -132,6 +135,15 @@ def render_city_delivery(data_dir: Path, year: int) -> None:
 
     metric_label = st.radio("Metric", list(_METRICS), horizontal=True, key="cc_delivery_metric")
     col, fmt, higher_better = _METRICS[metric_label]
+
+    # For the median, offer a "clean" version that drops 0-day (auto-close) closures — a more
+    # comparable figure for the contaminated cities. Only when the column has been populated.
+    if col == "median_days_to_close" and "median_days_to_close_excl_same_day" in sub.columns \
+            and sub["median_days_to_close_excl_same_day"].notna().any():
+        if st.checkbox("Exclude same-day (0-day) closures — cleaner cross-city comparison",
+                       key="cc_excl_sameday"):
+            col = "median_days_to_close_excl_same_day"
+            metric_label = "Median days to close (excl. same-day)"
 
     valid = sub.dropna(subset=[col])
     missing = sorted(set(sub["city"]) - set(valid["city"]))

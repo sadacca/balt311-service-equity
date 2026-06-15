@@ -366,6 +366,16 @@ ArcGIS-Hub adapter (`cities/nashville.py`) configured by the stable Hub **item i
 (`9fe11d5a…`) — it resolves the FeatureServer URL, discovers the layer's fields, and
 year-filters the single 2017-present layer via a new `where` arg on `arcgis.fetch_layer_keyset`.
 So the platform split is now ArcGIS = Baltimore/DC/Nashville, Socrata = NYC/Chicago/SF/Austin/KC.
+(3) **Kansas City closure rate = 0** — KC's `current_status` terminal value is "resolved", not
+"closed" (the cohort had only matched the literal "closed"), and KC leaves `resolved_date`
+sparse, so closure collapsed to 0. Fixed by recognizing terminal statuses cohort-wide
+(`socrata.CLOSED_STATES` = closed / resolved / completed / done; also fixes Chicago's
+"Completed") and combining timestamp-OR-status closure. This surfaced a latent bug in
+`compute_city_metrics`: `days.where(days >= 0, 0.0)` floored **NaN** durations (closed-by-status
+records with no close timestamp) to 0, faking 0-day "auto-close" contamination — corrected to
+`days.mask(days < 0, 0.0)` so untimestamped closures are excluded from the median, not counted
+as same-day. A near-zero-closure data-quality flag was added to the Delivery tab as a safety net
+for future closed-status mapping gaps.
 
 ### 6.4 — Delivery tab, cohort (Phase 5.4) — _tab already N-city; verified with 3 cities_
 
