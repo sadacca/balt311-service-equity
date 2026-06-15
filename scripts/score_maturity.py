@@ -32,18 +32,29 @@ DIMS = [
     "standardization", "field_completeness", "geocoding_coverage", "documentation",
 ]
 
-# The 10 cities whose 311 data is actually ingested into this dashboard.
-IN_COHORT = {
-    "Baltimore, MD", "Washington, DC", "Philadelphia, PA", "New York, NY", "Chicago, IL",
-    "San Francisco, CA", "Austin, TX", "Nashville, TN", "Kansas City, MO", "Boston, MA",
+# Inspected anchors: the cohort we built ingestion adapters for, so each was scored against its
+# **actual published schema and history** (not the census heuristic). Order = DIMS:
+# avail, granularity, history, cadence, api, open311, fields, geocode, docs.
+# The first six are the original hand-scored leaders; the last four (Austin/Boston/KC/Nashville)
+# were promoted off the conservative derived defaults once we'd worked with their real data —
+# justification per city in the comment, and carried into the output `note`.
+ANCHORS: dict[str, tuple] = {
+    "San Francisco, CA": (3, 3, 3, 3, 3, 3, 3, 3, 3),  # Socrata vw6y-z8j6; 2008; nightly; Open311 leader; full field set
+    "New York, NY":      (3, 3, 3, 3, 3, 2, 3, 3, 3),  # Socrata erm2-nwe9; 2010; daily; channel + agency fields
+    "Chicago, IL":       (3, 3, 2, 3, 3, 2, 3, 3, 3),  # Socrata v6vf-nfxy; unified 2018; daily; rich schema
+    "Baltimore, MD":     (3, 3, 3, 2, 3, 3, 3, 2, 2),  # ArcGIS per-year 2016+; first-mover Open311; publishes channel
+    "Philadelphia, PA":  (3, 3, 3, 3, 3, 2, 2, 2, 3),  # Carto public_cases_fc; 2014; daily; strong dictionary; no channel
+    "Washington, DC":    (3, 3, 2, 3, 3, 1, 2, 3, 3),  # Open Data DC ArcGIS; per-year; no Open311; no channel
+    "Boston, MA":        (3, 3, 3, 3, 3, 2, 3, 2, 3),  # Analyze Boston CKAN; since 2011; Open311; source/dept/SLA fields; well-documented
+    "Austin, TX":        (3, 3, 3, 3, 3, 1, 3, 2, 2),  # Socrata xwdj-i9he; 2014; half-hourly; publishes method_received (channel)
+    "Kansas City, MO":   (3, 3, 2, 3, 3, 1, 3, 2, 2),  # OpenData KC Socrata; 2021; daily; report_source + department + days_to_close
+    "Nashville, TN":     (3, 3, 2, 2, 3, 1, 2, 2, 2),  # hubNashville ArcGIS Hub; 2017; core fields, no channel
 }
+ANCHOR_CITIES = set(ANCHORS)
 
-# Hand-scored anchors (kept verbatim; the rest are derived). Loaded from the existing maturity
-# file at run time so edits to the anchors persist — these are the fallback if it's absent.
-ANCHOR_CITIES = {
-    "Baltimore, MD", "Washington, DC", "Philadelphia, PA",
-    "New York, NY", "Chicago, IL", "San Francisco, CA",
-}
+# Every anchor is a cohort city, but not every cohort city is exhaustively documented; this set
+# is the same 10 and drives the in-cohort flag.
+IN_COHORT = set(ANCHORS)
 
 
 def derive_scores(status: str, evidence: str, note: str) -> dict:
@@ -88,23 +99,20 @@ def derive_scores(status: str, evidence: str, note: str) -> dict:
 
 def main() -> None:
     census = pd.read_csv(CENSUS)
-    anchors = {}
-    if MATURITY.exists():
-        cur = pd.read_csv(MATURITY)
-        for _, r in cur.iterrows():
-            if r["city"] in ANCHOR_CITIES:
-                anchors[r["city"]] = {d: int(r[d]) for d in DIMS}
 
     rows = []
     for _, c in census.iterrows():
         city = c["city"]
-        scores = anchors.get(city) or derive_scores(c["status"], c.get("evidence", ""), c.get("note", ""))
+        if city in ANCHORS:
+            scores = dict(zip(DIMS, ANCHORS[city]))
+        else:
+            scores = derive_scores(c["status"], c.get("evidence", ""), c.get("note", ""))
         rows.append({
             "city": city,
             "in_cohort": city in IN_COHORT,
             "status": c["status"],
             "evidence": c.get("evidence", ""),
-            "derived": city not in anchors,
+            "derived": city not in ANCHORS,
             **scores,
             "note": c.get("note", ""),
         })

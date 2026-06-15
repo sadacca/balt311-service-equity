@@ -167,19 +167,19 @@ def render_maturity_index(data_dir: Path) -> None:
                     key="maturity_heatmap", config={"staticPlot": True, "displayModeBar": False})
     _render_rubric()
 
-    cohort = df[df["in_cohort"]]["city"].tolist() if "in_cohort" in df.columns else []
+    n_inspected = int((~df["derived"]).sum()) if "derived" in df.columns else 0
     st.caption(
-        "**Reading the scores honestly.** Six cities (Baltimore, DC, Philadelphia, NYC, "
-        "Chicago, SF) were scored by inspecting their published data directly, so they earn 3s "
-        "on the dimensions that need inspection — field completeness, geocoding, documentation, "
-        "Open311. The other 39 are derived from the coverage census and scored **conservatively** "
-        "on those same four dimensions (2 = “present / standard, not individually "
-        "verified”), because the census can't see field-level detail. That's the main reason "
-        "the hand-checked leaders cluster at the top — a derived city's score on those four is a "
-        "**floor, not a ceiling**, and would rise with direct inspection (the planned P5.9-4 depth "
-        "probe). The rule-based dimensions (availability, granularity, history, cadence, API) are "
-        "derived the same way for every city."
-        + (f" Ingested into this dashboard: {', '.join(cohort)}." if cohort else "")
+        f"**Reading the scores honestly.** {n_inspected} cities — the cohort we built ingestion "
+        "adapters for and so scored against their **actual published schema and history** — are "
+        "marked *inspected* (Basis = hand in the table below). The other "
+        f"{len(df) - n_inspected} are derived from the coverage census and scored "
+        "**conservatively** on the four dimensions that need data inspection — field "
+        "completeness, geocoding, documentation, Open311 (2 = “present / standard, not "
+        "individually verified”). So a derived city's score on those four is a **floor, not a "
+        "ceiling**: it would rise with direct inspection (P5.9-4). The rule-based dimensions "
+        "(availability, granularity, history, cadence, API) derive identically for every city. "
+        "This is why an inspected city like Boston can outrank a census-derived one even when "
+        "its underlying data is comparable — the inspected scores simply have more evidence."
     )
 
     gaps = _gap_profile(df)

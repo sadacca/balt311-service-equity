@@ -2,14 +2,14 @@ city,in_cohort,status,evidence,derived,availability_license,granularity,history_
 "San Francisco, CA",True,scoreable,city_docs,False,3,3,3,3,3,3,3,3,3,Socrata vw6y-z8j6; since 2008; daily
 "New York, NY",True,scoreable,city_docs,False,3,3,3,3,3,2,3,3,3,"Socrata erm2-nwe9; created_date, closed_date, lat/lon"
 "Chicago, IL",True,scoreable,city_docs,False,3,3,2,3,3,2,3,3,3,"Socrata v6vf-nfxy; created_date, closed_date, lat/lon"
-"Baltimore, MD",True,scoreable,api,False,3,3,3,2,3,3,3,2,2,Per-year ArcGIS; 2016-present; API confirmed
+"Boston, MA",True,scoreable,api,False,3,3,3,3,3,2,3,2,3,Analyze Boston; multiple years; Open311 API
 "Philadelphia, PA",True,scoreable,city_docs,False,3,3,3,3,3,2,2,2,3,"Carto public_cases_fc; requested_datetime, API"
+"Baltimore, MD",True,scoreable,api,False,3,3,3,2,3,3,3,2,2,Per-year ArcGIS; 2016-present; API confirmed
 "Washington, DC",True,scoreable,city_docs,False,3,3,2,3,3,1,2,3,3,ArcGIS per-year since 2016
+"Austin, TX",True,scoreable,city_docs,False,3,3,3,3,3,1,3,2,2,Socrata xwdj-i9he; since 2014; half-hourly
 "Cincinnati, OH",False,scoreable,api,True,3,3,3,3,3,1,2,2,2,Tyler Data & Insights Socrata; 2012-present; daily
-"Austin, TX",True,scoreable,city_docs,True,3,3,3,3,3,1,2,2,2,Socrata xwdj-i9he; since 2014; half-hourly
-"Boston, MA",True,scoreable,api,True,3,3,2,2,3,2,2,2,2,Analyze Boston; multiple years; Open311 API
+"Kansas City, MO",True,scoreable,api,False,3,3,2,3,3,1,3,2,2,OpenData KC Socrata; daily; API
 "Memphis, TN",False,scoreable,api,True,3,3,2,3,3,1,2,2,2,Memphis Data Hub Socrata; 2M+ rows; daily
-"Kansas City, MO",True,scoreable,api,True,3,3,2,3,3,1,2,2,2,OpenData KC Socrata; daily; API
 "St. Louis, MO",False,scoreable,api,True,3,3,2,2,3,2,2,2,2,CSB Request API (Open311 v2); requires key
 "San Antonio, TX",False,scoreable,city_docs,True,3,3,3,2,3,1,2,2,2,ArcGIS Open Data SA; since 2011
 "Minneapolis, MN",False,scoreable,api,True,3,3,2,2,3,1,2,2,2,ArcGIS FeatureServer; 525K+ records; Jan 2021+
@@ -22,7 +22,7 @@ city,in_cohort,status,evidence,derived,availability_license,granularity,history_
 "Los Angeles, CA",False,scoreable,city_docs,True,3,3,2,2,3,1,2,2,2,MyLA311 Socrata; annual datasets 2018–2025
 "Louisville, KY",False,scoreable,api,True,3,3,2,2,3,1,2,2,2,LOJIC ArcGIS Hub; 2014-2025; weekly
 "Seattle, WA",False,scoreable,city_docs,True,3,3,2,2,3,1,2,2,2,Socrata 43nw-pkdq; Find It Fix It
-"Nashville, TN",True,scoreable,city_docs,True,3,3,2,2,3,1,2,2,2,hubNashville ArcGIS; annual + current
+"Nashville, TN",True,scoreable,city_docs,False,3,3,2,2,3,1,2,2,2,hubNashville ArcGIS; annual + current
 "San Diego, CA",False,scoreable,city_docs,True,3,3,1,2,3,1,2,2,2,Get It Done; annual CSV + rolling; lat/lng
 "Portland, OR",False,partial,api,True,2,2,1,1,3,2,1,1,1,SeeClickFix; Open311 API; no bulk export
 "San Jose, CA",False,partial,city_docs,True,2,2,1,3,1,0,1,1,1,Open Data; daily; limited doc

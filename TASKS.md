@@ -684,11 +684,21 @@ one continuous scale, not two disconnected exercises.
   (explicit anchors) so scores are reproducible and defensible, and verify no rank inversions
   vs. known leaders (SF/NYC/Chicago stay top-tier; Baltimore's relative position is stable
   against the 6-metro baseline). The anchors become the scoring rubric of record in §8.
-- [ ] **P5.9-4: Depth — observed service-information signals** — enrich each scoreable row with
-  data-depth signals captured from the live API probe (`scripts/verify_census.py`): published
-  **history span** (years), **field count**, and presence of the deeper fields (intake channel,
-  cost, reopen). Surface as columns and feed History-depth / Field-completeness numerically
-  rather than by judgment — this is the "depth of 311 service information" the ranking conveys.
+- [~] **P5.9-4: Depth — observed service-information signals (close the inspected/derived gap)**
+  — *Done for the 10-city cohort*: the cities we built adapters for are scored against their real
+  schema/history (explicit `ANCHORS` in `score_maturity.py`), promoting Austin/Boston/KC/Nashville
+  off the conservative derived defaults. *Remaining (~15 derived scoreable cities — LA, San
+  Antonio, Dallas, Charlotte, Seattle, Sacramento, Louisville, Raleigh, Memphis, Cincinnati,
+  Pittsburgh, Minneapolis, New Orleans, St. Louis, San Diego):* extend `scripts/verify_census.py`
+  into a **lightweight schema probe** (no full adapter needed) that, per census `endpoint_url`,
+  pulls one page + the field list and computes objective signals — **field count**, presence of
+  **intake-channel / agency / cost / reopen** fields (→ field_completeness), **earliest record
+  date** (→ history_depth), **latest record date** (→ update_cadence), and **geocoded share**
+  (lat/lon non-null ÷ total → geocoding_coverage). Write them to the census; have
+  `score_maturity.py` consume them so every probed city is scored on the same objective basis,
+  not the heuristic. Runs in CI (portals unreachable from the dev sandbox). The geocoded share for
+  the 10 cohort cities can also be captured during the next cross-city ingest (raw-vs-scoped row
+  counts in `compute_city_metrics`).
 - [ ] **P5.9-6: Data-integrity / plausibility flag in the rankings** — open data can be
   *published* maturely yet be unrealistic or gamed (auto-closed records inflating closure and
   crushing median time-to-close — see the `pct_same_day_close` flag already live on the Service
