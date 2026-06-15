@@ -25,7 +25,7 @@ All current development is on `claude/review-requirements-AlGBm`. Push only to t
 
 ## App Structure
 
-Streamlit app at `app/app.py`, organized into **two nested-tab groups** that keep the two fundamentally different kinds of analysis distinct:
+Streamlit app at `app/app.py`, organized into **two groups** that keep the two fundamentally different kinds of analysis distinct, selected by a top-level **`st.segmented_control`** (not `st.tabs`) so only the active group's body executes — `st.tabs` renders every tab body on every run, which made opening Compare cities pay the full cost of rendering the six within-Baltimore tabs (the Areas PCA embeddings + the Mix-Adjusted regression — ~30s cold) underneath:
 
 - **🏙️ Within Baltimore** — the sequenced six-step story: Operations → Services → Area Service Usage → Equity → Service Equity → Mix-Adjusted Equity.
 - **🌐 Compare cities** — *(Phase 5)* city-to-city comparison: Service Delivery → Service Equity → Maturity Index. **Service Delivery (`city_delivery.py`) and Maturity Index (`maturity_index.py`) are live**; Service Equity is still a placeholder (`cross_city.py`). Cohort = 10 cities across four platforms (ArcGIS, Carto, Socrata, CKAN). City-level only, so they do **not** use `geo_level`.
