@@ -235,10 +235,17 @@ else:
 demographics = load_demographics(DATA_DIR / f"{geo_key}_demographics.csv")
 
 # ── Two groups: the within-Baltimore story, and the cross-city comparison ─────
-grp_local, grp_cross = st.tabs(["🏙️ Within Baltimore", "🌐 Compare cities"])
+# A segmented control (not st.tabs) so only the ACTIVE group's body executes. st.tabs renders
+# every tab body on every run, which made opening Compare cities pay the full cost of the six
+# within-Baltimore tabs underneath (the Areas PCA embeddings and the Mix-Adjusted regression).
+# Gating here means Compare cities renders just its three light tabs.
+group = st.segmented_control(
+    "View", ["🏙️ Within Baltimore", "🌐 Compare cities"],
+    default="🏙️ Within Baltimore", label_visibility="collapsed", key="top_group",
+) or "🏙️ Within Baltimore"
 
 # ══ Within Baltimore — the sequenced six-step story ═══════════════════════════
-with grp_local:
+if group == "🏙️ Within Baltimore":
     st.caption(
         "A six-step story: how Baltimore delivers 311 service, then whether it does so "
         "equitably — read left to right."
@@ -323,7 +330,7 @@ with grp_local:
             )
 
 # ══ Compare cities — Phase 5 (scaffold) ═══════════════════════════════════════
-with grp_cross:
+else:
     render_cross_city_intro()
     cc_delivery, cc_equity, cc_maturity = st.tabs([
         "Service Delivery", "Service Equity", "Maturity Index",
