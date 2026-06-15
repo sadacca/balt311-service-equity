@@ -66,7 +66,7 @@ def _scorecard_heatmap(df: pd.DataFrame, max_total: int) -> go.Figure:
         for c, r, t in zip(df["city"], df["rank"], df["total"])
     ]
     fig = go.Figure(go.Heatmap(
-        z=z, x=list(_DIMS.values()), y=ylabels,
+        z=z, x=list(_DIM_SHORT.values()), y=ylabels,
         text=z, texttemplate="%{text}", textfont={"size": 13},
         colorscale="RdYlGn", zmin=0, zmax=_MAX_PER_DIM,
         showscale=True, colorbar={"title": "score", "tickvals": [0, 1, 2, 3]},
@@ -74,10 +74,12 @@ def _scorecard_heatmap(df: pd.DataFrame, max_total: int) -> go.Figure:
         hovertemplate="%{y}<br>%{x}: %{z}/3<extra></extra>",
     ))
     fig.update_layout(
-        height=110 + 34 * len(df),
+        height=130 + 34 * len(df),
         margin={"t": 10, "b": 10, "l": 10, "r": 10},
         yaxis={"autorange": "reversed"},  # rank 1 at the top
-        xaxis={"side": "top", "tickfont": {"size": 12}},
+        # Short labels, angled, with automargin — single-word headers slanted so the nine
+        # columns never overlap on a narrow (mobile) viewport.
+        xaxis={"side": "top", "tickangle": -45, "tickfont": {"size": 11}, "automargin": True},
         plot_bgcolor="white", paper_bgcolor="white",
     )
     return fig
