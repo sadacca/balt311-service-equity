@@ -680,7 +680,7 @@ one continuous scale, not two disconnected exercises.
   tier, Baltimore pinned/highlighted, filterable to scoreable-only and sortable by any
   dimension. Keep the existing detailed heatmap above it as the in-cohort "spotlight" so the
   deep ranking and the ingested cities stay legible. (Depends on P5.9-1.)
-- [ ] **P5.9-3: Calibration / anchoring QA** — document what 0/1/2/3 means per dimension
+- [x] **P5.9-3: Calibration / anchoring QA** — document what 0/1/2/3 means per dimension
   (explicit anchors) so scores are reproducible and defensible, and verify no rank inversions
   vs. known leaders (SF/NYC/Chicago stay top-tier; Baltimore's relative position is stable
   against the 6-metro baseline). The anchors become the scoring rubric of record in §8.

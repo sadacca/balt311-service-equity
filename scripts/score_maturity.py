@@ -68,8 +68,8 @@ def derive_scores(status: str, evidence: str, note: str) -> dict:
         m = re.search(r"since\s*(20\d{2})|(20\d{2})\s*-\s*present|(20\d{2})\+", note)
         yr = next((int(g) for g in (m.groups() if m else []) if g), None)
         if yr:
-            span = 2025 - yr
-            s["history_depth"] = 3 if span >= 12 else (2 if span >= 6 else 1)
+            span = 2025 - yr  # rubric anchors: >=10yr -> 3, ~3-9yr -> 2, <3yr -> 1
+            s["history_depth"] = 3 if span >= 10 else (2 if span >= 3 else 1)
 
     # Update cadence — a published fast refresh lifts it.
     if any(k in note for k in ("daily", "nightly", "half-hour", "real-time", "15-min", "several times a day")):

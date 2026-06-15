@@ -33,6 +33,29 @@ _DIM_SHORT = {
     "update_cadence": "Cadence", "api_access": "API", "standardization": "Open311",
     "field_completeness": "Fields", "geocoding_coverage": "Geocode", "documentation": "Docs",
 }
+# Explicit 1/2/3 anchors per dimension (0 = absent / data inaccessible). This is the rubric of
+# record — shown on the page AND the standard `scripts/score_maturity.py` derives against, so
+# the displayed criteria and the numbers always agree.
+_RUBRIC: dict[str, tuple[str, str, str]] = {
+    "availability_license": ("published, unclear/closed license", "open data, standard terms",
+                             "open under an explicit open license (CC0 / PDDL / public domain)"),
+    "granularity": ("aggregate / summary only", "record-level but a subset (e.g. app-channel)",
+                    "full record-level — one row per request"),
+    "history_depth": ("< 3 years, or a rolling window only", "≈ 3–9 years",
+                      "≥ 10 years of continuous coverage"),
+    "update_cadence": ("annual or irregular / manual", "weekly", "daily or faster"),
+    "api_access": ("bulk download only (no API)", "an API, but constrained",
+                   "full programmatic API (SODA / ArcGIS / Carto / CKAN)"),
+    "standardization": ("non-standard schema", "partial or historical Open311",
+                        "current Open311 GeoReport v2 endpoint"),
+    "field_completeness": ("missing a core field (no close timestamp, or no geo)",
+                           "the core set — created, closed, geo, type, status",
+                           "core plus extras — intake channel, agency, reopen / cost"),
+    "geocoding_coverage": ("sparse / partial coordinates", "most requests geocoded",
+                           "near-complete lat/lon"),
+    "documentation": ("minimal or none", "a published data dictionary",
+                      "rich field-level docs + metadata"),
+}
 # Specific practice that would close each dimension's gap (cross-refs requirements.md §5).
 _GAP_HINTS = {
     "availability_license": "publish under an explicit open license",
@@ -69,7 +92,7 @@ def _scorecard_heatmap(df: pd.DataFrame, max_total: int) -> go.Figure:
         z=z, x=list(_DIM_SHORT.values()), y=ylabels,
         text=z, texttemplate="%{text}", textfont={"size": 13},
         colorscale="RdYlGn", zmin=0, zmax=_MAX_PER_DIM,
-        showscale=True, colorbar={"title": "score", "tickvals": [0, 1, 2, 3]},
+        showscale=False,  # the score is printed in every cell — the colorbar is redundant
         xgap=2, ygap=2,
         hovertemplate="%{y}<br>%{x}: %{z}/3<extra></extra>",
     ))
@@ -139,14 +162,22 @@ def render_maturity_index(data_dir: Path) -> None:
     st.markdown("#### Detailed scorecard — every scoreable city")
     st.plotly_chart(_scorecard_heatmap(scoreable, max_total), use_container_width=True,
                     key="maturity_heatmap", config={"displayModeBar": False})
+    _render_rubric()
+
     cohort = df[df["in_cohort"]]["city"].tolist() if "in_cohort" in df.columns else []
-    if cohort:
-        st.caption(
-            "**6 cities are hand-scored** (Baltimore, DC, Philadelphia, NYC, Chicago, SF); the "
-            "rest are scored from the verified coverage census (status · evidence · published "
-            "history). Cities with 311 data actually ingested into this dashboard: "
-            + ", ".join(cohort) + "."
-        )
+    st.caption(
+        "**Reading the scores honestly.** Six cities (Baltimore, DC, Philadelphia, NYC, "
+        "Chicago, SF) were scored by inspecting their published data directly, so they earn 3s "
+        "on the dimensions that need inspection — field completeness, geocoding, documentation, "
+        "Open311. The other 39 are derived from the coverage census and scored **conservatively** "
+        "on those same four dimensions (2 = “present / standard, not individually "
+        "verified”), because the census can't see field-level detail. That's the main reason "
+        "the hand-checked leaders cluster at the top — a derived city's score on those four is a "
+        "**floor, not a ceiling**, and would rise with direct inspection (the planned P5.9-4 depth "
+        "probe). The rule-based dimensions (availability, granularity, history, cadence, API) are "
+        "derived the same way for every city."
+        + (f" Ingested into this dashboard: {', '.join(cohort)}." if cohort else "")
+    )
 
     gaps = _gap_profile(df)
     if gaps:
@@ -174,6 +205,17 @@ def render_maturity_index(data_dir: Path) -> None:
             "flags on the Service Delivery tab). A high publishing score is not a clean bill of "
             "data health.\n\nScores are a provisional canvass (rubric §8), to be hardened in P5.8."
         )
+
+
+def _render_rubric() -> None:
+    """The explicit 1/2/3 anchors per dimension, so a reader can judge any score against the
+    standard (and spot scores worth re-comparing)."""
+    with st.expander("What each score means — the rubric (0 = absent / data inaccessible)"):
+        rows = [
+            {"Dimension": _DIM_SHORT[d], "1": one, "2": two, "3": three}
+            for d, (one, two, three) in _RUBRIC.items()
+        ]
+        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 
 
 def _render_full_table(df: pd.DataFrame, max_total: int) -> None:
