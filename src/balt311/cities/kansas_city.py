@@ -12,8 +12,10 @@ class KansasCityAdapter(SocrataAdapter):
     domain = "data.kcmo.org"
     dataset_id = "d4px-6rwg"
     closure_definition = (
-        "Closed = resolved_date present. Non-ECC, geocoded. Median days = resolved_date − "
-        "open_date_time. 2021+ system; per-1k uses Jackson County (city-proxy)."
+        "Closed = current_status 'resolved' (KC's terminal state — no 'closed' value) or a "
+        "resolved_date present. Non-ECC, geocoded. Median days = resolved_date − open_date_time "
+        "(KC populates resolved_date sparsely, so the median covers the timestamped subset). "
+        "2021+ system; per-1k uses Jackson County (city-proxy)."
     )
     field_overrides = {
         "CreatedDate": "open_date_time", "CloseDate": "resolved_date",

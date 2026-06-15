@@ -88,7 +88,11 @@ def compute_city_metrics(
 
     is_closed = closed_fn(df) if closed_fn is not None else df["_closed"].notna()
     days = (df["_closed"] - df["_created"]).dt.total_seconds() / 86400.0
-    days = days.where(days >= 0, 0.0)  # floor sub-second negatives (same-day closures)
+    # Floor only genuine sub-second *negatives* (close just before open) to 0; leave NaN as NaN
+    # — a record closed-by-status but missing a close timestamp (e.g. KC's resolved-without-
+    # resolved_date) has no valid duration and must be excluded from the median, not counted as
+    # a 0-day closure (which would fake auto-close contamination).
+    days = days.mask(days < 0, 0.0)
     closed_days = days[is_closed.astype(bool)].dropna()
 
     nonzero_days = closed_days[closed_days > 0]
