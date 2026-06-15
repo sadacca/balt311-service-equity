@@ -160,8 +160,11 @@ def render_maturity_index(data_dir: Path) -> None:
 
     # Detailed heatmap — every scoreable city across the nine rubric dimensions.
     st.markdown("#### Detailed scorecard — every scoreable city")
+    # staticPlot: the heatmap is a read-only image — no zoom/drag/select — so a mobile finger
+    # swipe scrolls the page past it instead of being captured by the chart. Every value is
+    # printed in-cell and the row labels carry rank/total, so no interactivity is lost.
     st.plotly_chart(_scorecard_heatmap(scoreable, max_total), use_container_width=True,
-                    key="maturity_heatmap", config={"displayModeBar": False})
+                    key="maturity_heatmap", config={"staticPlot": True, "displayModeBar": False})
     _render_rubric()
 
     cohort = df[df["in_cohort"]]["city"].tolist() if "in_cohort" in df.columns else []
