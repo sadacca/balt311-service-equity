@@ -154,6 +154,34 @@ def fetch_county_population(fips: str, acs_year: int = 2023) -> float | None:
     return total
 
 
+def fetch_place_population(place_fips: str, acs_year: int = 2023) -> float | None:
+    """ACS 5-year total population (B01003) for a 7-digit state+place FIPS ("SSPPPPP", e.g.
+    Chicago "1714000"). The **city-proper** denominator — correct for a city 311 system, and
+    far more accurate than the county for cities that are a small part of their county
+    (Chicago ⊂ Cook, Austin ⊂ Travis). Returns None on failure (caller falls back to county)."""
+    fips = str(place_fips).strip()
+    if len(fips) != 7:
+        return None
+    state, place = fips[:2], fips[2:]
+    api_key = os.environ.get("CENSUS_API_KEY", "").strip()
+    url = (
+        f"https://api.census.gov/data/{acs_year}/acs/acs5"
+        f"?get=B01003_001E&for=place:{place}&in=state:{state}"
+        + (f"&key={api_key}" if api_key else "")
+    )
+    for attempt in range(1, 5):
+        try:
+            req = urllib.request.Request(url, headers={"Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                rows = json.loads(resp.read().decode("utf-8"))
+            return float(rows[1][0])  # header row, then the single place row
+        except Exception:
+            if attempt == 4:
+                return None
+            time.sleep(2 ** attempt)
+    return None
+
+
 def upsert_metrics(existing: pd.DataFrame, new_rows: list[dict]) -> pd.DataFrame:
     """Merge freshly computed (city, year) rows into the metrics table, replacing any
     existing row for the same city-year, and return it sorted."""

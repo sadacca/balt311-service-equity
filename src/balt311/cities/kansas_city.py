@@ -7,7 +7,8 @@ from .socrata import SocrataAdapter
 
 class KansasCityAdapter(SocrataAdapter):
     city = "Kansas City, MO"
-    fips = "29095"  # Jackson County (primary; KC also spans Clay/Platte/Cass)
+    fips = "29095"          # Jackson County (fallback; KC also spans Clay/Platte/Cass)
+    place_fips = "2938000"  # city of Kansas City (cleaner than the multi-county sprawl)
     portal_url = "https://data.kcmo.org/311/311-Call-Center-Reported-Issues/d4px-6rwg"
     domain = "data.kcmo.org"
     dataset_id = "d4px-6rwg"

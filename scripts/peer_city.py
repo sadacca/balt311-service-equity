@@ -34,8 +34,21 @@ from balt311.peer_metrics import (
     METRIC_COLUMNS,
     compute_city_metrics,
     fetch_county_population,
+    fetch_place_population,
     upsert_metrics,
 )
+
+
+def resolve_population(adapter) -> float | None:
+    """City-proper place population when the adapter declares a `place_fips` (correct for a
+    311 system), else the county total. Falls back to county if the place lookup fails."""
+    place = getattr(adapter, "place_fips", "")
+    if place:
+        pop = fetch_place_population(place)
+        if pop is not None:
+            return pop
+        log(f"  place population lookup failed for {place}; falling back to county {adapter.fips}")
+    return fetch_county_population(adapter.fips)
 
 PROC = ROOT / "data" / "processed"
 METRICS_PATH = PROC / "peer_city_metrics.parquet"
@@ -83,8 +96,9 @@ def run(year: int, cities: list[str], is_live: bool, force: bool = False,
         # Isolate each city: a network failure on one (DC's ArcGIS can time out) must not
         # discard the others' completed work — write what succeeded, flag the rest.
         try:
-            population = fetch_county_population(adapter.fips)
-            log(f"  ACS population (FIPS {adapter.fips}): {population}")
+            population = resolve_population(adapter)
+            pop_src = f"place {adapter.place_fips}" if getattr(adapter, "place_fips", "") else f"county {adapter.fips}"
+            log(f"  ACS population ({pop_src}): {population}")
 
             # Prefer metrics already computed by the within-app pipeline (Baltimore) so the
             # cross-city row equals the Operations tab and no re-fetch is needed.

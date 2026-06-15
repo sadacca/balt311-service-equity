@@ -4,7 +4,8 @@ from .socrata import SocrataAdapter
 
 class ChicagoAdapter(SocrataAdapter):
     city = "Chicago, IL"
-    fips = "17031"  # Cook County (city-proxy denominator)
+    fips = "17031"          # Cook County (fallback)
+    place_fips = "1714000"  # city of Chicago — Cook County is ~2× the city, so use the place
     portal_url = "https://data.cityofchicago.org/Service-Requests/311-Service-Requests/v6vf-nfxy"
     domain = "data.cityofchicago.org"
     dataset_id = "v6vf-nfxy"
