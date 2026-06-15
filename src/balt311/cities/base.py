@@ -32,6 +32,9 @@ class CityAdapter:
 
     city: str = ""               # display name, e.g. "Washington, DC"
     fips: str = ""               # 5-digit state+county FIPS, e.g. "11001"
+    place_fips: str = ""         # optional 7-digit state+place FIPS for the city-proper
+                                 # per-1k denominator (Chicago "1714000"); falls back to `fips`
+                                 # (county) when unset — used where county ≈ city (SF, Philly)
     portal_url: str = ""
     closure_definition: str = ""  # how "closed" is determined for this city
 

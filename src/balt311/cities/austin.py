@@ -4,7 +4,8 @@ from .socrata import SocrataAdapter
 
 class AustinAdapter(SocrataAdapter):
     city = "Austin, TX"
-    fips = "48453"  # Travis County (city-proxy denominator)
+    fips = "48453"          # Travis County (fallback)
+    place_fips = "4805000"  # city of Austin (Travis County overcounts the denominator)
     portal_url = "https://data.austintexas.gov/Utilities-and-City-Services/Austin-311-Public-Data/xwdj-i9he"
     domain = "data.austintexas.gov"
     dataset_id = "xwdj-i9he"

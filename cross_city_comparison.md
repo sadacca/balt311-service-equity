@@ -377,6 +377,27 @@ records with no close timestamp) to 0, faking 0-day "auto-close" contamination �
 as same-day. A near-zero-closure data-quality flag was added to the Delivery tab as a safety net
 for future closed-status mapping gaps.
 
+**Full-cohort audit (2026-06-15).** A pass over all ten adapters for the kind of silent
+inconsistency KC surfaced:
+- **Closure detection** — every city now returns a coherent rate (verified 1-closed-1-open →
+  0.5 for all ten). Socrata closure is timestamp-OR-terminal-status (`CLOSED_STATES`), so
+  vocab differences (NYC/SF "Closed", Chicago "Completed", KC "resolved") all resolve; DC /
+  Nashville use a close timestamp; Philadelphia / Boston use their own `status`/`case_status`.
+- **Per-1k denominator (fixed)** — the biggest finding: per-1k used the *county* population,
+  which badly overcounts for cities that are a fraction of their county. Now uses the **Census
+  place** (city-proper) population where it differs — Chicago `1714000` (Cook is ~2× the city),
+  Austin `4805000`, Kansas City `2938000`, Boston `2507000` — with a county fallback. Cities
+  where county ≈ city (SF, Philadelphia, Baltimore, DC, Nashville) stay on county; NYC's
+  five-borough sum already equals the city. Without this, Chicago's per-1k read ~½ its true
+  value.
+- **Known residual limitations (inherent, documented — not bugs):** (a) geocoding coverage
+  varies by city, and the common denominator is geocoded requests, so a city that geocodes less
+  has a modestly understated volume; (b) Baltimore's row comes from the within-app pooled
+  metrics, so it has no `pct_same_day_close` / clean-median (it's ECC-filtered and uncontaminated
+  anyway); (c) Nashville's ArcGIS field names are auto-discovered in CI and logged but not yet
+  eyeballed against a live pull — the first matrix run is the check. Boston additionally
+  publishes an `on_time` SLA field that could later populate its `on_time_rate` (enhancement).
+
 ### 6.4 — Delivery tab, cohort (Phase 5.4) — _tab already N-city; verified with 3 cities_
 
 The delivery component was built city-count-agnostic (ranked bars, Baltimore highlighted,

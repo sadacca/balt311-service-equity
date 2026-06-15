@@ -23,7 +23,8 @@ FIELD_MAP = {
 
 class BostonAdapter(CityAdapter):
     city = "Boston, MA"
-    fips = "25025"  # Suffolk County (city-proxy denominator)
+    fips = "25025"          # Suffolk County (fallback)
+    place_fips = "2507000"  # city of Boston (Suffolk County includes Chelsea/Revere/Winthrop)
     portal_url = "https://data.boston.gov/dataset/311-service-requests"
     closure_definition = (
         "Closed = case_status 'Closed'. Non-ECC, geocoded. Median days = closed_dt − open_dt. "
