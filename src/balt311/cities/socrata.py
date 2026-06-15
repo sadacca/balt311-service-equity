@@ -30,17 +30,24 @@ RETRIES = 6
 # NYC/SF say "Closed", Chicago "Completed", Kansas City "Resolved". Matched case-insensitively.
 CLOSED_STATES = {"closed", "resolved", "completed", "done", "closed - resolved"}
 
-# Ordered candidate raw column names per canonical field; first present one wins.
+# Ordered candidate raw column names per canonical field; first present one wins. Broad enough
+# that most municipal Socrata 311 schemas resolve without per-city overrides; a slug that names
+# its columns oddly (LA's no-underscore "createddate") sets `field_overrides`.
 CANDIDATES: dict[str, list[str]] = {
     "CreatedDate": ["created_date", "requested_datetime", "creation_date", "open_date_time",
-                    "date_time_opened", "open_dt", "opened_date", "sr_created_date"],
+                    "date_time_opened", "open_dt", "opened_date", "sr_created_date",
+                    "createddate", "created_dt", "requested_date", "received_date",
+                    "date_received", "date_created"],
     "CloseDate": ["closed_date", "close_date", "closed_datetime", "resolved_date",
-                  "date_time_closed", "closed_dt", "sr_closed_date"],
+                  "date_time_closed", "closed_dt", "sr_closed_date", "closeddate",
+                  "resolution_date", "completion_date", "date_closed", "date_completed"],
     "SRType": ["complaint_type", "sr_type", "service_name", "request_type", "issue_type",
-               "issue_sub_type", "sr_type_desc", "category", "type", "case_title", "reason"],
+               "issue_sub_type", "sr_type_desc", "parent_incident_type", "service_request_type",
+               "requesttype", "category", "type", "case_title", "reason"],
     "Latitude": ["latitude", "lat", "y_coordinate"],
     "Longitude": ["longitude", "long", "x_coordinate"],
-    "status": ["status", "status_description", "sr_status", "case_status", "current_status"],
+    "status": ["status", "status_description", "sr_status", "case_status", "current_status",
+               "request_status", "service_request_status"],
 }
 
 
@@ -123,12 +130,20 @@ class SocrataAdapter(CityAdapter):
 
     domain: str = ""
     dataset_id: str = ""
+    datasets_by_year: dict[int, str] = {}  # for cities that publish one dataset per year (LA)
     field_overrides: dict[str, str] = {}
 
+    def _dataset_for(self, year: int) -> str:
+        return self.datasets_by_year.get(year, self.dataset_id)
+
     def fetch(self, year: int) -> list[dict]:
-        cols = discover_columns(self.domain, self.dataset_id)
+        dataset_id = self._dataset_for(year)
+        if not dataset_id:
+            print(f"  {self.city}: no dataset for {year}; skipping")
+            return []
+        cols = discover_columns(self.domain, dataset_id)
         if not cols:
-            print(f"  {self.city}: no columns discovered for {self.dataset_id}; skipping")
+            print(f"  {self.city}: no columns discovered for {dataset_id}; skipping")
             return []
         field_map = resolve_field_map(cols, self.field_overrides)
         created = next((raw for raw, canon in field_map.items() if canon == "CreatedDate"), None)
@@ -136,8 +151,8 @@ class SocrataAdapter(CityAdapter):
             raise RuntimeError(f"{self.city}: no created-date column among {cols}")
         where = (f"{created} >= '{year}-01-01T00:00:00' "
                  f"AND {created} < '{year + 1}-01-01T00:00:00'")
-        print(f"  {self.city} {year} → socrata {self.dataset_id} (created={created})")
-        rows = fetch_rows(self.domain, self.dataset_id, select=list(field_map),
+        print(f"  {self.city} {year} → socrata {dataset_id} (created={created})")
+        rows = fetch_rows(self.domain, dataset_id, select=list(field_map),
                           where=where, order=created)
         return apply_field_map(rows, field_map)
 

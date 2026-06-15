@@ -185,7 +185,8 @@ src/balt311/
   metrics.py                      # Cleaning, aggregation, CSA rollup, demographics rollup
   peer_metrics.py                 # City-agnostic cross-city delivery metrics + ACS county pop
   cities/                         # Per-city adapters: base, arcgis + carto + socrata + ckan (reusable clients),
-                                  #   baltimore, dc, philadelphia, nyc, chicago, sf, austin, nashville, kansas_city, boston
+                                  #   baltimore, dc, philadelphia, nyc, chicago, sf, austin, nashville, kansas_city, boston,
+                                  #   memphis, cincinnati, seattle, dallas, los_angeles (Socrata wave 3)
 
 .github/workflows/
   update_data.yml                 # Single-year workflow

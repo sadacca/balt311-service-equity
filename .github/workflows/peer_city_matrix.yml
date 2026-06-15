@@ -25,7 +25,7 @@ on:
       cities:
         description: "Comma-separated city slugs (one matrix job each)"
         required: false
-        default: "baltimore,dc,philadelphia,nyc,chicago,sf,austin,nashville,kansas_city,boston"
+        default: "baltimore,dc,philadelphia,nyc,chicago,sf,austin,nashville,kansas_city,boston,memphis,cincinnati,seattle,dallas,los_angeles"
         type: string
       force:
         description: "Refetch even if a (city, year) row already exists"
