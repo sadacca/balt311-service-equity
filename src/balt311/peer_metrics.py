@@ -14,7 +14,8 @@ import pandas as pd
 
 METRIC_COLUMNS = [
     "city", "year", "total_requests", "requests_per_1k",
-    "median_days_to_close", "closure_rate", "on_time_rate",
+    "median_days_to_close", "median_days_to_close_excl_same_day",
+    "closure_rate", "on_time_rate",
     "pct_same_day_close", "population", "closure_definition",
 ]
 
@@ -62,7 +63,8 @@ def compute_city_metrics(
     """
     base = {
         "city": city, "year": int(year), "total_requests": 0,
-        "requests_per_1k": None, "median_days_to_close": None, "closure_rate": None,
+        "requests_per_1k": None, "median_days_to_close": None,
+        "median_days_to_close_excl_same_day": None, "closure_rate": None,
         "on_time_rate": None, "pct_same_day_close": None,
         "population": population, "closure_definition": closure_definition,
     }
@@ -89,10 +91,15 @@ def compute_city_metrics(
     days = days.where(days >= 0, 0.0)  # floor sub-second negatives (same-day closures)
     closed_days = days[is_closed.astype(bool)].dropna()
 
+    nonzero_days = closed_days[closed_days > 0]
     base.update(
         total_requests=total,
         requests_per_1k=(total / population * 1000.0) if population else None,
         median_days_to_close=float(closed_days.median()) if not closed_days.empty else None,
+        # "Clean" median that drops 0-day (same-instant / auto-close) closures, for a more
+        # comparable delivery figure across cities that auto-close referral/duplicate/invalid
+        # records. Shown alongside the raw median (which stays flagged), never as a replacement.
+        median_days_to_close_excl_same_day=float(nonzero_days.median()) if not nonzero_days.empty else None,
         closure_rate=float(is_closed.astype(bool).mean()),
         # Share of CLOSED requests that close the same instant they open — a direct measure of
         # auto-close / same-timestamp contamination. A high value means median days-to-close and

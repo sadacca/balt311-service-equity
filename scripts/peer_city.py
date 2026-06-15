@@ -46,18 +46,20 @@ def log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
-def run(year: int, cities: list[str], is_live: bool, force: bool = False) -> None:
+def run(year: int, cities: list[str], is_live: bool, force: bool = False,
+        metrics_path: Path = METRICS_PATH, meta_path: Path = META_PATH) -> None:
+    metrics_path.parent.mkdir(parents=True, exist_ok=True)
     PROC.mkdir(parents=True, exist_ok=True)
     right_censor_days = 30 if is_live else 0
 
-    existing = pd.read_parquet(METRICS_PATH) if METRICS_PATH.exists() else None
+    existing = pd.read_parquet(metrics_path) if metrics_path.exists() else None
     have = (
         set(zip(existing["city"], existing["year"]))
         if existing is not None and not existing.empty else set()
     )
     meta = (
-        pd.read_csv(META_PATH, dtype={"fips": str}).set_index("city").to_dict("index")
-        if META_PATH.exists() else {}
+        pd.read_csv(meta_path, dtype={"fips": str}).set_index("city").to_dict("index")
+        if meta_path.exists() else {}
     )
 
     new_rows = []
@@ -130,16 +132,16 @@ def run(year: int, cities: list[str], is_live: bool, force: bool = False) -> Non
         return
 
     metrics = upsert_metrics(existing, new_rows)
-    metrics.to_parquet(METRICS_PATH, index=False)
-    log(f"Wrote {len(metrics)} rows → {METRICS_PATH.name}")
+    metrics.to_parquet(metrics_path, index=False)
+    log(f"Wrote {len(metrics)} rows → {metrics_path}")
 
     meta_df = (
         pd.DataFrame.from_dict(meta, orient="index")
         .rename_axis("city").reset_index()
         [["city", "fips", "population", "portal_url", "closure_definition"]]
     )
-    meta_df.to_csv(META_PATH, index=False)
-    log(f"Wrote {len(meta_df)} rows → {META_PATH.name}")
+    meta_df.to_csv(meta_path, index=False)
+    log(f"Wrote {len(meta_df)} rows → {meta_path}")
 
     if failures:
         # Successful cities are already written/committed; exit non-zero so CI flags the
@@ -148,13 +150,60 @@ def run(year: int, cities: list[str], is_live: bool, force: bool = False) -> Non
         sys.exit(1)
 
 
+def merge_artifacts(in_dir: str, metrics_path: Path = METRICS_PATH,
+                    meta_path: Path = META_PATH) -> None:
+    """Merge per-city artifacts (from the parallel matrix workflow) into the canonical files.
+
+    Each matrix job writes its own `<city>.parquet` + `<city>.meta.csv` so the parallel fetch
+    jobs never touch the shared file (no commit races). This collects all of them — recursively,
+    since `download-artifact` nests each artifact in its own subdir — and upserts once."""
+    src = Path(in_dir)
+    rows: list[dict] = []
+    parts = sorted(p for p in src.rglob("*.parquet") if p.resolve() != metrics_path.resolve())
+    for part in parts:
+        rows.extend(pd.read_parquet(part).to_dict("records"))
+    if rows:
+        existing = pd.read_parquet(metrics_path) if metrics_path.exists() else None
+        metrics = upsert_metrics(existing, rows)
+        metrics.to_parquet(metrics_path, index=False)
+        log(f"Merged {len(parts)} metric parts → {len(metrics)} rows in {metrics_path}")
+
+    meta: dict = {}
+    if meta_path.exists():
+        meta = pd.read_csv(meta_path, dtype={"fips": str}).set_index("city").to_dict("index")
+    meta_parts = sorted(p for p in src.rglob("*.csv")
+                        if "meta" in p.name and p.resolve() != meta_path.resolve())
+    for part in meta_parts:
+        for _, r in pd.read_csv(part, dtype={"fips": str}).iterrows():
+            meta[r["city"]] = {k: r[k] for k in ("fips", "population", "portal_url", "closure_definition")}
+    if meta:
+        meta_df = (pd.DataFrame.from_dict(meta, orient="index").rename_axis("city").reset_index()
+                   [["city", "fips", "population", "portal_url", "closure_definition"]])
+        meta_df.to_csv(meta_path, index=False)
+        log(f"Merged {len(meta_parts)} meta parts → {len(meta_df)} rows in {meta_path}")
+
+
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Cross-city 311 ingestion + metrics")
-    p.add_argument("--year", type=int, required=True)
+    p.add_argument("--year", type=int, help="Year to process (required unless --merge)")
     p.add_argument("--cities", default=",".join(ADAPTERS),
                    help="Comma-separated city slugs (default: all registered)")
     p.add_argument("--live", action="store_true", help="Apply 30-day right-censoring")
     p.add_argument("--force", action="store_true",
                    help="Refetch even if a (city, year) row already exists (default: skip existing)")
+    p.add_argument("--metrics-path", default=str(METRICS_PATH),
+                   help="Where to read/write the metrics parquet (matrix jobs use a per-city path)")
+    p.add_argument("--meta-path", default=str(META_PATH),
+                   help="Where to read/write the meta csv")
+    p.add_argument("--merge", metavar="DIR",
+                   help="Merge per-city artifact dir into the canonical files, then exit")
     args = p.parse_args()
-    run(args.year, [c.strip() for c in args.cities.split(",") if c.strip()], args.live, args.force)
+
+    metrics_path, meta_path = Path(args.metrics_path), Path(args.meta_path)
+    if args.merge:
+        merge_artifacts(args.merge, metrics_path, meta_path)
+    else:
+        if args.year is None:
+            p.error("--year is required unless --merge is given")
+        run(args.year, [c.strip() for c in args.cities.split(",") if c.strip()],
+            args.live, args.force, metrics_path, meta_path)

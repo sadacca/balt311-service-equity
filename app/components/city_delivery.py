@@ -133,6 +133,15 @@ def render_city_delivery(data_dir: Path, year: int) -> None:
     metric_label = st.radio("Metric", list(_METRICS), horizontal=True, key="cc_delivery_metric")
     col, fmt, higher_better = _METRICS[metric_label]
 
+    # For the median, offer a "clean" version that drops 0-day (auto-close) closures — a more
+    # comparable figure for the contaminated cities. Only when the column has been populated.
+    if col == "median_days_to_close" and "median_days_to_close_excl_same_day" in sub.columns \
+            and sub["median_days_to_close_excl_same_day"].notna().any():
+        if st.checkbox("Exclude same-day (0-day) closures — cleaner cross-city comparison",
+                       key="cc_excl_sameday"):
+            col = "median_days_to_close_excl_same_day"
+            metric_label = "Median days to close (excl. same-day)"
+
     valid = sub.dropna(subset=[col])
     missing = sorted(set(sub["city"]) - set(valid["city"]))
     if valid.empty:
