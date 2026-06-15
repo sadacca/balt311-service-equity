@@ -669,13 +669,13 @@ one continuous scale, not two disconnected exercises.
 > (If the intent was 6 *metrics* rather than 6 *metros*, P5.9-1's dimension set is where that
 > would be pinned down.)
 
-- [ ] **P5.9-1: Score the full top-40 cohort numerically** — extend `peer_city_maturity.csv`
+- [x] **P5.9-1: Score the full top-40 cohort numerically** — extend `peer_city_maturity.csv`
   from 6 rows to all 40 metros + the 5 enablers, 0–3 per rubric dimension, anchored to the
   existing 6-metro scores so they share one scale. Ground each row in the **verified census**
   (`peer_city_coverage_census.csv`): the `evidence`/`endpoint_url`/`api_fields` columns feed
   Availability, API access, and Field-completeness directly; partial/unconfirmed cities score
   the data-availability dimensions low. Keep the `in_cohort` flag (the 10 ingested cities).
-- [ ] **P5.9-2: Rank + usability surface in the tab** — add a sortable/filterable **full
+- [x] **P5.9-2: Rank + usability surface in the tab** — add a sortable/filterable **full
   league table** to `maturity_index.py`: rank · city · total · per-dimension scores · evidence
   tier, Baltimore pinned/highlighted, filterable to scoreable-only and sortable by any
   dimension. Keep the existing detailed heatmap above it as the in-cohort "spotlight" so the

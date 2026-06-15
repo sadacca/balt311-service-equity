@@ -70,17 +70,19 @@ def _bar(df: pd.DataFrame, col: str, label: str, fmt: str, flagged: set | None =
         marker_color=colors,
         text=[fmt.format(v) for v in d[col]],
         textposition="inside", insidetextanchor="end",
-        textfont={"color": "white", "size": 15},
+        textfont={"color": "white", "size": 13},
         hovertemplate="<b>%{y}</b><br>" + label + ": %{text}<extra></extra>",
     ))
     fig.update_layout(
-        height=max(170, 78 * len(d) + 70),
+        # ~half the previous per-bar height so more cities fit on one (mobile) screen.
+        height=max(130, 40 * len(d) + 56),
+        bargap=0.25,
         margin={"t": 24, "b": 10, "l": 10, "r": 10},
         xaxis_title=label, yaxis_title=None,
         plot_bgcolor="white", paper_bgcolor="white", showlegend=False,
-        uniformtext={"mode": "show", "minsize": 11},  # never hide a value label
+        uniformtext={"mode": "show", "minsize": 10},  # never hide a value label
     )
-    fig.update_yaxes(automargin=True, tickfont={"size": 13})
+    fig.update_yaxes(automargin=True, tickfont={"size": 12})
     if col in _RATE_COLS:
         fig.update_xaxes(tickformat=".0%", range=[0, 1])
     else:

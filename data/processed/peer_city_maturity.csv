@@ -1,7 +1,46 @@
-city,in_cohort,availability_license,granularity,history_depth,update_cadence,api_access,standardization,field_completeness,geocoding_coverage,documentation,note
-"Baltimore, MD",True,3,3,3,2,3,3,3,2,2,"Reference / first-mover: first US 311 (1996), early Open311 GeoReport v2 (~2011), WWC Silver. Publishes channel (MethodReceived) — rare. Trails the Socrata leaders on update cadence, geocoding completeness, and documentation."
-"Washington, DC",True,3,3,2,3,3,1,2,3,3,"Open Data DC, per-year ArcGIS layers — older history is fragmented across layers; no Open311 endpoint; no intake-channel field."
-"Philadelphia, PA",True,3,3,3,3,3,2,2,2,3,"OpenDataPhilly Carto, unified public_cases_fc since ~2014; daily; strong data dictionary; no intake-channel or cost fields."
-"New York, NY",False,3,3,3,3,3,2,3,3,3,"Reference (canvassed, not ingested): Socrata erm2-nwe9, 2010-present, 24M+ records, daily; rich fields incl channel + agency."
-"Chicago, IL",False,3,3,2,3,3,2,3,3,3,"Reference (canvassed): Socrata v6vf-nfxy, unified since 2018 (pre-2018 in legacy datasets); daily; rich schema."
-"San Francisco, CA",False,3,3,3,3,3,3,3,3,3,"Reference (canvassed): Socrata vw6y-z8j6, 2008-present, nightly; Open311 leader; full field set — current cohort ceiling."
+city,in_cohort,status,evidence,derived,availability_license,granularity,history_depth,update_cadence,api_access,standardization,field_completeness,geocoding_coverage,documentation,note
+"San Francisco, CA",True,scoreable,city_docs,False,3,3,3,3,3,3,3,3,3,Socrata vw6y-z8j6; since 2008; daily
+"New York, NY",True,scoreable,city_docs,False,3,3,3,3,3,2,3,3,3,"Socrata erm2-nwe9; created_date, closed_date, lat/lon"
+"Chicago, IL",True,scoreable,city_docs,False,3,3,2,3,3,2,3,3,3,"Socrata v6vf-nfxy; created_date, closed_date, lat/lon"
+"Baltimore, MD",True,scoreable,api,False,3,3,3,2,3,3,3,2,2,Per-year ArcGIS; 2016-present; API confirmed
+"Philadelphia, PA",True,scoreable,city_docs,False,3,3,3,3,3,2,2,2,3,"Carto public_cases_fc; requested_datetime, API"
+"Washington, DC",True,scoreable,city_docs,False,3,3,2,3,3,1,2,3,3,ArcGIS per-year since 2016
+"Cincinnati, OH",False,scoreable,api,True,3,3,3,3,3,1,2,2,2,Tyler Data & Insights Socrata; 2012-present; daily
+"St. Louis, MO",False,scoreable,api,True,3,3,2,2,3,2,2,2,2,CSB Request API (Open311 v2); requires key
+"Boston, MA",True,scoreable,api,True,3,3,2,2,3,2,2,2,2,Analyze Boston; multiple years; Open311 API
+"Memphis, TN",False,scoreable,api,True,3,3,2,3,3,1,2,2,2,Memphis Data Hub Socrata; 2M+ rows; daily
+"Kansas City, MO",True,scoreable,api,True,3,3,2,3,3,1,2,2,2,OpenData KC Socrata; daily; API
+"San Antonio, TX",False,scoreable,city_docs,True,3,3,3,2,3,1,2,2,2,ArcGIS Open Data SA; since 2011
+"Austin, TX",True,scoreable,city_docs,True,3,3,2,3,3,1,2,2,2,Socrata xwdj-i9he; since 2014; half-hourly
+"Louisville, KY",False,scoreable,api,True,3,3,2,2,3,1,2,2,2,LOJIC ArcGIS Hub; 2014-2025; weekly
+"New Orleans, LA",False,scoreable,api,True,3,3,2,2,3,1,2,2,2,DataDriven ArcGIS Hub; GIS API support
+"Pittsburgh, PA",False,scoreable,api,True,3,3,2,2,3,1,2,2,2,WPRDC CKAN; historical + new system Feb 2025
+"Raleigh, NC",False,scoreable,api,True,3,3,2,2,3,1,2,2,2,Open Data Raleigh ArcGIS; 311 present
+"Sacramento, CA",False,scoreable,city_docs,True,3,3,2,2,3,1,2,2,2,Sacramento 311 Socrata portal
+"Charlotte, NC",False,scoreable,city_docs,True,3,3,2,2,3,1,2,2,2,ArcGIS ServiceRequests311 MapServer
+"Dallas, TX",False,scoreable,city_docs,True,3,3,2,2,3,1,2,2,2,Socrata; since Oct 2018
+"Los Angeles, CA",False,scoreable,city_docs,True,3,3,2,2,3,1,2,2,2,MyLA311 Socrata; annual datasets 2018–2025
+"Nashville, TN",True,scoreable,city_docs,True,3,3,2,2,3,1,2,2,2,hubNashville ArcGIS; annual + current
+"Seattle, WA",False,scoreable,city_docs,True,3,3,2,2,3,1,2,2,2,Socrata 43nw-pkdq; Find It Fix It
+"Minneapolis, MN",False,scoreable,api,True,3,3,1,2,3,1,2,2,2,ArcGIS FeatureServer; 525K+ records; Jan 2021+
+"San Diego, CA",False,scoreable,city_docs,True,3,3,1,2,3,1,2,2,2,Get It Done; annual CSV + rolling; lat/lng
+"Portland, OR",False,partial,api,True,2,2,1,1,3,2,1,1,1,SeeClickFix; Open311 API; no bulk export
+"San Jose, CA",False,partial,city_docs,True,2,2,1,3,1,0,1,1,1,Open Data; daily; limited doc
+"Tucson, AZ",False,partial,api,True,2,2,1,1,3,0,1,1,1,Tucson GIS portal; 311 API unclear
+"Detroit, MI",False,partial,api,True,2,2,1,1,3,0,1,1,1,Improve Detroit ArcGIS; app-channel only
+"Atlanta, GA",False,partial,city_docs,True,2,2,1,1,1,0,1,1,1,DataAtlanta portal; ATL311 not API-accessible
+"Fort Worth, TX",False,partial,city_docs,True,2,2,1,1,1,0,1,1,1,Socrata portal; 311 unclear
+"Houston, TX",False,partial,city_docs,True,2,2,1,1,1,0,1,1,1,ArcGIS; rolling 7-day closed cases only
+"Phoenix, AZ",False,partial,city_docs,True,2,2,1,1,1,0,1,1,1,ArcGIS; 7-day lookback per docs
+"Indianapolis, IN",False,partial,city_docs,True,2,2,1,1,1,0,1,1,1,Open Indy portal; 311 not confirmed
+"Albuquerque, NM",False,partial,third_party,True,2,2,1,1,1,0,1,1,1,ABQ311 via SeeClickFix; no central export
+"Denver, CO",False,partial,city_docs,True,2,2,1,1,1,0,1,1,1,ArcGIS; rolling 12 months only
+"Columbus, OH",False,partial,city_docs,True,2,2,1,1,1,0,1,1,1,GIS map; no downloadable dataset
+"Fresno, CA",False,partial,city_docs,True,2,2,1,1,1,0,1,1,1,Fresno GIS Hub ArcGIS; no 311 export
+"Jacksonville, FL",False,unconfirmed,third_party,True,0,0,0,0,0,0,0,0,0,National 311 Data Portal; no direct API
+"El Paso, TX",False,unconfirmed,city_docs,True,0,0,0,0,0,0,0,0,0,Open data portal; 311 not clearly listed
+"Oklahoma City, OK",False,unconfirmed,city_docs,True,0,0,0,0,0,0,0,0,0,data.okc.gov; 311 not published
+"Colorado Springs, CO",False,unconfirmed,none,True,0,0,0,0,0,0,0,0,0,GoCOS portal; CORA records only
+"Milwaukee, WI",False,unconfirmed,city_docs,True,0,0,0,0,0,0,0,0,0,Portal exists; 311 status unclear
+"Mesa, AZ",False,unconfirmed,city_docs,True,0,0,0,0,0,0,0,0,0,Mesa Data Hub; no 311-specific dataset
+"Omaha, NE",False,unconfirmed,third_party,True,0,0,0,0,0,0,0,0,0,Omaha Hotline; interactive map; no API

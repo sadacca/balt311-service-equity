@@ -107,7 +107,7 @@ Everything else (System/Internal source, ECC types, ungeocoded) is excluded from
 | `csa_demographics.csv` | CSA | population-weighted rollup of tract demographics |
 | `peer_city_metrics.parquet` | city × year | cross-city delivery metrics (total_requests, requests_per_1k, median_days_to_close, closure_rate, on_time_rate, pct_same_day_close, population, closure_definition) — Phase 5, built by `scripts/peer_city.py` |
 | `peer_city_meta.csv` | city | fips, ACS population, portal_url, closure_definition |
-| `peer_city_maturity.csv` | city | 311 open-data publishing maturity scorecard (9 rubric dimensions 0–3 + in_cohort flag) — Phase 5.8, curated canvass |
+| `peer_city_maturity.csv` | city | 311 open-data publishing maturity scorecard — all 45 metros, 9 rubric dimensions 0–3 + in_cohort/status/evidence/derived; 6 hand-scored anchors, the rest derived from the census by `scripts/score_maturity.py` (inaccessible cities → 0). Phase 5.8/5.9 |
 | `peer_city_coverage_census.csv` | city | scoreable/partial/unconfirmed status of the 40 largest US cities + 5 mid-size enablers, each with an `evidence` tier (api/city_docs/third_party/none) and `endpoint_url` — Phase 5.8, verified canvass (`scripts/verify_census.py` re-probes the live endpoints) |
 
 `data/raw/` and `data/interim/` are gitignored and rebuilt by the pipeline.
@@ -177,6 +177,8 @@ app/
 scripts/
   pipeline.py                     # Headless pipeline — all stages (within-Baltimore)
   peer_city.py                    # Cross-city ingestion + metrics (Phase 5)
+  score_maturity.py               # Derive the 45-metro maturity scorecard from the census (Phase 5.9)
+  verify_census.py                # Re-probe census endpoints to refresh the api evidence tier (Phase 5.8)
 
 src/balt311/
   ingest.py                       # ArcGIS FeatureServer pagination (Baltimore)

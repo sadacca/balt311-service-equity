@@ -27,6 +27,12 @@ _DIMS = {
     "documentation": "Documentation",
 }
 _MAX_PER_DIM = 3
+# Compact labels for the sortable full table (the heatmap uses the <br> labels above).
+_DIM_SHORT = {
+    "availability_license": "Avail/Lic", "granularity": "Granular", "history_depth": "History",
+    "update_cadence": "Cadence", "api_access": "API", "standardization": "Open311",
+    "field_completeness": "Fields", "geocoding_coverage": "Geocode", "documentation": "Docs",
+}
 # Specific practice that would close each dimension's gap (cross-refs requirements.md §5).
 _GAP_HINTS = {
     "availability_license": "publish under an explicit open license",
@@ -60,7 +66,7 @@ def _scorecard_heatmap(df: pd.DataFrame, max_total: int) -> go.Figure:
         for c, r, t in zip(df["city"], df["rank"], df["total"])
     ]
     fig = go.Figure(go.Heatmap(
-        z=z, x=list(_DIMS.values()), y=ylabels,
+        z=z, x=list(_DIM_SHORT.values()), y=ylabels,
         text=z, texttemplate="%{text}", textfont={"size": 13},
         colorscale="RdYlGn", zmin=0, zmax=_MAX_PER_DIM,
         showscale=True, colorbar={"title": "score", "tickvals": [0, 1, 2, 3]},
@@ -68,10 +74,12 @@ def _scorecard_heatmap(df: pd.DataFrame, max_total: int) -> go.Figure:
         hovertemplate="%{y}<br>%{x}: %{z}/3<extra></extra>",
     ))
     fig.update_layout(
-        height=90 + 46 * len(df),
+        height=130 + 34 * len(df),
         margin={"t": 10, "b": 10, "l": 10, "r": 10},
         yaxis={"autorange": "reversed"},  # rank 1 at the top
-        xaxis={"side": "top", "tickfont": {"size": 12}},
+        # Short labels, angled, with automargin — single-word headers slanted so the nine
+        # columns never overlap on a narrow (mobile) viewport.
+        xaxis={"side": "top", "tickangle": -45, "tickfont": {"size": 11}, "automargin": True},
         plot_bgcolor="white", paper_bgcolor="white",
     )
     return fig
@@ -113,23 +121,31 @@ def render_maturity_index(data_dir: Path) -> None:
         "cities that has *chosen to be scrutinizable*."
     )
 
+    scoreable = (df[df["status"] == "scoreable"].reset_index(drop=True)
+                 if "status" in df.columns else df)
+
     if df["city"].apply(_is_baltimore).any():
         balt = df[df["city"].apply(_is_baltimore)].iloc[0]
+        sc_mask = scoreable["city"].apply(_is_baltimore)
+        balt_sc_rank = int(scoreable.index[sc_mask][0]) + 1 if sc_mask.any() else int(balt["rank"])
         st.markdown(
-            f"**Baltimore ranks #{int(balt['rank'])} of {len(df)}** scored cities "
+            f"**Baltimore ranks #{balt_sc_rank} of {len(scoreable)} scoreable cities** "
             f"({int(balt['total'])}/{max_total}) — a genuine first-mover (first US 311 in 1996, "
             "early Open311 adopter ~2011) that the Socrata leaders now edge out on cadence and "
             "documentation. Both truths, shown honestly."
         )
 
-    st.plotly_chart(_scorecard_heatmap(df, max_total), use_container_width=True,
+    # Detailed heatmap — every scoreable city across the nine rubric dimensions.
+    st.markdown("#### Detailed scorecard — every scoreable city")
+    st.plotly_chart(_scorecard_heatmap(scoreable, max_total), use_container_width=True,
                     key="maturity_heatmap", config={"displayModeBar": False})
     cohort = df[df["in_cohort"]]["city"].tolist() if "in_cohort" in df.columns else []
     if cohort:
         st.caption(
-            "Cities with 311 data actually ingested into this dashboard: "
-            + ", ".join(cohort)
-            + ". Others are scored from a portal canvass (reference points), not ingested."
+            "**6 cities are hand-scored** (Baltimore, DC, Philadelphia, NYC, Chicago, SF); the "
+            "rest are scored from the verified coverage census (status · evidence · published "
+            "history). Cities with 311 data actually ingested into this dashboard: "
+            + ", ".join(cohort) + "."
         )
 
     gaps = _gap_profile(df)
@@ -142,7 +158,7 @@ def render_maturity_index(data_dir: Path) -> None:
             for g in gaps:
                 st.markdown(f"- {g}")
 
-    _render_census(data_dir)
+    _render_full_table(df, max_total)
 
     with st.expander("Three standing caveats"):
         st.markdown(
@@ -160,37 +176,29 @@ def render_maturity_index(data_dir: Path) -> None:
         )
 
 
-def _render_census(data_dir: Path) -> None:
-    path = data_dir / "peer_city_coverage_census.csv"
-    if not path.exists():
-        return
-    census = pd.read_csv(path)
-    counts = census["status"].value_counts()
-    n = len(census[census["rank"] <= 40])  # top 40 only, exclude enablers in count
-    parts = []
-    for code in ("scoreable", "partial", "unconfirmed"):
-        emoji, label = _STATUS[code]
-        parts.append(f"{emoji} {int(counts.get(code, 0))} {label.lower()}")
-
-    st.markdown("#### Who can even be scored — coverage census")
+def _render_full_table(df: pd.DataFrame, max_total: int) -> None:
+    """Full numerical ranking of all metros — every rubric dimension, sortable, with the
+    inaccessible cities scored 0 sitting at the bottom."""
+    counts = df["status"].value_counts() if "status" in df.columns else {}
+    st.markdown("#### Full numerical ranking — all 45 metros (sortable)")
     st.markdown(
-        f"Of the **{n} largest US cities**, only " + ", ".join(parts) + ". A smaller subset "
-        "match Baltimore's combination of **record-level data + a decade of history + an open "
-        "API**. Several cities far larger than Baltimore simply **cannot be evaluated this "
-        "way** — the data isn't open, isn't record-level, or doesn't exist publicly. The "
-        "unconfirmed cities aren't better, only less visible."
+        f"✅ {int(counts.get('scoreable', 0))} scoreable · 🟡 {int(counts.get('partial', 0))} "
+        f"partial · ❔ {int(counts.get('unconfirmed', 0))} none/unconfirmed. **Cities whose "
+        "record-level 311 is inaccessible score 0 across the rubric** — you cannot credit data "
+        "you cannot reach, and naming the cities that *cannot* be evaluated is half the point. "
+        "Click any column header to sort."
     )
-    with st.expander(f"Full census of the {n} largest US cities + 5 mid-size enablers"):
-        disp = census.copy()
-        disp["status"] = disp["status"].map(lambda s: f"{_STATUS.get(s, ('', s))[0]} {_STATUS.get(s, ('', s))[1]}")
-        # Show evidence tier if present
-        if "evidence" in disp.columns:
-            disp = disp.rename(columns={
-                "rank": "Rank", "city": "City", "status": "Status",
-                "evidence": "Evidence", "note": "Note"
-            })
-            st.dataframe(disp[["Rank", "City", "Status", "Evidence", "Note"]],
-                        hide_index=True, use_container_width=True)
-        else:
-            disp = disp.rename(columns={"rank": "Rank", "city": "City", "status": "Status", "note": "Note"})
-            st.dataframe(disp[["Rank", "City", "Status", "Note"]], hide_index=True, use_container_width=True)
+
+    disp = df.copy()
+    disp["Status"] = disp["status"].map(lambda s: f"{_STATUS.get(s, ('', s))[0]} {_STATUS.get(s, ('', s))[1]}") \
+        if "status" in disp.columns else ""
+    if "derived" in disp.columns:
+        disp["Basis"] = disp["derived"].map({True: "census", False: "hand"})
+    disp = disp.rename(columns={"rank": "#", "city": "City", "evidence": "Evidence",
+                                "total": "Total", **_DIM_SHORT})
+    order = ["#", "City", "Status", "Evidence", "Basis", "Total", *_DIM_SHORT.values()]
+    order = [c for c in order if c in disp.columns]
+    st.dataframe(
+        disp[order], hide_index=True, use_container_width=True, height=560,
+        column_config={"Total": st.column_config.NumberColumn("Total", help=f"out of {max_total}")},
+    )
