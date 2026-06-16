@@ -58,34 +58,44 @@ def _quality_flags(row) -> list[str]:
 
 
 def _bar(df: pd.DataFrame, col: str, label: str, fmt: str, flagged: set | None = None) -> go.Figure:
-    """Horizontal ranked bar, Baltimore highlighted. Value labels sit *inside* the bars
-    (not outside, which clipped at the right edge on narrow/mobile viewports); city names
-    on the y-axis use automargin so they're never cut off. Cities in `flagged` get a ⚠
-    appended so data-quality concerns travel with the bar, not just a footnote."""
+    """Horizontal ranked bar, Baltimore highlighted. Value labels sit *inside* wide bars
+    and *outside* (black text) when the bar is too narrow to fit the label legibly. City
+    names on the y-axis use automargin so they're never cut off. Cities in `flagged` get a
+    ⚠ appended so data-quality concerns travel with the bar, not just a footnote."""
     flagged = flagged or set()
     d = df.sort_values(col, ascending=True)  # largest at the top
     colors = [_BALTIMORE_COLOR if _is_baltimore(c) else _PEER_COLOR for c in d["city"]]
     ylabels = [f"{c}  ⚠" if c in flagged else c for c in d["city"]]
+
+    vals = d[col].tolist()
+    max_val = max(vals) if vals else 1
+    # Bars narrower than 20% of the axis range won't fit a label inside legibly.
+    _INSIDE_THRESHOLD = 0.20
+    textpositions = ["inside" if (max_val and v / max_val >= _INSIDE_THRESHOLD) else "outside" for v in vals]
+    textcolors = ["white" if p == "inside" else "black" for p in textpositions]
+
     fig = go.Figure(go.Bar(
-        x=d[col], y=ylabels, orientation="h",
+        x=vals, y=ylabels, orientation="h",
         marker_color=colors,
-        text=[fmt.format(v) for v in d[col]],
-        textposition="inside", insidetextanchor="end",
-        textfont={"color": "white", "size": 13},
+        text=[fmt.format(v) for v in vals],
+        textposition=textpositions, insidetextanchor="end",
+        textfont={"color": textcolors, "size": 13},
         hovertemplate="<b>%{y}</b><br>" + label + ": %{text}<extra></extra>",
     ))
+    has_outside = any(p == "outside" for p in textpositions)
     fig.update_layout(
-        # ~half the previous per-bar height so more cities fit on one (mobile) screen.
         height=max(130, 40 * len(d) + 56),
         bargap=0.25,
-        margin={"t": 24, "b": 10, "l": 10, "r": 10},
+        margin={"t": 24, "b": 10, "l": 10, "r": 80 if has_outside else 10},
         xaxis_title=label, yaxis_title=None,
         plot_bgcolor="white", paper_bgcolor="white", showlegend=False,
-        uniformtext={"mode": "show", "minsize": 10},  # never hide a value label
     )
     fig.update_yaxes(automargin=True, tickfont={"size": 12})
     if col in _RATE_COLS:
         fig.update_xaxes(tickformat=".0%", range=[0, 1])
+    elif has_outside:
+        # Extend axis so outside labels aren't clipped at the plot edge.
+        fig.update_xaxes(rangemode="tozero", range=[0, max_val * 1.35])
     else:
         fig.update_xaxes(rangemode="tozero")
     return fig
