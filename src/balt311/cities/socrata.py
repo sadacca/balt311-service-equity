@@ -52,6 +52,14 @@ CANDIDATES: dict[str, list[str]] = {
 }
 
 
+def _app_token() -> str:
+    """Best available token string for query-param injection (survives redirects)."""
+    return (
+        os.environ.get("SOCRATA_KEY_ID", "").strip()
+        or os.environ.get("SOCRATA_APP_TOKEN", "").strip()
+    )
+
+
 def _headers() -> dict:
     h = {"User-Agent": "Mozilla/5.0 (balt311-cross-city)", "Accept": "application/json"}
     key_id = os.environ.get("SOCRATA_KEY_ID", "").strip()
@@ -70,25 +78,32 @@ def _headers() -> dict:
     return h
 
 
+def _inject_token(url: str) -> str:
+    """Append $$app_token as a query param — survives redirects that strip headers."""
+    tok = _app_token()
+    if not tok:
+        return url
+    sep = "&" if "?" in url else "?"
+    return f"{url}{sep}$$app_token={urllib.parse.quote(tok, safe='')}"
+
+
 def _has_auth() -> bool:
-    return bool(
-        os.environ.get("SOCRATA_KEY_ID", "").strip()
-        or os.environ.get("SOCRATA_APP_TOKEN", "").strip()
-    )
+    return bool(_app_token())
 
 
 def _get(url: str) -> list[dict]:
     has_token = _has_auth()
+    # Pass token both as a header AND as a query param: headers are stripped by urllib on
+    # redirect (Python security policy), so the query-param copy ensures auth reaches the
+    # final endpoint even if the portal does an internal redirect before serving data.
+    url = _inject_token(url)
     for attempt in range(1, RETRIES + 1):
         try:
             req = urllib.request.Request(url, headers=_headers())
             with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+                final_url = r.geturl()
                 body = r.read()
             if not body or not body.strip():
-                # A 200 with an empty body is deterministic, not transient — retrying just burns
-                # ~60s. Newer Tyler "Data & Insights" portals (Memphis, Cincinnati) return empty
-                # without an app token, so this is usually a missing SOCRATA_APP_TOKEN (or a wrong
-                # dataset id). Fail fast with a clear message instead of looping.
                 raise RuntimeError(
                     "empty response body — likely needs an app token (SOCRATA_APP_TOKEN "
                     f"{'is set' if has_token else 'is NOT set'}) or the dataset id is wrong"
@@ -96,12 +111,10 @@ def _get(url: str) -> list[dict]:
             try:
                 return json.loads(body)
             except json.JSONDecodeError:
-                # Tyler "Data & Insights" portals return an HTML auth/error page (not JSON)
-                # when the app token is missing, rather than an empty body or a 403.
                 preview = body[:120].decode("utf-8", errors="replace").strip()
                 raise RuntimeError(
-                    f"non-JSON response (likely HTML auth wall) — SOCRATA_APP_TOKEN "
-                    f"{'is set' if has_token else 'is NOT set'}. Preview: {preview!r}"
+                    f"non-JSON response (HTML/redirect?) — auth {'present' if has_token else 'absent'}; "
+                    f"requested: {url!r}; landed: {final_url!r}. Preview: {preview!r}"
                 )
         except RuntimeError:
             raise  # don't retry deterministic failures
