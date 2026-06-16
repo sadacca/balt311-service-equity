@@ -54,6 +54,8 @@ jobs:
         env:
           CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
           SOCRATA_APP_TOKEN: ${{ secrets.SOCRATA_APP_TOKEN }}
+          SOCRATA_KEY_ID: ${{ secrets.SOCRATA_KEY_ID }}
+          SOCRATA_KEY_SECRET: ${{ secrets.SOCRATA_KEY_SECRET }}
         run: |
           FLAGS=""
           [ "${{ inputs.is_live_year }}" = "true" ] && FLAGS="$FLAGS --live"
