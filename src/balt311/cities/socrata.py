@@ -127,9 +127,10 @@ def _get(url: str) -> list[dict]:
     return []
 
 
-def discover_columns(domain: str, dataset_id: str) -> list[str]:
+def discover_columns(domain: str, dataset_id: str, base_url: str | None = None) -> list[str]:
     """Field names present in the dataset (probed from one record)."""
-    rows = _get(f"https://{domain}/resource/{dataset_id}.json?$limit=1")
+    url = base_url or f"https://{domain}/resource/{dataset_id}.json"
+    rows = _get(f"{url}?$limit=1")
     return list(rows[0].keys()) if rows else []
 
 
@@ -152,9 +153,9 @@ def resolve_field_map(columns: list[str], overrides: dict[str, str] | None = Non
 
 
 def fetch_rows(domain: str, dataset_id: str, select: list[str], where: str,
-               order: str, page_size: int = PAGE_SIZE) -> list[dict]:
+               order: str, page_size: int = PAGE_SIZE, base_url: str | None = None) -> list[dict]:
     """Offset-paged record pull. `order` must be a stable column (or `:id`) for deterministic paging."""
-    base = f"https://{domain}/resource/{dataset_id}.json"
+    base = base_url or f"https://{domain}/resource/{dataset_id}.json"
     records: list[dict] = []
     offset = 0
     while True:
@@ -189,12 +190,17 @@ class SocrataAdapter(CityAdapter):
     def _dataset_for(self, year: int) -> str:
         return self.datasets_by_year.get(year, self.dataset_id)
 
+    def _endpoint_url(self, dataset_id: str) -> str:
+        """Base URL for SODA queries. Override for portals that don't serve /resource/."""
+        return f"https://{self.domain}/resource/{dataset_id}.json"
+
     def fetch(self, year: int) -> list[dict]:
         dataset_id = self._dataset_for(year)
         if not dataset_id:
             print(f"  {self.city}: no dataset for {year}; skipping")
             return []
-        cols = discover_columns(self.domain, dataset_id)
+        base_url = self._endpoint_url(dataset_id)
+        cols = discover_columns(self.domain, dataset_id, base_url=base_url)
         if not cols:
             print(f"  {self.city}: no columns discovered for {dataset_id}; skipping")
             return []
@@ -206,7 +212,7 @@ class SocrataAdapter(CityAdapter):
                  f"AND {created} < '{year + 1}-01-01T00:00:00'")
         print(f"  {self.city} {year} → socrata {dataset_id} (created={created})")
         rows = fetch_rows(self.domain, dataset_id, select=list(field_map),
-                          where=where, order=created)
+                          where=where, order=created, base_url=base_url)
         return apply_field_map(rows, field_map)
 
     def is_closed(self, df):
