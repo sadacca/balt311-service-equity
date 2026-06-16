@@ -33,6 +33,9 @@ TIMEOUT = 45
 _CREATED = ("created", "requested", "opened", "open_dt", "start", "intake", "receiv")
 _CLOSED = ("closed", "resolved", "completed", "close_dt", "closeddate", "resolution_dt")
 _GEO = ("lat", "lon", "latitude", "longitude", "the_geom", "geom", "point", "shape", "x_coord", "y_coord")
+# Depth signals for the maturity rubric's field-completeness dimension (P5.9-4).
+_CHANNEL = ("channel", "source", "method_received", "report_source", "intake", "requestsource")
+_AGENCY = ("agency", "department", "owner", "work_group", "dept", "bureau", "responsible")
 
 
 def _fetch_json(url: str):
@@ -63,17 +66,21 @@ def _has(fields: list[str], needles: tuple[str, ...]) -> bool:
 
 
 def probe(endpoint: str) -> dict:
+    blank = {"ok": False, "created": False, "closed": False, "geo": False,
+             "channel": False, "agency": False, "n_fields": 0}
     try:
         fields = _first_record_fields(endpoint)
     except Exception as exc:
-        return {"ok": False, "error": str(exc)[:140], "created": False, "closed": False, "geo": False}
+        return {**blank, "error": str(exc)[:140]}
     if not fields:
-        return {"ok": False, "error": "no records returned", "created": False, "closed": False, "geo": False}
+        return {**blank, "error": "no records returned"}
     return {
         "ok": True, "error": "",
         "created": _has(fields, _CREATED),
         "closed": _has(fields, _CLOSED),
         "geo": _has(fields, _GEO),
+        "channel": _has(fields, _CHANNEL),   # intake-channel field → field-completeness signal
+        "agency": _has(fields, _AGENCY),
         "n_fields": len(fields),
     }
 
@@ -88,15 +95,17 @@ def main() -> int:
         print(f"census not found: {CENSUS}", file=sys.stderr)
         return 2
     rows = list(csv.DictReader(CENSUS.open()))
-    if "endpoint" not in (rows[0].keys() if rows else []):
-        print("census has no `endpoint` column yet — nothing to probe.", file=sys.stderr)
+    cols0 = rows[0].keys() if rows else []
+    ep_col = "endpoint_url" if "endpoint_url" in cols0 else ("endpoint" if "endpoint" in cols0 else None)
+    if ep_col is None:
+        print("census has no endpoint_url/endpoint column — nothing to probe.", file=sys.stderr)
         return 0
 
     regressions = 0
     print(f"{'city':28} {'status':11} {'evidence':11} created closed geo   result")
     print("-" * 92)
     for row in rows:
-        endpoint = (row.get("endpoint") or "").strip()
+        endpoint = (row.get(ep_col) or "").strip()
         if not endpoint:
             continue
         res = probe(endpoint)
@@ -113,10 +122,14 @@ def main() -> int:
         if args.write:
             row["api_checked"] = "ok" if res["ok"] else "fail"
             row["api_fields"] = "+".join(k for k in ("created", "closed", "geo") if res.get(k))
+            # Depth signals for score_maturity.py's field-completeness dimension (P5.9-4).
+            row["field_count"] = res.get("n_fields", 0)
+            row["has_channel"] = "y" if res.get("channel") else ""
+            row["has_agency"] = "y" if res.get("agency") else ""
 
     if args.write:
         cols = list(rows[0].keys())
-        for extra in ("api_checked", "api_fields"):
+        for extra in ("api_checked", "api_fields", "field_count", "has_channel", "has_agency"):
             if extra not in cols:
                 cols.append(extra)
         with CENSUS.open("w", newline="") as fh:
