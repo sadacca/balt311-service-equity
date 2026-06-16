@@ -196,6 +196,25 @@ def merge_artifacts(in_dir: str, metrics_path: Path = METRICS_PATH,
         meta_df.to_csv(meta_path, index=False)
         log(f"Merged {len(meta_parts)} meta parts → {len(meta_df)} rows in {meta_path}")
 
+    _print_merge_sanity(metrics_path)
+
+
+def _print_merge_sanity(metrics_path: Path) -> None:
+    """Per-city sanity table so an under-pulling / missing adapter is loud in the merge log,
+    not a silent 0-row drop. Flags an implausibly low per-1k (a likely wrong dataset)."""
+    if not metrics_path.exists():
+        log("no metrics file to summarize.")
+        return
+    df = pd.read_parquet(metrics_path)
+    latest = df.sort_values("year").groupby("city").tail(1).sort_values("requests_per_1k")
+    log(f"=== cross-city sanity ({df['city'].nunique()} cities) ===")
+    for _, r in latest.iterrows():
+        p1k = r.get("requests_per_1k")
+        flag = "  ⚠ implausibly low — check dataset" if (p1k is not None and p1k == p1k and p1k < 20) else ""
+        log(f"  {r['city']:20} {int(r['year'])}  total={int(r['total_requests']):>9,}  "
+            f"per_1k={p1k:.0f}{flag}" if p1k == p1k else
+            f"  {r['city']:20} {int(r['year'])}  total={int(r['total_requests']):>9,}  per_1k=NA")
+
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="Cross-city 311 ingestion + metrics")

@@ -278,6 +278,16 @@ dedicated **"Compare cities"** group, kept separate from the within-Baltimore si
 adapter per API family; no new app runtime dependencies beyond `app/requirements.txt` (the
 tabs are Plotly charts over small pre-aggregated `peer_city_*` tables).
 
+**TODO — maturity scoring depth probe (P5.9-4):** close the inspected-vs-derived gap in the
+maturity scorecard by capturing objective field/history/geocoding signals from each scoreable
+city's live API (groundwork in `scripts/verify_census.py`, which now writes
+`field_count`/`has_channel`/`has_agency` per `endpoint_url`). Target the scoreable-derived
+cities first; fold in the `evidence=api` partials (Detroit, Tucson, Portland) cheaply and the
+ArcGIS-hub partials (Houston, Phoenix, Denver) after a small hub→FeatureServer URL resolution.
+The no-open-dataset partials (Fort Worth, Columbus, Indianapolis, Atlanta, Fresno, San Jose)
+and the SeeClickFix/Open311 ones (Albuquerque) are out of scope — they'd only confirm the
+partial floor. Full scope in `TASKS.md` P5.9-4.
+
 ---
 
 ## 5. Gap Dependencies

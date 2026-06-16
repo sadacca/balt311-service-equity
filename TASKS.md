@@ -699,6 +699,18 @@ one continuous scale, not two disconnected exercises.
   not the heuristic. Runs in CI (portals unreachable from the dev sandbox). The geocoded share for
   the 10 cohort cities can also be captured during the next cross-city ingest (raw-vs-scoped row
   counts in `compute_city_metrics`).
+  - *Probe groundwork shipped*: `verify_census.py` now reads the census `endpoint_url` and, with
+    `--write`, captures `field_count` / `has_channel` / `has_agency` per city (+ the existing
+    created/closed/geo flags). Remaining: run it in CI to populate the census, then teach
+    `score_maturity.py` to read those columns for field_completeness.
+  - *Partials scope (assessed 2026-06-15)*: of the 13 partials, only some are probe-able and the
+    probe mostly *confirms* their limits rather than promoting them. **Probe-able now** (reachable
+    record-level API): Detroit, Tucson, Portland. **Probe-able after a small ArcGIS-hub→FeatureServer
+    URL resolution** (reuse `arcgis.item_service_url`): Houston, Phoenix, Denver. **Not probe-able**
+    (no open record-level dataset — that's *why* they're partial): Fort Worth, Columbus, Indianapolis,
+    Atlanta, Fresno, San Jose. **Needs an Open311/SeeClickFix reader** (low payoff): Albuquerque,
+    Portland. → Target scoreable-derived cities first; fold in the api-evidence partials cheaply;
+    skip the rest.
 - [ ] **P5.9-6: Data-integrity / plausibility flag in the rankings** — open data can be
   *published* maturely yet be unrealistic or gamed (auto-closed records inflating closure and
   crushing median time-to-close — see the `pct_same_day_close` flag already live on the Service
