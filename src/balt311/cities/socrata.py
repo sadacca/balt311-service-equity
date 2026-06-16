@@ -14,6 +14,7 @@ a slightly-off guess degrades that one field to null rather than 400-ing the who
 
 `SOCRATA_APP_TOKEN` (env) is sent as `X-App-Token` when present, lifting anonymous throttling.
 """
+import base64
 import json
 import os
 import time
@@ -53,14 +54,31 @@ CANDIDATES: dict[str, list[str]] = {
 
 def _headers() -> dict:
     h = {"User-Agent": "Mozilla/5.0 (balt311-cross-city)", "Accept": "application/json"}
+    key_id = os.environ.get("SOCRATA_KEY_ID", "").strip()
+    key_secret = os.environ.get("SOCRATA_KEY_SECRET", "").strip()
     token = os.environ.get("SOCRATA_APP_TOKEN", "").strip()
-    if token:
+    if key_id and key_secret:
+        # Full API key pair → Basic Auth; key_id also sent as X-App-Token per Socrata docs.
+        creds = base64.b64encode(f"{key_id}:{key_secret}".encode()).decode()
+        h["Authorization"] = f"Basic {creds}"
+        h["X-App-Token"] = key_id
+    elif key_id:
+        # Key ID alone is valid as an app token (Socrata docs allow this).
+        h["X-App-Token"] = key_id
+    elif token:
         h["X-App-Token"] = token
     return h
 
 
+def _has_auth() -> bool:
+    return bool(
+        os.environ.get("SOCRATA_KEY_ID", "").strip()
+        or os.environ.get("SOCRATA_APP_TOKEN", "").strip()
+    )
+
+
 def _get(url: str) -> list[dict]:
-    has_token = bool(os.environ.get("SOCRATA_APP_TOKEN", "").strip())
+    has_token = _has_auth()
     for attempt in range(1, RETRIES + 1):
         try:
             req = urllib.request.Request(url, headers=_headers())
