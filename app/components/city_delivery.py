@@ -18,6 +18,7 @@ _PEER_COLOR = "#5f6368"        # dark enough that white in-bar labels stay legib
 # label → (column, value format, higher_is_better | None for neutral)
 _METRICS: dict[str, tuple[str, str, bool | None]] = {
     "Requests per 1,000 residents": ("requests_per_1k", "{:.0f}", None),
+    "Total requests": ("total_requests", "{:,.0f}", None),
     "Median days to close": ("median_days_to_close", "{:.1f}", False),
     "Closure rate": ("closure_rate", "{:.0%}", True),
     "On-time rate": ("on_time_rate", "{:.0%}", True),
@@ -158,7 +159,11 @@ def render_city_delivery(data_dir: Path, year: int) -> None:
         st.plotly_chart(_bar(valid, col, metric_label, fmt, flagged=flagged),
                         use_container_width=True,
                         key="cc_delivery_bar", config={"displayModeBar": False})
-        if higher_better is True:
+        if col == "total_requests":
+            st.caption("Raw ticket volume — a scale reference and sanity check; **not** "
+                       "population-adjusted, so the largest cities dominate. Use requests "
+                       "per 1,000 for a fair comparison.")
+        elif higher_better is True:
             st.caption("Higher is better.")
         elif higher_better is False:
             st.caption("Lower is better.")
