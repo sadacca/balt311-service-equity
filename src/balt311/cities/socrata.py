@@ -60,11 +60,24 @@ def _headers() -> dict:
 
 
 def _get(url: str) -> list[dict]:
+    has_token = bool(os.environ.get("SOCRATA_APP_TOKEN", "").strip())
     for attempt in range(1, RETRIES + 1):
         try:
             req = urllib.request.Request(url, headers=_headers())
             with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-                return json.loads(r.read())
+                body = r.read()
+            if not body or not body.strip():
+                # A 200 with an empty body is deterministic, not transient — retrying just burns
+                # ~60s. Newer Tyler "Data & Insights" portals (Memphis, Cincinnati) return empty
+                # without an app token, so this is usually a missing SOCRATA_APP_TOKEN (or a wrong
+                # dataset id). Fail fast with a clear message instead of looping.
+                raise RuntimeError(
+                    "empty response body — likely needs an app token (SOCRATA_APP_TOKEN "
+                    f"{'is set' if has_token else 'is NOT set'}) or the dataset id is wrong"
+                )
+            return json.loads(body)
+        except RuntimeError:
+            raise  # don't retry a deterministic empty-body
         except Exception as exc:
             if attempt == RETRIES:
                 raise
