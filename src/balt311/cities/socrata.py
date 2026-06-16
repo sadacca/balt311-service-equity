@@ -75,9 +75,18 @@ def _get(url: str) -> list[dict]:
                     "empty response body — likely needs an app token (SOCRATA_APP_TOKEN "
                     f"{'is set' if has_token else 'is NOT set'}) or the dataset id is wrong"
                 )
-            return json.loads(body)
+            try:
+                return json.loads(body)
+            except json.JSONDecodeError:
+                # Tyler "Data & Insights" portals return an HTML auth/error page (not JSON)
+                # when the app token is missing, rather than an empty body or a 403.
+                preview = body[:120].decode("utf-8", errors="replace").strip()
+                raise RuntimeError(
+                    f"non-JSON response (likely HTML auth wall) — SOCRATA_APP_TOKEN "
+                    f"{'is set' if has_token else 'is NOT set'}. Preview: {preview!r}"
+                )
         except RuntimeError:
-            raise  # don't retry a deterministic empty-body
+            raise  # don't retry deterministic failures
         except Exception as exc:
             if attempt == RETRIES:
                 raise
