@@ -405,9 +405,86 @@ null-metric soft-degrade), so Philadelphia appears with no code change once its 
 confirmed by rendering the tab with a synthetic 3-city table (Baltimore stays the red
 reference, peers gray, ranked by the selected metric).
 
-### 6.5 — Equity methodology (Phase 5.5) — _pending_
+### 6.5 — Equity methodology (Phase 5.5) — _methodology shipped 2026-06-17; cohort scores pending a CI run_
 
-### 6.6 — Equity tab, cohort (Phase 5.6) — _pending_
+**Scope decision: income only, race deferred.** Race needs a city-appropriate group
+definition — Baltimore's majority-Black/majority-White split assumes a city with sizeable
+majority-tracts on both sides, which doesn't generalize to a plurality-Hispanic city or one
+with few or no majority tracts. Income has no such problem: each city's tracts are split
+above/below *that city's own* tract median income (ACS 5-year B19013_001E), which is
+self-relative and never empty. Race-based cross-city equity is deferred to a follow-up phase
+once a per-city group definition is worked out (see TASKS.md Phase 5.5 note).
+
+**Pipeline** (three parquet files, building on Phase 5.5-1/5.5-2 above):
+1. `peer_city_tract_income.parquet` — per-city tract median income (`scripts/peer_city_equity.py`).
+2. `peer_city_tract_srtype_metrics.parquet` / `peer_city_tract_metrics.parquet` — per-city
+   tract×SRType and pooled-tract delivery metrics, via Census TIGER tract boundaries +
+   point-in-polygon join on each city's 311 records (`scripts/peer_city.py`,
+   `balt311.tiger.fetch_city_tracts`).
+3. `peer_city_equity.parquet` — the score itself (`scripts/peer_city_equity_score.py`), one row
+   per `(city, year)`:
+   - **`raw_income_score`** — pooled (non-stratified) Mann-Whitney overlap score between the
+     below- and above-median-income tracts' median days-to-close. "Overall, including which
+     services an area requests."
+   - **`adj_income_score`** — the same overlap score computed *within each service type*
+     (cells with fewer than 5 requests suppressed), then combined into one citywide figure via
+     a volume-weighted mean across types. "How the same service is delivered," controlling for
+     what each area happens to request.
+   - **`raw_median_days_gap`** — below- minus above-median-income pooled median days; positive
+     means the poorer half waits longer.
+   - A **large gap between `raw_income_score` and `adj_income_score`** for a city means its
+     apparent raw disparity is largely a service-mix effect (poorer tracts requesting slower
+     service types more often), not a within-service delivery-equity one — the same
+     raw-vs-adjusted story Tab 6 tells citywide, now computable for any city in the cohort.
+
+**Baltimore validation (2024).** Baltimore's score was computed from its own existing
+within-app files (`tract_srtype_metrics_2024.parquet`, `tract_metrics_2024.parquet`) via the
+`precomputed_tract_srtype`/`precomputed_tract` adapter hooks — the same files the
+within-Baltimore tabs already trust — joined against `peer_city_tract_income.parquet`'s
+Baltimore rows:
+- `raw_income_score` = 0.8228487271197138, `raw_median_days_gap` = 0.4937181712962966 days —
+  **bit-for-bit identical** to `equity_trend.py`'s `compute_citywide_equity_trend` (Median days
+  to close, Income dimension, 2024): same income table, same self-median split, same
+  `overlap_score` (now centralized in `balt311.equity_stats`, re-exported by
+  `app/components/utils.py` for the within-Baltimore call sites).
+- `adj_income_score` uses the same building blocks as `equity_adjusted.py`'s
+  `compute_adjusted_scores` — `MIN_GEO_SRTYPE_N=5` cell suppression, per-SRType
+  `overlap_score`, volume-weighted combination — and lands in the same range; it isn't
+  forced to match exactly because the cross-city pipeline weights each SRType by its
+  *eligible-tract* volume (post-suppression), while the within-Baltimore version weights by
+  that type's full citywide volume — a difference that only bites when suppression drops a
+  meaningful share of a type's volume, which it largely doesn't for Baltimore's grain.
+
+**Demographic coverage.** All 15 cohort cities onboarded so far (Austin, Baltimore, Boston,
+Chicago, Cincinnati, Dallas, Kansas City, Los Angeles, Memphis, Nashville, New York,
+Philadelphia, San Francisco, Seattle, Washington DC) already have tract median income from
+P5.5-1 — income coverage is not the bottleneck. The tract×SRType/tract delivery join (P5.5-2)
+is the remaining per-city dependency for `peer_city_equity.parquet`: it requires a live TIGER
+fetch + spatial join per city-year, run in CI (ArcGIS/Carto/Socrata endpoints aren't reachable
+from a sandboxed dev environment), so the full-cohort `peer_city_equity.parquet` is generated
+by the next `peer_city_equity.yml` / `peer_city_matrix.yml` run rather than committed here.
+Tab 8 (5.6) soft-degrades per-city when a row isn't present yet, same convention as Tab 7.
+
+### 6.6 — Equity tab, cohort (Phase 5.6) — _tab shipped 2026-06-17; full-cohort scores pending a CI run_
+
+Built `app/components/city_equity.py` (Tab 8) on top of `peer_city_equity.parquet`: a
+ranked horizontal bar of `adj_income_score` (Baltimore highlighted, green/amber/red
+threshold bands matching `score_label()`'s convention), a "Raw vs. mix-adjusted" expander
+(paired bars + the per-city below/above-median pooled-median-days gap, the same
+raw-vs-adjusted story Tab 6 tells citywide) and a multi-year trend line when ≥2 years of
+data exist, plus a methodology expander restating the income-only/race-deferred scope
+decision. Same soft-degrade convention as Tab 7 (`city_delivery.py`) — an `st.info` notice
+naming the workflow to run when the parquet doesn't exist yet, and a city multiselect once
+more than 2 cities are present in a year. Wired into `app.py` in place of the old
+`render_equity_placeholder()` scaffold; `cross_city.py`'s three placeholder functions
+(delivery/equity/maturity) are now dead code and were removed, leaving only the
+group-level intro + caveats shared by all three live tabs.
+
+Smoke-tested with `streamlit.testing.v1.AppTest` against both the soft-degrade path (no
+parquet) and synthetic multi-city, multi-year data (bar, raw-vs-adjusted expander, and
+trend chart all render without error) — full-cohort real data is still pending the next
+`peer_city_equity.yml` / `peer_city_matrix.yml` CI run (§6.5), so the populated view hasn't
+been checked against live cohort numbers yet.
 
 ### 6.7 — Within-type comparison (Phase 5.7) — _pending_
 

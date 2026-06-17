@@ -28,7 +28,7 @@ All current development is on `claude/review-requirements-AlGBm`. Push only to t
 Streamlit app at `app/app.py`, organized into **two groups** that keep the two fundamentally different kinds of analysis distinct, selected by a top-level **`st.segmented_control`** (not `st.tabs`) so only the active group's body executes — `st.tabs` renders every tab body on every run, which made opening Compare cities pay the full cost of rendering the six within-Baltimore tabs (the Areas PCA embeddings + the Mix-Adjusted regression — ~30s cold) underneath:
 
 - **🏙️ Within Baltimore** — the sequenced six-step story: Operations → Services → Area Service Usage → Equity → Service Equity → Mix-Adjusted Equity.
-- **🌐 Compare cities** — *(Phase 5)* city-to-city comparison: Service Delivery → Service Equity → Maturity Index. **Service Delivery (`city_delivery.py`) and Maturity Index (`maturity_index.py`) are live**; Service Equity is still a placeholder (`cross_city.py`). Cohort = 10 cities across four platforms (ArcGIS, Carto, Socrata, CKAN). City-level only, so they do **not** use `geo_level`.
+- **🌐 Compare cities** — *(Phase 5)* city-to-city comparison: Service Delivery → Service Equity → Maturity Index. All three tabs are live: `city_delivery.py`, `city_equity.py` (mix-adjusted income equity score, raw as reference — full-cohort scores pending a CI run, see `peer_city_equity.parquet`), `maturity_index.py`. `cross_city.py` now holds only the shared group intro + comparability caveats. Cohort = 10 cities across four platforms (ArcGIS, Carto, Socrata, CKAN). City-level only, so they do **not** use `geo_level`.
 
 The year selector is global (above both groups) — cross-city data is also city × year. The **geographic-unit toggle (Census Tract / CSA) is a single global control at the top of the Within-Baltimore group**, writing the shared `geo_level` session state every within-Baltimore tab reads (replacing the former per-tab toggles and the two-way-sync hack). The Areas tab manages its own data loading internally and ignores `geo_level` (it shows tracts and CSAs together in one embedding).
 
@@ -175,6 +175,7 @@ app/
     equity_trend.py               # Year-over-year overlap score trend
     operations_panel.py           # Full Operations tab
     city_delivery.py              # Cross-City Service Delivery tab (Phase 5)
+    city_equity.py                # Cross-City Service Equity tab — mix-adjusted income score (Phase 5.6)
     maturity_index.py             # 311 Open-Data Maturity tab (Phase 5.8)
     utils.py                      # score_label, format_metric, hex_to_rgba; re-exports overlap_score/wmean
 
