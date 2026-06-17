@@ -12,6 +12,8 @@ import urllib.request
 
 import pandas as pd
 
+from balt311.equity_stats import overlap_score, wmean
+
 METRIC_COLUMNS = [
     "city", "year", "total_requests", "requests_per_1k",
     "median_days_to_close", "median_days_to_close_excl_same_day",
@@ -231,6 +233,73 @@ def fetch_tract_median_income(fips: str, acs_year: int = 2023) -> pd.DataFrame:
 
 _TRACT_SRTYPE_COLS = ["geoid", "SRType", "total_requests", "closed_requests",
                       "closure_rate", "median_days_to_close"]
+_TRACT_COLS = ["geoid", "total_requests", "closed_requests",
+              "closure_rate", "median_days_to_close"]
+
+
+def _join_records_to_tracts(records: list[dict], *, tracts, scope_fn=None,
+                            closed_fn=None) -> pd.DataFrame:
+    """Shared point-in-polygon join behind `compute_tract_srtype_metrics` and
+    `compute_tract_metrics` — scope, geocode-filter, and spatial-join records to
+    `tracts` once, annotated with `_is_closed`/`_days`, so a driver computing both
+    grains pays for one TIGER join, not two. Returns an empty DataFrame (no `geoid`
+    column) if there's nothing to join."""
+    if not records:
+        return pd.DataFrame()
+
+    import geopandas as gpd
+
+    df = pd.DataFrame(records)
+    df["_created"] = _parse_dt(df.get("CreatedDate"))
+    df["_closed"] = _parse_dt(df.get("CloseDate"))
+    if scope_fn is not None:
+        df = scope_fn(df)
+
+    lat = pd.to_numeric(df.get("Latitude"), errors="coerce")
+    lon = pd.to_numeric(df.get("Longitude"), errors="coerce")
+    geocoded = df[lat.notna() & lon.notna() & (lat != 0) & (lon != 0)].copy()
+    if geocoded.empty:
+        return pd.DataFrame()
+
+    gdf = gpd.GeoDataFrame(
+        geocoded,
+        geometry=gpd.points_from_xy(
+            pd.to_numeric(geocoded["Longitude"]), pd.to_numeric(geocoded["Latitude"])
+        ),
+        crs="EPSG:4326",
+    )
+    joined = gpd.sjoin(gdf, tracts[["GEOID", "geometry"]], how="left", predicate="within")
+    joined = pd.DataFrame(joined.drop(columns=["geometry", "index_right"], errors="ignore"))
+    joined = joined.rename(columns={"GEOID": "geoid"})
+
+    is_closed = closed_fn(joined) if closed_fn is not None else joined["_closed"].notna()
+    joined["_is_closed"] = is_closed.astype(bool)
+    days = (joined["_closed"] - joined["_created"]).dt.total_seconds() / 86400.0
+    joined["_days"] = days.mask(days < 0, 0.0)
+    return joined
+
+
+def _aggregate_tract(joined: pd.DataFrame, group_cols: list[str], out_cols: list[str]) -> pd.DataFrame:
+    """Groupby `group_cols` (`["geoid"]` or `["geoid", "SRType"]`) over an already-joined
+    frame from `_join_records_to_tracts`, producing total/closed requests, closure rate,
+    and median days to close — the shared aggregation behind both tract grains."""
+    base = joined.dropna(subset=group_cols)
+    if base.empty:
+        return pd.DataFrame(columns=out_cols)
+
+    agg = (
+        base.groupby(group_cols)
+        .agg(total_requests=(group_cols[0], "size"), closed_requests=("_is_closed", "sum"))
+        .reset_index()
+    )
+    agg["closure_rate"] = agg["closed_requests"] / agg["total_requests"].replace(0, float("nan"))
+    dtc = (
+        base[base["_is_closed"]].dropna(subset=["_days"])
+        .groupby(group_cols)["_days"].median()
+        .reset_index(name="median_days_to_close")
+    )
+    agg = agg.merge(dtc, on=group_cols, how="left")
+    return agg[out_cols]
 
 
 def compute_tract_srtype_metrics(records: list[dict], *, tracts, scope_fn=None,
@@ -248,56 +317,119 @@ def compute_tract_srtype_metrics(records: list[dict], *, tracts, scope_fn=None,
 
     Returns an empty (but correctly-columned) DataFrame if there are no records, no
     geocoded records after scoping, or no rows that fall inside `tracts`."""
-    if not records:
+    joined = _join_records_to_tracts(records, tracts=tracts, scope_fn=scope_fn, closed_fn=closed_fn)
+    if joined.empty:
         return pd.DataFrame(columns=_TRACT_SRTYPE_COLS)
+    return _aggregate_tract(joined, ["geoid", "SRType"], _TRACT_SRTYPE_COLS)
 
-    import geopandas as gpd
 
-    df = pd.DataFrame(records)
-    df["_created"] = _parse_dt(df.get("CreatedDate"))
-    df["_closed"] = _parse_dt(df.get("CloseDate"))
-    if scope_fn is not None:
-        df = scope_fn(df)
+def compute_tract_and_srtype_metrics(records: list[dict], *, tracts, scope_fn=None,
+                                     closed_fn=None) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """`compute_tract_metrics` and `compute_tract_srtype_metrics` together, joining
+    records to `tracts` once rather than twice — the driver (`scripts/peer_city.py`)
+    needs both grains per city-year (the raw and within-category Phase 5.5-3 income
+    equity score), and the TIGER spatial join is the expensive part of either call.
+    Returns `(tract_df, tract_srtype_df)`."""
+    joined = _join_records_to_tracts(records, tracts=tracts, scope_fn=scope_fn, closed_fn=closed_fn)
+    if joined.empty:
+        return pd.DataFrame(columns=_TRACT_COLS), pd.DataFrame(columns=_TRACT_SRTYPE_COLS)
+    tract_df = _aggregate_tract(joined, ["geoid"], _TRACT_COLS)
+    srtype_df = _aggregate_tract(joined, ["geoid", "SRType"], _TRACT_SRTYPE_COLS)
+    return tract_df, srtype_df
 
-    lat = pd.to_numeric(df.get("Latitude"), errors="coerce")
-    lon = pd.to_numeric(df.get("Longitude"), errors="coerce")
-    geocoded = df[lat.notna() & lon.notna() & (lat != 0) & (lon != 0)].copy()
-    if geocoded.empty:
-        return pd.DataFrame(columns=_TRACT_SRTYPE_COLS)
 
-    gdf = gpd.GeoDataFrame(
-        geocoded,
-        geometry=gpd.points_from_xy(
-            pd.to_numeric(geocoded["Longitude"]), pd.to_numeric(geocoded["Latitude"])
-        ),
-        crs="EPSG:4326",
-    )
-    joined = gpd.sjoin(gdf, tracts[["GEOID", "geometry"]], how="left", predicate="within")
-    joined = pd.DataFrame(joined.drop(columns=["geometry", "index_right"], errors="ignore"))
-    joined = joined.rename(columns={"GEOID": "geoid"})
+def compute_tract_metrics(records: list[dict], *, tracts, scope_fn=None,
+                          closed_fn=None) -> pd.DataFrame:
+    """City-agnostic tract metrics pooled across service type (geoid, total_requests,
+    closed_requests, closure_rate, median_days_to_close) — the **raw**, non-stratified
+    grain the Phase 5.5-3 income equity score compares against the within-category
+    mix-adjusted score, mirroring how the within-Baltimore Equity tab's raw geo-level
+    score is read from `tract_metrics_{year}.parquet` rather than re-derived from the
+    SRType-stratified table (a median doesn't decompose into a weighted mean of
+    per-type medians). Same join/scope/closure conventions as
+    `compute_tract_srtype_metrics`; pass it the same `_join_records_to_tracts` output
+    to avoid a second TIGER fetch + spatial join for the same city/year."""
+    joined = _join_records_to_tracts(records, tracts=tracts, scope_fn=scope_fn, closed_fn=closed_fn)
+    if joined.empty:
+        return pd.DataFrame(columns=_TRACT_COLS)
+    return _aggregate_tract(joined, ["geoid"], _TRACT_COLS)
 
-    is_closed = closed_fn(joined) if closed_fn is not None else joined["_closed"].notna()
-    joined["_is_closed"] = is_closed.astype(bool)
-    days = (joined["_closed"] - joined["_created"]).dt.total_seconds() / 86400.0
-    joined["_days"] = days.mask(days < 0, 0.0)
 
-    base = joined.dropna(subset=["geoid", "SRType"])
-    if base.empty:
-        return pd.DataFrame(columns=_TRACT_SRTYPE_COLS)
+EQUITY_COLUMNS = [
+    "city", "year", "adj_income_score", "raw_income_score",
+    "raw_median_days_gap", "n_tracts", "n_srtypes_scored",
+]
 
-    agg = (
-        base.groupby(["geoid", "SRType"])
-        .agg(total_requests=("SRType", "size"), closed_requests=("_is_closed", "sum"))
-        .reset_index()
-    )
-    agg["closure_rate"] = agg["closed_requests"] / agg["total_requests"].replace(0, float("nan"))
-    dtc = (
-        base[base["_is_closed"]].dropna(subset=["_days"])
-        .groupby(["geoid", "SRType"])["_days"].median()
-        .reset_index(name="median_days_to_close")
-    )
-    agg = agg.merge(dtc, on=["geoid", "SRType"], how="left")
-    return agg[_TRACT_SRTYPE_COLS]
+
+def compute_income_equity_score(
+    tract_srtype: pd.DataFrame,
+    tract_metrics: pd.DataFrame,
+    tract_income: pd.DataFrame,
+    *, min_geo_srtype_n: int = 5,
+) -> dict:
+    """One city-year's income-only equity score (Phase 5.5-3) — income-only per the
+    TASKS.md Phase 5.5 scope decision (race needs a city-appropriate group definition
+    that doesn't generalize the way income's self-relative above/below-own-median split
+    does). Mirrors the within-Baltimore Tab 6 (`equity_adjusted.compute_adjusted_scores`)
+    pattern but reuses `balt311.equity_stats.overlap_score`/`wmean` directly rather than
+    Streamlit-cached helpers, so this runs in the headless pipeline.
+
+    `tract_srtype` is this city-year's `compute_tract_srtype_metrics` output (or the
+    within-app `tract_srtype_metrics_{year}.parquet` for Baltimore); `tract_metrics` is
+    the matching `compute_tract_metrics` (non-stratified) output; `tract_income` is this
+    city's (year-independent) `peer_city_tract_income.parquet` rows. Tracts are split
+    above/below *this city's own* median income — self-relative, so no group is ever
+    empty (unlike a fixed national income cutoff).
+
+    - `raw_income_score` — `overlap_score` over each tract's pooled (all-SRType) median
+      days to close, split by income group. The citywide, non-stratified figure.
+    - `adj_income_score` — `overlap_score` computed **within each SRType** (>= `min_geo_
+      srtype_n` requests in that tract×SRType cell, the same sparse-cell suppression the
+      within-Baltimore tabs use), then combined volume-weighted across types — isolates
+      *how* the same service is delivered from *which* services an area requests more.
+    - `raw_median_days_gap` — below-median-income tracts' median days minus above's; a
+      positive gap means lower-income areas wait longer.
+
+    Returns `None` for any score that can't be computed (e.g. no valid income data, or
+    no SRType has enough coverage), never raises."""
+    income = tract_income.dropna(subset=["median_income"]) if tract_income is not None else pd.DataFrame()
+    base = {
+        "adj_income_score": None, "raw_income_score": None, "raw_median_days_gap": None,
+        "n_tracts": 0, "n_srtypes_scored": 0,
+    }
+    if income.empty:
+        return base
+    city_median = income["median_income"].median()
+    below_geoids = set(income.loc[income["median_income"] <= city_median, "geoid"])
+    above_geoids = set(income.loc[income["median_income"] > city_median, "geoid"])
+
+    if tract_metrics is not None and not tract_metrics.empty:
+        tm = tract_metrics.dropna(subset=["median_days_to_close"])
+        below = tm.loc[tm["geoid"].isin(below_geoids), "median_days_to_close"]
+        above = tm.loc[tm["geoid"].isin(above_geoids), "median_days_to_close"]
+        score = overlap_score(below, above)
+        base["raw_income_score"] = score if score == score else None
+        if len(below.dropna()) and len(above.dropna()):
+            base["raw_median_days_gap"] = float(below.median() - above.median())
+        base["n_tracts"] = int(tm["geoid"].nunique())
+
+    if tract_srtype is not None and not tract_srtype.empty:
+        eligible = tract_srtype[tract_srtype["total_requests"] >= min_geo_srtype_n]
+        eligible = eligible.dropna(subset=["median_days_to_close"])
+        per_type = []
+        for srtype, grp in eligible.groupby("SRType"):
+            below = grp.loc[grp["geoid"].isin(below_geoids), "median_days_to_close"]
+            above = grp.loc[grp["geoid"].isin(above_geoids), "median_days_to_close"]
+            score = overlap_score(below, above)
+            if score == score:
+                per_type.append({"SRType": srtype, "score": score, "volume": grp["total_requests"].sum()})
+        if per_type:
+            per_df = pd.DataFrame(per_type)
+            adj = wmean(per_df, "score", "volume")
+            base["adj_income_score"] = adj if adj == adj else None
+            base["n_srtypes_scored"] = len(per_type)
+
+    return base
 
 
 def upsert_metrics(existing: pd.DataFrame, new_rows: list[dict]) -> pd.DataFrame:

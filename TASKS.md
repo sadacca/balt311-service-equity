@@ -593,7 +593,7 @@ validates the whole cross-city pipeline that equity then reuses.
   Smoke-tested locally (synthetic tracts + records: tract assignment, closure, and median days all
   verified; a fake adapter exercised the full `peer_city.py` driver path including cache/skip and
   graceful degradation on a join failure) — not yet run against live TIGER downloads in CI.
-- [ ] **P5.5-3: Per-city mix-adjusted overall equity score** *(primary; income only — see scope
+- [x] **P5.5-3: Per-city mix-adjusted overall equity score** *(primary; income only — see scope
   decision above)* — for each city, compute the within-service-category income-based
   `utils.overlap_score()` (each city's own categories, split above/below that city's own tract
   median income from P5.5-1), then combine into a single volume-weighted **adjusted** overall
@@ -601,6 +601,25 @@ validates the whole cross-city pipeline that equity then reuses.
   score for the same cells as a secondary reference. Output: `peer_city_equity.parquet` — one row
   per `(city, year)` with `adj_income_score`, `raw_income_score`, and the raw between-group
   median-days gap. **Scores are compared across cities; tracts are not.**
+  `overlap_score`/`wmean` moved from `app/components/utils.py` into a new
+  `balt311.equity_stats` module (re-exported by `utils.py` for existing call sites) so the
+  headless pipeline and the within-Baltimore app score identically. `peer_metrics.py` gained
+  `compute_tract_metrics` (pooled, non-stratified — the new `precomputed_tract` adapter hook,
+  mirroring `precomputed_tract_srtype`; Baltimore reads its own `tract_metrics_{year}.parquet`)
+  and `compute_tract_and_srtype_metrics` (both grains from one spatial join, behind a shared
+  `_join_records_to_tracts`/`_aggregate_tract` pair, since P5.5-3 needs both the within-category
+  and pooled grain per city-year and a second TIGER join would be wasted work).
+  `compute_income_equity_score` does the actual scoring: splits each city's tracts
+  above/below its own median income, runs `overlap_score` per SRType (cells below
+  `min_geo_srtype_n=5` excluded) and volume-weights them into `adj_income_score`, plus a
+  pooled `raw_income_score` and `raw_median_days_gap` from the non-stratified grain. New driver
+  `scripts/peer_city_equity_score.py` reads the three Phase 5.5 parquet inputs and writes/upserts
+  `peer_city_equity.parquet` per `(city, year)` — a pure local recompute (no network fetch), so
+  it always reflects the current state of its inputs rather than caching. Wired into
+  `peer_city_equity.yml` (runs after the income fetch, same commit). Smoke-tested with synthetic
+  tract data, including the documented small-sample case (1 tract per income side returns
+  `None` for both scores, since `overlap_score` requires ≥3 per group, while the median-days
+  gap still computes from the 1v1 comparison).
 - [ ] **P5.5-4: Validate against Baltimore in-app numbers** — Baltimore's raw income score here
   must match the Equity tab's existing score, and its adjusted score must match Tab 5/Tab 6's
   within-category and volume-weighted figures, for the same year.

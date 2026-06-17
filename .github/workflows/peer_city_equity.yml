@@ -49,17 +49,25 @@ jobs:
           [ "${{ inputs.force }}" = "true" ] && FLAGS="$FLAGS --force"
           python scripts/peer_city_equity.py --cities "${{ inputs.cities }}" $FLAGS
 
-      - name: Commit and push cross-city tract income
+      - name: Compute per-city mix-adjusted income equity score
+        run: |
+          # Pure local computation over already-committed tract×SRType / tract / income
+          # parquet files (Phase 5.5-2 outputs) — no-ops gracefully if those inputs don't
+          # exist yet for a city (e.g. peer_city.py hasn't been run for it).
+          python scripts/peer_city_equity_score.py --cities "${{ inputs.cities }}"
+
+      - name: Commit and push cross-city equity data
         if: always()  # persist cities that succeeded even if another city's fetch failed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/processed/peer_city_tract_income.parquet
+          [ -f data/processed/peer_city_equity.parquet ] && git add data/processed/peer_city_equity.parquet || true
           if git diff --staged --quiet; then
-            echo "Cross-city tract income unchanged — nothing to commit."
+            echo "Cross-city equity data unchanged — nothing to commit."
             exit 0
           fi
-          git commit -m "peer: per-city tract median income for ${{ inputs.cities }} (Phase 5.5-1)"
+          git commit -m "peer: per-city tract median income + income equity score for ${{ inputs.cities }} (Phase 5.5-1/5.5-3)"
           for attempt in 1 2 3 4 5; do
             if git pull --rebase --autostash origin main && git push origin main; then
               echo "Pushed on attempt $attempt"; exit 0
