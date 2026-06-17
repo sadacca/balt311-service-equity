@@ -51,6 +51,16 @@ class BaltimoreAdapter(CityAdapter):
             "on_time_rate": num(r.get("on_time_rate")),
         }
 
+    def precomputed_tract_srtype(self, year: int, proc_dir) -> pd.DataFrame | None:
+        """Read the within-app `tract_srtype_metrics_{year}.parquet` directly — same
+        shape the cross-city join produces for the fetch-fresh cities, and the source the
+        within-Baltimore tabs already trust, so no re-fetch/re-join is needed."""
+        path = Path(proc_dir) / f"tract_srtype_metrics_{year}.parquet"
+        if not path.exists():
+            return None
+        df = pd.read_parquet(path)
+        return df if not df.empty else None
+
     def fetch(self, year: int) -> list[dict]:
         return ingest.fetch_year(year)
 

@@ -229,6 +229,77 @@ def fetch_tract_median_income(fips: str, acs_year: int = 2023) -> pd.DataFrame:
     return pd.DataFrame(rows, columns=["geoid", "median_income"])
 
 
+_TRACT_SRTYPE_COLS = ["geoid", "SRType", "total_requests", "closed_requests",
+                      "closure_rate", "median_days_to_close"]
+
+
+def compute_tract_srtype_metrics(records: list[dict], *, tracts, scope_fn=None,
+                                  closed_fn=None) -> pd.DataFrame:
+    """City-agnostic tract×SRType metrics — mirrors Baltimore's own
+    `tract_srtype_metrics_{year}.parquet` shape (geoid, SRType, total_requests,
+    closed_requests, closure_rate, median_days_to_close), the input Phase 5.5-3's
+    within-category equity scoring needs (joined against `peer_city_tract_income.parquet`
+    on `geoid`). `tracts` is this city's TIGER tract boundaries (`balt311.tiger.
+    fetch_city_tracts`); requests are point-in-polygon joined to tracts, same as the
+    within-Baltimore pipeline (`scripts/pipeline.py` stage 2). `scope_fn`/`closed_fn`
+    are the adapter's own hooks (`CityAdapter.scope`/`is_closed`), so the same
+    "real service request" subset and closure rule feeds both the city-level delivery
+    metrics (`compute_city_metrics`) and this tract-level breakdown.
+
+    Returns an empty (but correctly-columned) DataFrame if there are no records, no
+    geocoded records after scoping, or no rows that fall inside `tracts`."""
+    if not records:
+        return pd.DataFrame(columns=_TRACT_SRTYPE_COLS)
+
+    import geopandas as gpd
+
+    df = pd.DataFrame(records)
+    df["_created"] = _parse_dt(df.get("CreatedDate"))
+    df["_closed"] = _parse_dt(df.get("CloseDate"))
+    if scope_fn is not None:
+        df = scope_fn(df)
+
+    lat = pd.to_numeric(df.get("Latitude"), errors="coerce")
+    lon = pd.to_numeric(df.get("Longitude"), errors="coerce")
+    geocoded = df[lat.notna() & lon.notna() & (lat != 0) & (lon != 0)].copy()
+    if geocoded.empty:
+        return pd.DataFrame(columns=_TRACT_SRTYPE_COLS)
+
+    gdf = gpd.GeoDataFrame(
+        geocoded,
+        geometry=gpd.points_from_xy(
+            pd.to_numeric(geocoded["Longitude"]), pd.to_numeric(geocoded["Latitude"])
+        ),
+        crs="EPSG:4326",
+    )
+    joined = gpd.sjoin(gdf, tracts[["GEOID", "geometry"]], how="left", predicate="within")
+    joined = pd.DataFrame(joined.drop(columns=["geometry", "index_right"], errors="ignore"))
+    joined = joined.rename(columns={"GEOID": "geoid"})
+
+    is_closed = closed_fn(joined) if closed_fn is not None else joined["_closed"].notna()
+    joined["_is_closed"] = is_closed.astype(bool)
+    days = (joined["_closed"] - joined["_created"]).dt.total_seconds() / 86400.0
+    joined["_days"] = days.mask(days < 0, 0.0)
+
+    base = joined.dropna(subset=["geoid", "SRType"])
+    if base.empty:
+        return pd.DataFrame(columns=_TRACT_SRTYPE_COLS)
+
+    agg = (
+        base.groupby(["geoid", "SRType"])
+        .agg(total_requests=("SRType", "size"), closed_requests=("_is_closed", "sum"))
+        .reset_index()
+    )
+    agg["closure_rate"] = agg["closed_requests"] / agg["total_requests"].replace(0, float("nan"))
+    dtc = (
+        base[base["_is_closed"]].dropna(subset=["_days"])
+        .groupby(["geoid", "SRType"])["_days"].median()
+        .reset_index(name="median_days_to_close")
+    )
+    agg = agg.merge(dtc, on=["geoid", "SRType"], how="left")
+    return agg[_TRACT_SRTYPE_COLS]
+
+
 def upsert_metrics(existing: pd.DataFrame, new_rows: list[dict]) -> pd.DataFrame:
     """Merge freshly computed (city, year) rows into the metrics table, replacing any
     existing row for the same city-year, and return it sorted."""
