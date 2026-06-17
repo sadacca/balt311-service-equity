@@ -10,11 +10,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from components.area_embedding import render_area_embedding
 from components.category_equity_explorer import render_category_equity_explorer
 from components.category_explorer import render_category_explorer
-from components.cross_city import (
-    render_cross_city_intro,
-    render_equity_placeholder,
-)
+from components.cross_city import render_cross_city_intro
 from components.city_delivery import render_city_delivery
+from components.city_equity import render_city_equity
 from components.maturity_index import render_maturity_index
 from components.equity_adjusted import render_equity_adjusted
 from components.equity_panel import render_equity
@@ -338,6 +336,6 @@ else:
     with cc_delivery:
         render_city_delivery(DATA_DIR, year)
     with cc_equity:
-        render_equity_placeholder()
+        render_city_equity(DATA_DIR, year)
     with cc_maturity:
         render_maturity_index(DATA_DIR)

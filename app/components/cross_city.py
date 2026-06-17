@@ -1,14 +1,8 @@
-"""Cross-city comparison scaffold — the "Compare cities" group (Phase 5).
+"""Cross-city comparison group intro — the "Compare cities" group (Phase 5).
 
-These render functions are intentionally placeholders: the navigation shell ships now,
-with the two-group structure (Within Baltimore / Compare cities) made explicit, but the
-cross-city data pipeline and charts are the Phase 5 build. Each placeholder states what
-the view will show so the structure reads as deliberate, not unfinished, and points at
-`cross_city_comparison.md` for the full plan.
-
-When Phase 5 lands, these bodies fill in — the wiring in `app.py` and the caveat framing
-do not need to change. Cross-city views are city-level only (no tracts/CSAs), so they do
-*not* read the within-Baltimore `geo_level` state.
+All three cross-city tabs (Service Delivery, Service Equity, Maturity Index) now have
+real components (`city_delivery.py`, `city_equity.py`, `maturity_index.py`); this module
+just holds the group-level framing and comparability caveats shared by all three.
 """
 import streamlit as st
 
@@ -33,39 +27,3 @@ def render_cross_city_intro() -> None:
     )
     with st.expander("Before you compare — how these numbers differ from Baltimore's"):
         st.markdown(_CAVEATS)
-
-
-def _placeholder(title: str, body: str) -> None:
-    st.subheader(title)
-    st.info(body, icon="🚧")
-    st.caption("Planned in **Phase 5** — see `cross_city_comparison.md` for the full design.")
-
-
-def render_delivery_placeholder() -> None:
-    _placeholder(
-        "Cross-City Service Delivery",
-        "Delivery metrics — requests per 1,000 residents, median days to close, closure "
-        "rate, on-time rate — for Baltimore against peer and leading cities, Baltimore "
-        "highlighted as the reference. City-level aggregation, no neighborhood breakdown.",
-    )
-
-
-def render_equity_placeholder() -> None:
-    _placeholder(
-        "Cross-City Service Equity",
-        "Each city's own internal race- and income-based equity scores — the "
-        "**mix-adjusted overall score** (the Tab 6 \"adjusted\" measure, the portable "
-        "one) as the primary comparison, with the raw citywide score for reference. "
-        "Answers whether Baltimore delivers the same services more or less equitably "
-        "than its peers.",
-    )
-
-
-def render_maturity_placeholder() -> None:
-    _placeholder(
-        "311 Open-Data Maturity Index",
-        "How Baltimore's 311 *publishing* maturity ranks among the few US cities that "
-        "publish 311 open data at all — availability, granularity, history depth, update "
-        "cadence, API access, Open311 compliance, field completeness, geocoding. Credit "
-        "first (Baltimore is why this whole analysis is even possible), critique second.",
-    )

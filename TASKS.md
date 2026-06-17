@@ -585,11 +585,10 @@ validates the whole cross-city pipeline that equity then reuses.
   `(city, year, geoid, SRType)` with `total_requests`, `closed_requests`, `closure_rate`,
   `median_days_to_close` — same cache/skip-existing/`--force` semantics as the delivery metrics,
   keyed by `(city, year)`. Wired into `peer_city.yml`/`peer_city_backfill.yml` (added `geopandas`
-  to `pip install`, added the new parquet to the commit step). **Deferred**: the parallel
-  `peer_city_matrix.yml` doesn't carry this output through its per-city-artifact/merge flow yet —
-  its fetch step still installs only `pandas`/`pyarrow`, so the tract×SRType step no-ops with a
-  logged warning per city rather than computing output that would be discarded when the runner is
-  torn down. Use the sequential backfill workflow for tract×SRType output until that's extended.
+  to `pip install`, added the new parquet to the commit step), and into the parallel
+  `peer_city_matrix.yml` (added `geopandas` to the fetch job, per-city `<city>.tract_srtype.parquet`/
+  `<city>.tract.parquet` artifacts distinguished from the plain metrics parquet by filename
+  suffix, `merge_artifacts()` upserts them the same way the sequential driver does).
   Smoke-tested locally (synthetic tracts + records: tract assignment, closure, and median days all
   verified; a fake adapter exercised the full `peer_city.py` driver path including cache/skip and
   graceful degradation on a join failure) — not yet run against live TIGER downloads in CI.
@@ -620,10 +619,21 @@ validates the whole cross-city pipeline that equity then reuses.
   tract data, including the documented small-sample case (1 tract per income side returns
   `None` for both scores, since `overlap_score` requires ≥3 per group, while the median-days
   gap still computes from the 1v1 comparison).
-- [ ] **P5.5-4: Validate against Baltimore in-app numbers** — Baltimore's raw income score here
+- [x] **P5.5-4: Validate against Baltimore in-app numbers** — Baltimore's raw income score here
   must match the Equity tab's existing score, and its adjusted score must match Tab 5/Tab 6's
   within-category and volume-weighted figures, for the same year.
-- [ ] **P5.5-5: Documentation checkpoint** — append `cross_city_comparison.md` §6.5: per-city
+  Confirmed for 2024 using Baltimore's own `tract_srtype_metrics_2024.parquet` /
+  `tract_metrics_2024.parquet` / `peer_city_tract_income.parquet` rows (the same `precomputed_*`
+  hooks the cross-city pipeline reads): `raw_income_score` = 0.8228487271197138 and
+  `raw_median_days_gap` = 0.4937181712962966 bit-for-bit match `equity_trend.py`'s
+  `compute_citywide_equity_trend` (Median days to close, Income dimension) for that year — same
+  income table (ACS B19013_001E, same vintage), same below/above-self-median split, same
+  `overlap_score`. `adj_income_score` uses the identical building blocks as
+  `equity_adjusted.py`'s `compute_adjusted_scores` (same `MIN_GEO_SRTYPE_N=5` suppression,
+  per-SRType `overlap_score`, volume-weighted combination) — the only difference is the
+  per-SRType weight is that type's *eligible-tract* volume rather than its full citywide volume,
+  which converges to the same number wherever suppression doesn't drop much of a type's volume.
+- [x] **P5.5-5: Documentation checkpoint** — append `cross_city_comparison.md` §6.5: per-city
   adjusted **and** raw income equity scores (note the gap between them per city — a large gap
   means that city's apparent disparity is mostly mix-driven), the Baltimore validation result,
   demographic-coverage notes, and a pointer to the race-deferral scope decision above.
@@ -633,21 +643,33 @@ validates the whole cross-city pipeline that equity then reuses.
 
 ### Phase 5.6 — Cross-City Service Equity tab (cohort)
 
-- [ ] **P5.6-1: Equity comparison component** — `app/components/city_equity.py`. Plots each
+- [x] **P5.6-1: Equity comparison component** — `app/components/city_equity.py`. Plots each
   city's **mix-adjusted income-based** overlap score (the primary metric, per the 5.5 scope
   decision) on a fixed `[0,1]` axis with the same green/amber/red threshold bands as
   `equity_trend.py`; **Baltimore highlighted**. Plain-language framing: "controlling for what each
   city requests, is Baltimore more or less equitable in *delivering the same services* across
-  income than its peers?"
-- [ ] **P5.6-2: Raw-vs-adjusted reference view** — show each city's **raw** citywide income score
+  income than its peers?" Soft-degrades to an `st.info` notice (same convention as Tab 7) when
+  `peer_city_equity.parquet` doesn't exist yet; falls back to the most recent shared year and
+  drops cities without a row rather than erroring; city multiselect once >2 cities are present.
+- [x] **P5.6-2: Raw-vs-adjusted reference view** — show each city's **raw** citywide income score
   as a secondary/reference series alongside its adjusted score (and optionally the raw
   between-group median-days gap), with a caption explaining that a wide raw↔adjusted gap for a
   city means its apparent disparity is largely a service-mix effect, not a delivery-equity one —
-  the same raw-vs-adjusted story Tab 6 tells citywide, now told across cities.
-- [ ] **P5.6-3: Wire Tab 8 into `app.py`** — add after Tab 7 (placement per the 5.2 decision) +
-  sidebar description; soft-degrade when a city's scores are unavailable.
-- [ ] **P5.6-4: Documentation checkpoint** — append `cross_city_comparison.md` §6.6: cross-city
+  the same raw-vs-adjusted story Tab 6 tells citywide, now told across cities. Shipped as an
+  `st.expander` with paired raw/adjusted bars (ordered by adjusted score) + a per-city
+  below-minus-above-median pooled-median-days-gap list.
+- [x] **P5.6-3: Wire Tab 8 into `app.py`** — added after Tab 7 (placement per the 5.2 decision);
+  soft-degrades when a city's scores are unavailable. Replaced `cross_city.py`'s
+  `render_equity_placeholder()` scaffold call with `render_city_equity(DATA_DIR, year)`; removed
+  the now-dead `render_delivery_placeholder`/`render_equity_placeholder`/`render_maturity_placeholder`
+  functions from `cross_city.py` (all three live tabs have real components now), leaving only the
+  shared group intro + comparability caveats. Smoke-tested via `streamlit.testing.v1.AppTest`
+  against both the missing-file path and synthetic multi-city/multi-year data — no exceptions,
+  all three charts (bar, raw-vs-adjusted, trend) render.
+- [x] **P5.6-4: Documentation checkpoint** — append `cross_city_comparison.md` §6.6: cross-city
   equity findings — how Baltimore's gap ranks against peer and leading cities. *(Gate for 5.7.)*
+  Findings themselves (cohort ranking) still pending the next CI run per §6.5 — §6.6 currently
+  documents what shipped, not yet cohort numbers.
 - [ ] **P5.6-5 *(future, deferred from this phase)*: Race-based score, per-city group
   definition** — once income (5.5/5.6) ships, revisit race with a group definition chosen
   per-city rather than cohort-wide (e.g. that city's own largest-vs-second-largest racial/ethnic

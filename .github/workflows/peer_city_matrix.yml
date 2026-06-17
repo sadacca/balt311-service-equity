@@ -70,13 +70,8 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install pandas pyarrow
+        run: pip install pandas pyarrow geopandas
 
-      # geopandas intentionally omitted here: tract×SRType (Phase 5.5-2) isn't wired into
-      # this matrix/merge flow yet (no per-city artifact path or merge support for it), so
-      # peer_city.py's tract×SRType step no-ops with a logged warning per city instead of
-      # spending time on a TIGER fetch + spatial join whose output would be discarded when
-      # the runner is torn down. Use the sequential backfill workflow for tract×SRType output.
       - name: Fetch ${{ matrix.city }} for all years
         env:
           CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
@@ -92,7 +87,9 @@ jobs:
             echo "===== ${{ matrix.city }} · $year ====="
             python scripts/peer_city.py --year "$year" --cities "${{ matrix.city }}" \
               --metrics-path "out/${{ matrix.city }}.parquet" \
-              --meta-path "out/${{ matrix.city }}.meta.csv" $FLAGS \
+              --meta-path "out/${{ matrix.city }}.meta.csv" \
+              --tract-srtype-path "out/${{ matrix.city }}.tract_srtype.parquet" \
+              --tract-path "out/${{ matrix.city }}.tract.parquet" $FLAGS \
               || echo "WARNING: ${{ matrix.city }} $year failed (rc=$?) — continuing"
           done
 
@@ -137,6 +134,8 @@ jobs:
           python scripts/peer_city.py --merge merged
 
           git add data/processed/peer_city_metrics.parquet data/processed/peer_city_meta.csv
+          [ -f data/processed/peer_city_tract_srtype_metrics.parquet ] && git add data/processed/peer_city_tract_srtype_metrics.parquet || true
+          [ -f data/processed/peer_city_tract_metrics.parquet ] && git add data/processed/peer_city_tract_metrics.parquet || true
           if git diff --staged --quiet; then
             echo "No cross-city changes to commit."
           else
