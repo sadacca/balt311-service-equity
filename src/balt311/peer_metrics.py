@@ -356,23 +356,30 @@ def compute_tract_metrics(records: list[dict], *, tracts, scope_fn=None,
 
 
 EQUITY_COLUMNS = [
-    "city", "year", "adj_income_score", "raw_income_score",
-    "raw_median_days_gap", "n_tracts", "n_srtypes_scored",
+    "city", "year", "metric", "adj_income_score", "raw_income_score",
+    "raw_gap", "n_tracts", "n_srtypes_scored",
 ]
+
+# Metrics scored per Phase 5.5/5.6 — same two the within-Baltimore tabs already use
+# (`equity_adjusted._SRTYPE_METRICS`), so Tab 8 can offer the same selector.
+EQUITY_METRICS = ["median_days_to_close", "closure_rate"]
 
 
 def compute_income_equity_score(
     tract_srtype: pd.DataFrame,
     tract_metrics: pd.DataFrame,
     tract_income: pd.DataFrame,
-    *, min_geo_srtype_n: int = 5,
+    *, metric_col: str = "median_days_to_close", min_geo_srtype_n: int = 5,
 ) -> dict:
-    """One city-year's income-only equity score (Phase 5.5-3) — income-only per the
-    TASKS.md Phase 5.5 scope decision (race needs a city-appropriate group definition
-    that doesn't generalize the way income's self-relative above/below-own-median split
-    does). Mirrors the within-Baltimore Tab 6 (`equity_adjusted.compute_adjusted_scores`)
-    pattern but reuses `balt311.equity_stats.overlap_score`/`wmean` directly rather than
-    Streamlit-cached helpers, so this runs in the headless pipeline.
+    """One city-year's income-only equity score (Phase 5.5-3/5.6-4) for a single metric —
+    income-only per the TASKS.md Phase 5.5 scope decision (race needs a city-appropriate
+    group definition that doesn't generalize the way income's self-relative above/below-
+    own-median split does). Mirrors the within-Baltimore Tab 6
+    (`equity_adjusted.compute_adjusted_scores`) pattern but reuses
+    `balt311.equity_stats.overlap_score`/`wmean` directly rather than Streamlit-cached
+    helpers, so this runs in the headless pipeline. `metric_col` is one of
+    `EQUITY_METRICS` (`"median_days_to_close"` or `"closure_rate"`) — call this once per
+    metric to score both, same as the within-Baltimore tabs do via their metric radio.
 
     `tract_srtype` is this city-year's `compute_tract_srtype_metrics` output (or the
     within-app `tract_srtype_metrics_{year}.parquet` for Baltimore); `tract_metrics` is
@@ -381,21 +388,23 @@ def compute_income_equity_score(
     above/below *this city's own* median income — self-relative, so no group is ever
     empty (unlike a fixed national income cutoff).
 
-    - `raw_income_score` — `overlap_score` over each tract's pooled (all-SRType) median
-      days to close, split by income group. The citywide, non-stratified figure.
+    - `raw_income_score` — `overlap_score` over each tract's pooled (all-SRType) value of
+      `metric_col`, split by income group. The citywide, non-stratified figure.
     - `adj_income_score` — `overlap_score` computed **within each SRType** (>= `min_geo_
       srtype_n` requests in that tract×SRType cell, the same sparse-cell suppression the
       within-Baltimore tabs use), then combined volume-weighted across types — isolates
       *how* the same service is delivered from *which* services an area requests more.
-    - `raw_median_days_gap` — below-median-income tracts' median days minus above's; a
-      positive gap means lower-income areas wait longer.
+    - `raw_gap` — below-median-income tracts' value of `metric_col` minus above's (median
+      for `median_days_to_close`, mean for `closure_rate`). For days, positive means
+      lower-income areas wait longer; for closure rate, positive means lower-income areas
+      close a *higher* share (overlap_score is direction-agnostic either way).
 
     Returns `None` for any score that can't be computed (e.g. no valid income data, or
     no SRType has enough coverage), never raises."""
     income = tract_income.dropna(subset=["median_income"]) if tract_income is not None else pd.DataFrame()
     base = {
-        "adj_income_score": None, "raw_income_score": None, "raw_median_days_gap": None,
-        "n_tracts": 0, "n_srtypes_scored": 0,
+        "metric": metric_col, "adj_income_score": None, "raw_income_score": None,
+        "raw_gap": None, "n_tracts": 0, "n_srtypes_scored": 0,
     }
     if income.empty:
         return base
@@ -404,22 +413,23 @@ def compute_income_equity_score(
     above_geoids = set(income.loc[income["median_income"] > city_median, "geoid"])
 
     if tract_metrics is not None and not tract_metrics.empty:
-        tm = tract_metrics.dropna(subset=["median_days_to_close"])
-        below = tm.loc[tm["geoid"].isin(below_geoids), "median_days_to_close"]
-        above = tm.loc[tm["geoid"].isin(above_geoids), "median_days_to_close"]
+        tm = tract_metrics.dropna(subset=[metric_col])
+        below = tm.loc[tm["geoid"].isin(below_geoids), metric_col]
+        above = tm.loc[tm["geoid"].isin(above_geoids), metric_col]
         score = overlap_score(below, above)
         base["raw_income_score"] = score if score == score else None
         if len(below.dropna()) and len(above.dropna()):
-            base["raw_median_days_gap"] = float(below.median() - above.median())
+            agg = "mean" if metric_col == "closure_rate" else "median"
+            base["raw_gap"] = float(getattr(below, agg)() - getattr(above, agg)())
         base["n_tracts"] = int(tm["geoid"].nunique())
 
     if tract_srtype is not None and not tract_srtype.empty:
         eligible = tract_srtype[tract_srtype["total_requests"] >= min_geo_srtype_n]
-        eligible = eligible.dropna(subset=["median_days_to_close"])
+        eligible = eligible.dropna(subset=[metric_col])
         per_type = []
         for srtype, grp in eligible.groupby("SRType"):
-            below = grp.loc[grp["geoid"].isin(below_geoids), "median_days_to_close"]
-            above = grp.loc[grp["geoid"].isin(above_geoids), "median_days_to_close"]
+            below = grp.loc[grp["geoid"].isin(below_geoids), metric_col]
+            above = grp.loc[grp["geoid"].isin(above_geoids), metric_col]
             score = overlap_score(below, above)
             if score == score:
                 per_type.append({"SRType": srtype, "score": score, "volume": grp["total_requests"].sum()})
