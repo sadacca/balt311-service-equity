@@ -101,6 +101,42 @@ def _bar(df: pd.DataFrame, col: str, label: str, fmt: str, flagged: set | None =
     return fig
 
 
+def _trend(df_all: pd.DataFrame, cities: list[str], col: str, label: str, fmt: str) -> go.Figure | None:
+    """Multi-year line chart for the selected metric, one line per city, Baltimore bold on
+    top of the muted peer lines. Returns None if fewer than 2 years of data exist across
+    the selected cities (a single point isn't a trend)."""
+    d = df_all[df_all["city"].isin(cities)].dropna(subset=[col]).sort_values("year")
+    if d["year"].nunique() < 2:
+        return None
+
+    fig = go.Figure()
+    for city in cities:
+        cd = d[d["city"] == city]
+        if cd.empty:
+            continue
+        is_balt = _is_baltimore(city)
+        fig.add_trace(go.Scatter(
+            x=cd["year"], y=cd[col], mode="lines+markers", name=city,
+            line={"color": _BALTIMORE_COLOR if is_balt else _PEER_COLOR,
+                  "width": 3 if is_balt else 1.5},
+            marker={"size": 7 if is_balt else 5},
+            opacity=1.0 if is_balt else 0.55,
+            hovertemplate="<b>%{fullData.name}</b><br>%{x}: %{y}<extra></extra>",
+        ))
+    fig.update_layout(
+        height=280,
+        margin={"t": 24, "b": 10, "l": 10, "r": 10},
+        xaxis_title=None, yaxis_title=label,
+        plot_bgcolor="white", paper_bgcolor="white",
+        showlegend=True, legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
+        hovermode="x unified",
+    )
+    fig.update_xaxes(dtick=1, tickformat="d")
+    if col in _RATE_COLS:
+        fig.update_yaxes(tickformat=".0%")
+    return fig
+
+
 def render_city_delivery(data_dir: Path, year: int) -> None:
     metrics_path = data_dir / "peer_city_metrics.parquet"
     if not metrics_path.exists():
@@ -179,6 +215,12 @@ def render_city_delivery(data_dir: Path, year: int) -> None:
             st.caption("Lower is better.")
         else:
             st.caption("Request volume normalized by population — higher means more 311 demand, not better or worse.")
+
+        trend_fig = _trend(df, sorted(valid["city"]), col, metric_label, fmt)
+        if trend_fig is not None:
+            st.plotly_chart(trend_fig, use_container_width=True,
+                            key="cc_delivery_trend", config={"displayModeBar": False})
+            st.caption(f"{metric_label} by year — Baltimore bold, peers muted.")
     if missing:
         st.caption(f"Not available for: {', '.join(missing)}.")
 
