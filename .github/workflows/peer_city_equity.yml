@@ -1,0 +1,70 @@
+name: Cross-city equity data — tract income (Phase 5.5)
+
+# Serialize against the other cross-city data writers so concurrent runs never race on a
+# shared file (this writes its own peer_city_tract_income.parquet, but queue anyway for
+# a predictable commit history on the data branch).
+concurrency:
+  group: peer-city-data
+  cancel-in-progress: false
+
+on:
+  workflow_dispatch:
+    inputs:
+      cities:
+        description: "Comma-separated city slugs (e.g. 'baltimore,dc')"
+        required: false
+        default: "baltimore,dc,philadelphia,nyc,chicago,sf,austin,nashville,kansas_city,boston,memphis,cincinnati,seattle,dallas,los_angeles"
+        type: string
+      force:
+        description: "Refetch cities even if already present"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  peer_city_equity:
+    name: "Cross-city tract income — ${{ inputs.cities }}"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pandas pyarrow
+
+      - name: Fetch per-city tract median income
+        env:
+          CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
+        run: |
+          FLAGS=""
+          [ "${{ inputs.force }}" = "true" ] && FLAGS="$FLAGS --force"
+          python scripts/peer_city_equity.py --cities "${{ inputs.cities }}" $FLAGS
+
+      - name: Commit and push cross-city tract income
+        if: always()  # persist cities that succeeded even if another city's fetch failed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/processed/peer_city_tract_income.parquet
+          if git diff --staged --quiet; then
+            echo "Cross-city tract income unchanged — nothing to commit."
+            exit 0
+          fi
+          git commit -m "peer: per-city tract median income for ${{ inputs.cities }} (Phase 5.5-1)"
+          for attempt in 1 2 3 4 5; do
+            if git pull --rebase --autostash origin main && git push origin main; then
+              echo "Pushed on attempt $attempt"; exit 0
+            fi
+            echo "Push attempt $attempt failed — retrying in $((attempt * 5))s"
+            sleep $((attempt * 5))
+          done
+          echo "ERROR: could not push after retries"; exit 1

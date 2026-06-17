@@ -182,6 +182,53 @@ def fetch_place_population(place_fips: str, acs_year: int = 2023) -> float | Non
     return None
 
 
+_ACS_MISSING = {"-666666666", -666666666}  # Census's sentinel for "no sample/undefined" cells
+
+
+def _fetch_state_county_tract_income(state: str, county: str, acs_year: int,
+                                      api_key: str) -> list[dict]:
+    """Median household income (B19013_001E) for every tract in one state+county."""
+    url = (
+        f"https://api.census.gov/data/{acs_year}/acs/acs5"
+        f"?get=B19013_001E&for=tract:*&in=state:{state}%20county:{county}"
+        + (f"&key={api_key}" if api_key else "")
+    )
+    for attempt in range(1, 5):
+        try:
+            req = urllib.request.Request(url, headers={"Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                rows = json.loads(resp.read().decode("utf-8"))
+            out = []
+            for income_raw, st, co, tract in rows[1:]:  # skip header row
+                income = None if income_raw in _ACS_MISSING else float(income_raw)
+                out.append({"geoid": f"{st}{co}{tract}", "median_income": income})
+            return out
+        except Exception:
+            if attempt == 4:
+                raise
+            time.sleep(2 ** attempt)
+    return []
+
+
+def fetch_tract_median_income(fips: str, acs_year: int = 2023) -> pd.DataFrame:
+    """Tract-level median household income for a 5-digit state+county FIPS, or several
+    comma-separated FIPS (NYC's five boroughs). Same retry/env-key conventions as
+    `fetch_county_population`. Returns a DataFrame with `geoid` (11-digit tract GEOID) and
+    `median_income` (NaN for tracts ACS couldn't estimate — typically near-zero population,
+    e.g. parkland or industrial tracts). Raises on failure (caller decides whether to skip
+    the city) rather than silently returning an empty/partial table."""
+    parts = [f.strip() for f in str(fips).split(",") if f.strip()]
+    api_key = os.environ.get("CENSUS_API_KEY", "").strip()
+    by_state: dict[str, list[str]] = {}
+    for f in parts:
+        by_state.setdefault(f[:2], []).append(f[2:])
+    rows: list[dict] = []
+    for state, counties in by_state.items():
+        for county in counties:
+            rows.extend(_fetch_state_county_tract_income(state, county, acs_year, api_key))
+    return pd.DataFrame(rows, columns=["geoid", "median_income"])
+
+
 def upsert_metrics(existing: pd.DataFrame, new_rows: list[dict]) -> pd.DataFrame:
     """Merge freshly computed (city, year) rows into the metrics table, replacing any
     existing row for the same city-year, and return it sorted."""
