@@ -61,6 +61,18 @@ class BaltimoreAdapter(CityAdapter):
         df = pd.read_parquet(path)
         return df if not df.empty else None
 
+    def precomputed_tract(self, year: int, proc_dir) -> pd.DataFrame | None:
+        """Read the within-app `tract_metrics_{year}.parquet` directly — the raw,
+        pooled-across-SRType grain the Phase 5.5-3 income equity score compares against
+        `precomputed_tract_srtype`'s within-category figure. Its columns are a superset
+        of `peer_metrics.compute_tract_metrics`'s shape (geoid, total_requests,
+        closed_requests, closure_rate, median_days_to_close), so no re-fetch/re-join."""
+        path = Path(proc_dir) / f"tract_metrics_{year}.parquet"
+        if not path.exists():
+            return None
+        df = pd.read_parquet(path)
+        return df if not df.empty else None
+
     def fetch(self, year: int) -> list[dict]:
         return ingest.fetch_year(year)
 

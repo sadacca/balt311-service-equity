@@ -1,29 +1,11 @@
 import numpy as np
 import pandas as pd
 
-
-def overlap_score(a: pd.Series, b: pd.Series) -> float:
-    """Mann-Whitney probability-of-superiority equity score.
-
-    Computes P(a > b) across all pairwise comparisons (ties split 0.5).
-    Maps to an equity score: 0.5 → 1.0 (perfectly interleaved groups),
-    0 or 1 → 0.0 (one group entirely above the other).
-
-    Formula: score = 1 - 2 * |P(a > b) - 0.5|
-
-    Sensitive to the full distribution, not just the median, so it detects
-    tail differences and systematic shifts even when medians are close.
-    Returns NaN if either group has fewer than 3 non-null values.
-    """
-    a, b = a.dropna().to_numpy(), b.dropna().to_numpy()
-    if len(a) < 3 or len(b) < 3:
-        return float("nan")
-    # All pairwise comparisons: a[:, None] vs b[None, :]
-    diff = a[:, None] - b[None, :]
-    a_wins = np.sum(diff > 0)
-    ties   = np.sum(diff == 0)
-    p_sup  = (a_wins + 0.5 * ties) / (len(a) * len(b))
-    return 1.0 - 2.0 * abs(p_sup - 0.5)
+# overlap_score / wmean live in balt311.equity_stats so the cross-city equity pipeline
+# (Phase 5.5-3) scores cities with the exact same implementation as the within-Baltimore
+# tabs; re-exported here so existing `from components.utils import overlap_score` call
+# sites are unchanged.
+from balt311.equity_stats import overlap_score, wmean  # noqa: F401
 
 
 def score_label(score: float) -> tuple[str, str]:
@@ -35,17 +17,6 @@ def score_label(score: float) -> tuple[str, str]:
     if score > 0.4:
         return "could be better", "orange"
     return "needs review", "red"
-
-
-def wmean(df: pd.DataFrame, value_col: str, weight_col: str = "total_requests") -> float:
-    """Volume-weighted mean — the convention this dashboard uses everywhere it
-    needs to combine a rate metric (closure rate, median days) across SRTypes
-    or geographies: sum(value*weight) / sum(weight)."""
-    sub = df.dropna(subset=[value_col, weight_col])
-    sub = sub[sub[weight_col] > 0]
-    if sub.empty:
-        return float("nan")
-    return float((sub[value_col] * sub[weight_col]).sum() / sub[weight_col].sum())
 
 
 def format_metric(val: float, metric_col: str) -> str:

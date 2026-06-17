@@ -96,6 +96,7 @@ jobs:
             # Commit this year's outputs before moving on
             git add data/processed/peer_city_metrics.parquet data/processed/peer_city_meta.csv
             [ -f data/processed/peer_city_tract_srtype_metrics.parquet ] && git add data/processed/peer_city_tract_srtype_metrics.parquet || true
+            [ -f data/processed/peer_city_tract_metrics.parquet ] && git add data/processed/peer_city_tract_metrics.parquet || true
             if git diff --staged --quiet; then
               echo "No cross-city changes for $year"
             else

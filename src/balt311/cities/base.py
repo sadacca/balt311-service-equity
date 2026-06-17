@@ -64,6 +64,17 @@ class CityAdapter:
         `peer_metrics.compute_tract_srtype_metrics` produces for the fetch-fresh cities."""
         return None
 
+    def precomputed_tract(self, year: int, proc_dir) -> pd.DataFrame | None:
+        """Optional non-stratified (pooled across SRType) tract metrics, the raw grain
+        the Phase 5.5-3 income equity score compares against the within-category
+        `precomputed_tract_srtype` figure. Baltimore overrides this to read its own
+        within-app `tract_metrics_{year}.parquet`. Returns None by default.
+
+        Columns when returned: geoid, total_requests, closed_requests, closure_rate,
+        median_days_to_close — the same shape `peer_metrics.compute_tract_metrics`
+        produces for the fetch-fresh cities."""
+        return None
+
     def scope(self, df: pd.DataFrame) -> pd.DataFrame:
         """Restrict to comparable "real service requests": non-ECC and geocoded.
         Subclasses extend with city-specific filters (e.g. resident-initiated)."""

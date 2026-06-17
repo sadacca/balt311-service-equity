@@ -109,6 +109,8 @@ Everything else (System/Internal source, ECC types, ungeocoded) is excluded from
 | `peer_city_meta.csv` | city | fips, ACS population, portal_url, closure_definition |
 | `peer_city_tract_income.parquet` | city × tract | `geoid` (11-digit), `median_income` (ACS 5-year B19013_001E, year-independent) — per-city tract income for the cross-city **income-only** mix-adjusted equity score (Phase 5.5-1); built by `scripts/peer_city_equity.py`. Race is deferred (see TASKS.md Phase 5.5 scope decision) — this file has no race columns. |
 | `peer_city_tract_srtype_metrics.parquet` | city × year × tract × SRType | `geoid`, `SRType`, total_requests, closed_requests, closure_rate, median_days_to_close — per-city tract×SRType breakdown (Phase 5.5-2), the input (joined against `peer_city_tract_income.parquet` on `geoid`) to the within-category income equity score in P5.5-3. Built by `scripts/peer_city.py` via `balt311.tiger.fetch_city_tracts()` + `peer_metrics.compute_tract_srtype_metrics()`; Baltimore reuses its own `tract_srtype_metrics_{year}.parquet` instead of re-fetching. Not yet produced by the parallel `peer_city_matrix.yml` (deferred — see TASKS.md P5.5-2). |
+| `peer_city_tract_metrics.parquet` | city × year × tract | `geoid`, total_requests, closed_requests, closure_rate, median_days_to_close — per-city tract metrics pooled across SRType (Phase 5.5-2), the **raw** (non-stratified) grain P5.5-3 compares against the within-category `peer_city_tract_srtype_metrics.parquet` figure. Built alongside the tract×SRType grain in the same `peer_city.py` pass via `peer_metrics.compute_tract_and_srtype_metrics()` (one spatial join, both grains); Baltimore reuses its own `tract_metrics_{year}.parquet` via the `precomputed_tract` adapter hook. |
+| `peer_city_equity.parquet` | city × year | `adj_income_score` (within-SRType, volume-weighted overlap score — "how the same service is delivered"), `raw_income_score` (pooled overlap score — "overall, including which services an area requests"), `raw_median_days_gap` (below- minus above-median-income pooled median days, positive = poorer half waits longer), `n_tracts`, `n_srtypes_scored` — the per-city mix-adjusted income equity score (Phase 5.5-3, the primary Phase 5.5 deliverable). Built by `scripts/peer_city_equity_score.py` from the three other Phase 5.5 parquet files; a pure local recompute, not a fetch, so it's cheap to re-run whenever its inputs change. |
 | `peer_city_maturity.csv` | city | 311 open-data publishing maturity scorecard — all 45 metros, 9 rubric dimensions 0–3 + in_cohort/status/evidence/derived; 6 hand-scored anchors, the rest derived from the census by `scripts/score_maturity.py` (inaccessible cities → 0). Phase 5.8/5.9 |
 | `peer_city_coverage_census.csv` | city | scoreable/partial/unconfirmed status of the 40 largest US cities + 5 mid-size enablers, each with an `evidence` tier (api/city_docs/third_party/none) and `endpoint_url` — Phase 5.8, verified canvass (`scripts/verify_census.py` re-probes the live endpoints) |
 
@@ -174,19 +176,21 @@ app/
     operations_panel.py           # Full Operations tab
     city_delivery.py              # Cross-City Service Delivery tab (Phase 5)
     maturity_index.py             # 311 Open-Data Maturity tab (Phase 5.8)
-    utils.py                      # overlap_score, score_label, format_metric, hex_to_rgba
+    utils.py                      # score_label, format_metric, hex_to_rgba; re-exports overlap_score/wmean
 
 scripts/
   pipeline.py                     # Headless pipeline — all stages (within-Baltimore)
   peer_city.py                    # Cross-city ingestion + metrics (Phase 5)
   peer_city_equity.py             # Per-city tract median income, income-only (Phase 5.5-1)
+  peer_city_equity_score.py       # Per-city mix-adjusted income equity score (Phase 5.5-3)
   score_maturity.py               # Derive the 45-metro maturity scorecard from the census (Phase 5.9)
   verify_census.py                # Re-probe census endpoints to refresh the api evidence tier (Phase 5.8)
 
 src/balt311/
   ingest.py                       # ArcGIS FeatureServer pagination (Baltimore)
   metrics.py                      # Cleaning, aggregation, CSA rollup, demographics rollup
-  peer_metrics.py                 # City-agnostic cross-city delivery metrics + ACS county pop + tract×SRType
+  equity_stats.py                 # overlap_score, wmean — shared by the app and the cross-city pipeline
+  peer_metrics.py                 # City-agnostic cross-city delivery metrics + ACS county pop + tract×SRType/tract + income equity score
   tiger.py                        # Generic Census TIGER tract boundary fetch, any city's FIPS (Phase 5.5-2)
   cities/                         # Per-city adapters: base, arcgis + carto + socrata + ckan (reusable clients),
                                   #   baltimore, dc, philadelphia, nyc, chicago, sf, austin, nashville, kansas_city, boston,

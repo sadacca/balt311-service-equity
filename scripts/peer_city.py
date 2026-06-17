@@ -34,7 +34,7 @@ from balt311.cities import ADAPTERS
 from balt311.peer_metrics import (
     METRIC_COLUMNS,
     compute_city_metrics,
-    compute_tract_srtype_metrics,
+    compute_tract_and_srtype_metrics,
     fetch_county_population,
     fetch_place_population,
     upsert_metrics,
@@ -42,6 +42,8 @@ from balt311.peer_metrics import (
 
 TRACT_SRTYPE_COLS = ["city", "year", "geoid", "SRType", "total_requests",
                      "closed_requests", "closure_rate", "median_days_to_close"]
+TRACT_COLS = ["city", "year", "geoid", "total_requests",
+             "closed_requests", "closure_rate", "median_days_to_close"]
 
 
 def resolve_population(adapter) -> float | None:
@@ -59,6 +61,7 @@ PROC = ROOT / "data" / "processed"
 METRICS_PATH = PROC / "peer_city_metrics.parquet"
 META_PATH = PROC / "peer_city_meta.csv"
 TRACT_SRTYPE_PATH = PROC / "peer_city_tract_srtype_metrics.parquet"
+TRACT_PATH = PROC / "peer_city_tract_metrics.parquet"
 
 
 def log(msg: str) -> None:
@@ -67,7 +70,7 @@ def log(msg: str) -> None:
 
 def run(year: int, cities: list[str], is_live: bool, force: bool = False,
         metrics_path: Path = METRICS_PATH, meta_path: Path = META_PATH,
-        tract_srtype_path: Path = TRACT_SRTYPE_PATH) -> None:
+        tract_srtype_path: Path = TRACT_SRTYPE_PATH, tract_path: Path = TRACT_PATH) -> None:
     metrics_path.parent.mkdir(parents=True, exist_ok=True)
     PROC.mkdir(parents=True, exist_ok=True)
     right_censor_days = 30 if is_live else 0
@@ -86,9 +89,15 @@ def run(year: int, cities: list[str], is_live: bool, force: bool = False,
         set(zip(existing_ts["city"], existing_ts["year"]))
         if existing_ts is not None and not existing_ts.empty else set()
     )
+    existing_t = pd.read_parquet(tract_path) if tract_path.exists() else None
+    have_t = (
+        set(zip(existing_t["city"], existing_t["year"]))
+        if existing_t is not None and not existing_t.empty else set()
+    )
 
     new_rows = []
     new_ts_rows = []
+    new_t_rows = []
     failures = []
     skipped = []
     for slug in cities:
@@ -148,29 +157,41 @@ def run(year: int, cities: list[str], is_live: bool, force: bool = False,
                 "portal_url": adapter.portal_url, "closure_definition": adapter.closure_definition,
             }
 
-            # Tract×SRType breakdown (Phase 5.5-2) — input to the within-category income
-            # equity score. Baltimore reuses its own within-app file; other cities fetch
-            # TIGER tracts and spatial-join their freshly-fetched records (skipped if those
-            # records came from the `pre` branch above and the adapter has no precomputed
-            # tract×SRType file — e.g. a non-Baltimore adapter someday gaining a `precomputed`
-            # override without the matching tract×SRType one).
-            if force or (adapter.city, year) not in have_ts:
-                ts_df = adapter.precomputed_tract_srtype(year, PROC)
-                if ts_df is None and records is not None:
-                    try:
-                        tracts = tiger.fetch_city_tracts(adapter.fips)
-                        ts_df = compute_tract_srtype_metrics(
-                            records, tracts=tracts, scope_fn=adapter.scope, closed_fn=adapter.is_closed,
-                        )
-                    except Exception as ts_exc:
-                        log(f"  tract×SRType join failed for {adapter.city} {year}: {ts_exc!r} — skipping")
-                        ts_df = None
-                if ts_df is not None and not ts_df.empty:
-                    ts_df = ts_df.copy()
-                    ts_df.insert(0, "city", adapter.city)
-                    ts_df.insert(1, "year", int(year))
-                    new_ts_rows.append(ts_df)
-                    log(f"  tract×SRType: {len(ts_df)} rows across {ts_df['geoid'].nunique()} tracts")
+            # Tract×SRType + pooled tract breakdown (Phase 5.5-2) — the within-category and
+            # raw grains the Phase 5.5-3 income equity score needs. Baltimore reuses its own
+            # within-app files for each grain independently (it may have one but not the
+            # other regenerated for a given year); other cities fetch TIGER tracts once and
+            # spatial-join their freshly-fetched records to produce both grains together
+            # (skipped if records came from the `pre` branch above and the adapter has no
+            # precomputed file for the grain that's missing).
+            need_ts = force or (adapter.city, year) not in have_ts
+            need_t = force or (adapter.city, year) not in have_t
+            ts_df = adapter.precomputed_tract_srtype(year, PROC) if need_ts else None
+            t_df = adapter.precomputed_tract(year, PROC) if need_t else None
+            if (need_ts and ts_df is None or need_t and t_df is None) and records is not None:
+                try:
+                    tracts = tiger.fetch_city_tracts(adapter.fips)
+                    fresh_t, fresh_ts = compute_tract_and_srtype_metrics(
+                        records, tracts=tracts, scope_fn=adapter.scope, closed_fn=adapter.is_closed,
+                    )
+                    if need_ts and ts_df is None:
+                        ts_df = fresh_ts
+                    if need_t and t_df is None:
+                        t_df = fresh_t
+                except Exception as ts_exc:
+                    log(f"  tract join failed for {adapter.city} {year}: {ts_exc!r} — skipping")
+            if need_ts and ts_df is not None and not ts_df.empty:
+                ts_df = ts_df.copy()
+                ts_df.insert(0, "city", adapter.city)
+                ts_df.insert(1, "year", int(year))
+                new_ts_rows.append(ts_df)
+                log(f"  tract×SRType: {len(ts_df)} rows across {ts_df['geoid'].nunique()} tracts")
+            if need_t and t_df is not None and not t_df.empty:
+                t_df = t_df.copy()
+                t_df.insert(0, "city", adapter.city)
+                t_df.insert(1, "year", int(year))
+                new_t_rows.append(t_df)
+                log(f"  tract (pooled): {len(t_df)} tracts")
         except Exception as exc:
             log(f"  ERROR processing {slug} ({year}): {exc!r} — continuing with other cities")
             failures.append(slug)
@@ -206,6 +227,18 @@ def run(year: int, cities: list[str], is_live: bool, force: bool = False,
         combined_ts = combined_ts.sort_values(["city", "year", "geoid", "SRType"]).reset_index(drop=True)
         combined_ts.to_parquet(tract_srtype_path, index=False)
         log(f"Wrote {len(combined_ts)} tract×SRType rows → {tract_srtype_path}")
+
+    if new_t_rows:
+        new_t_df = pd.concat(new_t_rows, ignore_index=True)[TRACT_COLS]
+        if existing_t is not None and not existing_t.empty:
+            keys = set(zip(new_t_df["city"], new_t_df["year"]))
+            kept_t = existing_t[~existing_t.apply(lambda r: (r["city"], r["year"]) in keys, axis=1)]
+            combined_t = pd.concat([kept_t, new_t_df], ignore_index=True)
+        else:
+            combined_t = new_t_df
+        combined_t = combined_t.sort_values(["city", "year", "geoid"]).reset_index(drop=True)
+        combined_t.to_parquet(tract_path, index=False)
+        log(f"Wrote {len(combined_t)} tract rows → {tract_path}")
 
     if failures:
         # Successful cities are already written/committed; exit non-zero so CI flags the
@@ -280,16 +313,18 @@ if __name__ == "__main__":
                    help="Where to read/write the meta csv")
     p.add_argument("--tract-srtype-path", default=str(TRACT_SRTYPE_PATH),
                    help="Where to read/write the tract×SRType parquet (Phase 5.5-2)")
+    p.add_argument("--tract-path", default=str(TRACT_PATH),
+                   help="Where to read/write the pooled-tract parquet (Phase 5.5-2)")
     p.add_argument("--merge", metavar="DIR",
                    help="Merge per-city artifact dir into the canonical files, then exit")
     args = p.parse_args()
 
     metrics_path, meta_path = Path(args.metrics_path), Path(args.meta_path)
-    tract_srtype_path = Path(args.tract_srtype_path)
+    tract_srtype_path, tract_path = Path(args.tract_srtype_path), Path(args.tract_path)
     if args.merge:
         merge_artifacts(args.merge, metrics_path, meta_path)
     else:
         if args.year is None:
             p.error("--year is required unless --merge is given")
         run(args.year, [c.strip() for c in args.cities.split(",") if c.strip()],
-            args.live, args.force, metrics_path, meta_path, tract_srtype_path)
+            args.live, args.force, metrics_path, meta_path, tract_srtype_path, tract_path)
