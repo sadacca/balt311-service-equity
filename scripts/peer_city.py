@@ -46,6 +46,19 @@ TRACT_COLS = ["city", "year", "geoid", "total_requests",
              "closed_requests", "closure_rate", "median_days_to_close"]
 
 
+def _upsert_by_city_year(existing: pd.DataFrame | None, new_df: pd.DataFrame, sort_cols: list[str]) -> pd.DataFrame:
+    """Replace any (city, year) present in `new_df` within `existing`, then append —
+    shared by the driver's own write step and `merge_artifacts` (the parallel matrix
+    workflow's per-city tract artifacts), since both upsert the same two grains the same way."""
+    if existing is not None and not existing.empty:
+        keys = set(zip(new_df["city"], new_df["year"]))
+        kept = existing[~existing.apply(lambda r: (r["city"], r["year"]) in keys, axis=1)]
+        combined = pd.concat([kept, new_df], ignore_index=True)
+    else:
+        combined = new_df
+    return combined.sort_values(sort_cols).reset_index(drop=True)
+
+
 def resolve_population(adapter) -> float | None:
     """City-proper place population when the adapter declares a `place_fips` (correct for a
     311 system), else the county total. Falls back to county if the place lookup fails."""
@@ -218,25 +231,13 @@ def run(year: int, cities: list[str], is_live: bool, force: bool = False,
 
     if new_ts_rows:
         new_ts_df = pd.concat(new_ts_rows, ignore_index=True)[TRACT_SRTYPE_COLS]
-        if existing_ts is not None and not existing_ts.empty:
-            keys = set(zip(new_ts_df["city"], new_ts_df["year"]))
-            kept_ts = existing_ts[~existing_ts.apply(lambda r: (r["city"], r["year"]) in keys, axis=1)]
-            combined_ts = pd.concat([kept_ts, new_ts_df], ignore_index=True)
-        else:
-            combined_ts = new_ts_df
-        combined_ts = combined_ts.sort_values(["city", "year", "geoid", "SRType"]).reset_index(drop=True)
+        combined_ts = _upsert_by_city_year(existing_ts, new_ts_df, ["city", "year", "geoid", "SRType"])
         combined_ts.to_parquet(tract_srtype_path, index=False)
         log(f"Wrote {len(combined_ts)} tract×SRType rows → {tract_srtype_path}")
 
     if new_t_rows:
         new_t_df = pd.concat(new_t_rows, ignore_index=True)[TRACT_COLS]
-        if existing_t is not None and not existing_t.empty:
-            keys = set(zip(new_t_df["city"], new_t_df["year"]))
-            kept_t = existing_t[~existing_t.apply(lambda r: (r["city"], r["year"]) in keys, axis=1)]
-            combined_t = pd.concat([kept_t, new_t_df], ignore_index=True)
-        else:
-            combined_t = new_t_df
-        combined_t = combined_t.sort_values(["city", "year", "geoid"]).reset_index(drop=True)
+        combined_t = _upsert_by_city_year(existing_t, new_t_df, ["city", "year", "geoid"])
         combined_t.to_parquet(tract_path, index=False)
         log(f"Wrote {len(combined_t)} tract rows → {tract_path}")
 
@@ -247,16 +248,24 @@ def run(year: int, cities: list[str], is_live: bool, force: bool = False,
         sys.exit(1)
 
 
-def merge_artifacts(in_dir: str, metrics_path: Path = METRICS_PATH,
-                    meta_path: Path = META_PATH) -> None:
+def merge_artifacts(in_dir: str, metrics_path: Path = METRICS_PATH, meta_path: Path = META_PATH,
+                    tract_srtype_path: Path = TRACT_SRTYPE_PATH, tract_path: Path = TRACT_PATH) -> None:
     """Merge per-city artifacts (from the parallel matrix workflow) into the canonical files.
 
-    Each matrix job writes its own `<city>.parquet` + `<city>.meta.csv` so the parallel fetch
-    jobs never touch the shared file (no commit races). This collects all of them — recursively,
-    since `download-artifact` nests each artifact in its own subdir — and upserts once."""
+    Each matrix job writes its own `<city>.parquet` + `<city>.meta.csv`, and — when geopandas
+    is available — `<city>.tract_srtype.parquet` + `<city>.tract.parquet` (Phase 5.5-2/5.5-3
+    inputs), so the parallel fetch jobs never touch a shared file (no commit races). This
+    collects all of them — recursively, since `download-artifact` nests each artifact in its
+    own subdir — and upserts once. The two tract grains are distinguished from the plain
+    metrics parquet by filename suffix, not just extension."""
     src = Path(in_dir)
     rows: list[dict] = []
-    parts = sorted(p for p in src.rglob("*.parquet") if p.resolve() != metrics_path.resolve())
+    parts = sorted(
+        p for p in src.rglob("*.parquet")
+        if p.resolve() != metrics_path.resolve()
+        and not p.name.endswith(".tract_srtype.parquet")
+        and not p.name.endswith(".tract.parquet")
+    )
     for part in parts:
         rows.extend(pd.read_parquet(part).to_dict("records"))
     if rows:
@@ -278,6 +287,24 @@ def merge_artifacts(in_dir: str, metrics_path: Path = METRICS_PATH,
                    [["city", "fips", "population", "portal_url", "closure_definition"]])
         meta_df.to_csv(meta_path, index=False)
         log(f"Merged {len(meta_parts)} meta parts → {len(meta_df)} rows in {meta_path}")
+
+    ts_parts = sorted(p for p in src.rglob("*.tract_srtype.parquet")
+                      if p.resolve() != tract_srtype_path.resolve())
+    if ts_parts:
+        new_ts_df = pd.concat([pd.read_parquet(p) for p in ts_parts], ignore_index=True)[TRACT_SRTYPE_COLS]
+        existing_ts = pd.read_parquet(tract_srtype_path) if tract_srtype_path.exists() else None
+        combined_ts = _upsert_by_city_year(existing_ts, new_ts_df, ["city", "year", "geoid", "SRType"])
+        combined_ts.to_parquet(tract_srtype_path, index=False)
+        log(f"Merged {len(ts_parts)} tract×SRType parts → {len(combined_ts)} rows in {tract_srtype_path}")
+
+    t_parts = sorted(p for p in src.rglob("*.tract.parquet")
+                     if p.resolve() != tract_path.resolve())
+    if t_parts:
+        new_t_df = pd.concat([pd.read_parquet(p) for p in t_parts], ignore_index=True)[TRACT_COLS]
+        existing_t = pd.read_parquet(tract_path) if tract_path.exists() else None
+        combined_t = _upsert_by_city_year(existing_t, new_t_df, ["city", "year", "geoid"])
+        combined_t.to_parquet(tract_path, index=False)
+        log(f"Merged {len(t_parts)} tract parts → {len(combined_t)} rows in {tract_path}")
 
     _print_merge_sanity(metrics_path)
 
@@ -322,7 +349,7 @@ if __name__ == "__main__":
     metrics_path, meta_path = Path(args.metrics_path), Path(args.meta_path)
     tract_srtype_path, tract_path = Path(args.tract_srtype_path), Path(args.tract_path)
     if args.merge:
-        merge_artifacts(args.merge, metrics_path, meta_path)
+        merge_artifacts(args.merge, metrics_path, meta_path, tract_srtype_path, tract_path)
     else:
         if args.year is None:
             p.error("--year is required unless --merge is given")

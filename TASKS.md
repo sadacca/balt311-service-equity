@@ -585,11 +585,10 @@ validates the whole cross-city pipeline that equity then reuses.
   `(city, year, geoid, SRType)` with `total_requests`, `closed_requests`, `closure_rate`,
   `median_days_to_close` — same cache/skip-existing/`--force` semantics as the delivery metrics,
   keyed by `(city, year)`. Wired into `peer_city.yml`/`peer_city_backfill.yml` (added `geopandas`
-  to `pip install`, added the new parquet to the commit step). **Deferred**: the parallel
-  `peer_city_matrix.yml` doesn't carry this output through its per-city-artifact/merge flow yet —
-  its fetch step still installs only `pandas`/`pyarrow`, so the tract×SRType step no-ops with a
-  logged warning per city rather than computing output that would be discarded when the runner is
-  torn down. Use the sequential backfill workflow for tract×SRType output until that's extended.
+  to `pip install`, added the new parquet to the commit step), and into the parallel
+  `peer_city_matrix.yml` (added `geopandas` to the fetch job, per-city `<city>.tract_srtype.parquet`/
+  `<city>.tract.parquet` artifacts distinguished from the plain metrics parquet by filename
+  suffix, `merge_artifacts()` upserts them the same way the sequential driver does).
   Smoke-tested locally (synthetic tracts + records: tract assignment, closure, and median days all
   verified; a fake adapter exercised the full `peer_city.py` driver path including cache/skip and
   graceful degradation on a join failure) — not yet run against live TIGER downloads in CI.
