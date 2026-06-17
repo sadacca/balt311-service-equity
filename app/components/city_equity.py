@@ -10,9 +10,12 @@ explained — a wide gap means a city's apparent raw disparity is largely a serv
 effect, not a delivery-equity one (the same raw-vs-adjusted story Tab 6 tells citywide, now
 computable for any city in the cohort).
 
+Scored on **two metrics**, selectable via radio, same as the within-Baltimore tabs'
+`_SRTYPE_METRICS` (`equity_adjusted.py`): median days to close and closure rate.
+
 Race is out of scope for this phase (see TASKS.md / `cross_city_comparison.md` §6.5 — no
 single race-group definition generalizes across the cohort's demographics). Reads the
-precomputed `peer_city_equity.parquet` (one row per city × year, built by
+precomputed `peer_city_equity.parquet` (one row per city × year × metric, built by
 `scripts/peer_city_equity_score.py` in CI); soft-degrades to a "run the workflow" notice
 until that file exists, and drops any city without a year's row rather than erroring.
 """
@@ -32,6 +35,12 @@ _RAW_COLOR = "#a6a6a6"         # lighter still — the secondary/reference serie
 # `score_label()` and the within-Baltimore equity tabs.
 _BANDS = [(0.0, 0.4, "red"), (0.4, 0.7, "orange"), (0.7, 1.0, "green")]
 
+# Same two metrics, same labels, as the within-Baltimore `equity_adjusted._SRTYPE_METRICS`.
+_METRICS = {
+    "Median days to close": "median_days_to_close",
+    "Closure rate": "closure_rate",
+}
+
 
 def _is_baltimore(city: str) -> bool:
     return str(city).lower().startswith("baltimore")
@@ -42,7 +51,7 @@ def _add_score_bands(fig: go.Figure) -> None:
         fig.add_vrect(x0=lo, x1=hi, fillcolor=color, opacity=0.06, line_width=0)
 
 
-def _score_bar(df: pd.DataFrame) -> go.Figure:
+def _score_bar(df: pd.DataFrame, metric_label: str) -> go.Figure:
     """Horizontal ranked bar of `adj_income_score`, Baltimore highlighted, fixed [0,1] axis
     with the green/amber/red threshold bands so a score's standing is visible at a glance."""
     d = df.sort_values("adj_income_score", ascending=True)
@@ -60,7 +69,7 @@ def _score_bar(df: pd.DataFrame) -> go.Figure:
         height=max(130, 40 * len(d) + 56),
         bargap=0.25,
         margin={"t": 24, "b": 10, "l": 10, "r": 40},
-        xaxis_title="Mix-adjusted income equity score", yaxis_title=None,
+        xaxis_title=f"Mix-adjusted income equity score · {metric_label.lower()}", yaxis_title=None,
         plot_bgcolor="white", paper_bgcolor="white", showlegend=False,
     )
     fig.update_yaxes(automargin=True, tickfont={"size": 12})
@@ -68,7 +77,7 @@ def _score_bar(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def _raw_vs_adjusted(df: pd.DataFrame) -> go.Figure:
+def _raw_vs_adjusted(df: pd.DataFrame, metric_label: str) -> go.Figure:
     """Paired horizontal bars — raw (reference, light) behind adjusted (primary) per city,
     ordered by adjusted score, so the mix-driven gap is visible city by city."""
     d = df.sort_values("adj_income_score", ascending=True)
@@ -89,7 +98,7 @@ def _raw_vs_adjusted(df: pd.DataFrame) -> go.Figure:
         height=max(130, 40 * len(d) + 80),
         barmode="group", bargap=0.25, bargroupgap=0.1,
         margin={"t": 24, "b": 10, "l": 10, "r": 10},
-        xaxis_title="Income equity score", yaxis_title=None,
+        xaxis_title=f"Income equity score · {metric_label.lower()}", yaxis_title=None,
         plot_bgcolor="white", paper_bgcolor="white",
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
     )
@@ -98,10 +107,11 @@ def _raw_vs_adjusted(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def _trend(df_all: pd.DataFrame, cities: list[str]) -> go.Figure | None:
+def _trend(df_all: pd.DataFrame, cities: list[str], metric_col: str) -> go.Figure | None:
     """Multi-year line chart of the mix-adjusted score, one line per city, Baltimore bold.
     Returns None if fewer than 2 years of data exist across the selected cities."""
-    d = df_all[df_all["city"].isin(cities)].dropna(subset=["adj_income_score"]).sort_values("year")
+    d = df_all[(df_all["city"].isin(cities)) & (df_all["metric"] == metric_col)]
+    d = d.dropna(subset=["adj_income_score"]).sort_values("year")
     if d["year"].nunique() < 2:
         return None
 
@@ -163,6 +173,15 @@ def render_city_equity(data_dir: Path, year: int) -> None:
         st.caption("No cross-city equity rows yet.")
         return
 
+    metric_label = st.radio(
+        "Metric", list(_METRICS), horizontal=True, key="cc_equity_metric",
+    )
+    metric_col = _METRICS[metric_label]
+    df = df[df["metric"] == metric_col]
+    if df.empty:
+        st.caption(f"No cross-city equity rows scored for **{metric_label.lower()}** yet.")
+        return
+
     shared = df.groupby("year")["city"].nunique()
     available_years = shared.index
     use_year = year if year in set(available_years) else int(available_years.max())
@@ -176,8 +195,8 @@ def render_city_equity(data_dir: Path, year: int) -> None:
     sub = sub.dropna(subset=["adj_income_score"])
     if sub.empty:
         st.caption(
-            f"No city has enough volume/coverage to score a mix-adjusted income equity figure "
-            f"for {use_year} yet."
+            f"No city has enough volume/coverage to score a mix-adjusted {metric_label.lower()} "
+            f"equity figure for {use_year} yet."
         )
         return
 
@@ -187,13 +206,13 @@ def render_city_equity(data_dir: Path, year: int) -> None:
         if chosen:
             sub = sub[sub["city"].isin(chosen)]
 
-    st.plotly_chart(_score_bar(sub), use_container_width=True,
+    st.plotly_chart(_score_bar(sub, metric_label), use_container_width=True,
                     key="cc_equity_bar", config={"displayModeBar": False})
     st.caption(
-        "**Mix-adjusted income equity score** — controlling for what each city requests, "
-        "the within-service-type overlap between below- and above-median-income tracts' "
-        "delivery, volume-weighted into one figure. 100% = fully interleaved (no "
-        "detectable income gap); 0% = complete separation."
+        f"**Mix-adjusted {metric_label.lower()} equity score** — controlling for what each "
+        "city requests, the within-service-type overlap between below- and above-median-"
+        "income tracts' delivery, volume-weighted into one figure. 100% = fully interleaved "
+        "(no detectable income gap); 0% = complete separation."
     )
 
     for _, r in sub.sort_values("city").iterrows():
@@ -204,7 +223,7 @@ def render_city_equity(data_dir: Path, year: int) -> None:
     with st.expander("Raw vs. mix-adjusted — is the gap a delivery issue or a service-mix issue?"):
         has_raw = sub["raw_income_score"].notna().any()
         if has_raw:
-            st.plotly_chart(_raw_vs_adjusted(sub.dropna(subset=["raw_income_score"])),
+            st.plotly_chart(_raw_vs_adjusted(sub.dropna(subset=["raw_income_score"]), metric_label),
                             use_container_width=True,
                             key="cc_equity_raw_vs_adj", config={"displayModeBar": False})
             st.caption(
@@ -218,21 +237,30 @@ def render_city_equity(data_dir: Path, year: int) -> None:
         else:
             st.caption("No raw (pooled) score available for the selected cities/year.")
 
-        gap_rows = sub.dropna(subset=["raw_median_days_gap"])
+        gap_rows = sub.dropna(subset=["raw_gap"])
         if not gap_rows.empty:
-            st.markdown("**Below- minus above-median-income pooled median days to close:**")
-            for _, r in gap_rows.sort_values("city").iterrows():
-                sign = "longer" if r["raw_median_days_gap"] > 0 else "shorter"
-                st.markdown(
-                    f"- **{r['city']}** — poorer tracts wait **{abs(r['raw_median_days_gap']):.1f} "
-                    f"days {sign}** (median) than richer tracts."
-                )
+            if metric_col == "closure_rate":
+                st.markdown("**Below- minus above-median-income pooled closure rate:**")
+                for _, r in gap_rows.sort_values("city").iterrows():
+                    sign = "higher" if r["raw_gap"] > 0 else "lower"
+                    st.markdown(
+                        f"- **{r['city']}** — poorer tracts close **{abs(r['raw_gap']):.1%} "
+                        f"{sign}** a share of requests than richer tracts."
+                    )
+            else:
+                st.markdown("**Below- minus above-median-income pooled median days to close:**")
+                for _, r in gap_rows.sort_values("city").iterrows():
+                    sign = "longer" if r["raw_gap"] > 0 else "shorter"
+                    st.markdown(
+                        f"- **{r['city']}** — poorer tracts wait **{abs(r['raw_gap']):.1f} "
+                        f"days {sign}** (median) than richer tracts."
+                    )
 
-    trend_fig = _trend(df, sorted(sub["city"]))
+    trend_fig = _trend(df, sorted(sub["city"]), metric_col)
     if trend_fig is not None:
         st.plotly_chart(trend_fig, use_container_width=True,
                         key="cc_equity_trend", config={"displayModeBar": False})
-        st.caption("Mix-adjusted income equity score by year — Baltimore bold, peers muted.")
+        st.caption(f"Mix-adjusted {metric_label.lower()} equity score by year — Baltimore bold, peers muted.")
 
     with st.expander("Methodology & comparability (read before comparing)"):
         st.markdown(
@@ -242,6 +270,10 @@ def render_city_equity(data_dir: Path, year: int) -> None:
             "to a follow-up phase rather than forced onto every city now. Income has no such "
             "problem: each city's tracts are split above/below **that city's own** tract "
             "median income (ACS 5-year), which is self-relative and never empty.\n\n"
+            "**Two metrics, selectable** — median days to close and closure rate, the same "
+            "two the within-Baltimore tabs offer (the other within-Baltimore metrics, "
+            "on-time rate and requests-per-1k, need fields that don't roll up to the "
+            "tract×SRType grain the same way).\n\n"
             "**Mix-adjusted vs. raw**, same as Tab 6: the adjusted score scores each service "
             "type's income gap separately (cells with fewer than 5 requests excluded), then "
             "volume-weights those scores together — isolating *how the same service is "
