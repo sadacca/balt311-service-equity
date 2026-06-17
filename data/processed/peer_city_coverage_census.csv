@@ -25,7 +25,7 @@ rank,city,status,evidence,endpoint_url,note
 24,"Boston, MA",scoreable,api,https://data.boston.gov/dataset/311-service-requests,Analyze Boston; multiple years; Open311 API
 25,"Detroit, MI",partial,api,https://data-detroitmi.hub.arcgis.com/datasets/improve-detroit-issues,Improve Detroit ArcGIS; app-channel only
 26,"Portland, OR",partial,api,https://seeclickfix.com/web_portal/9Sds4Ebv9yf9nC8e9yhDf5MP/,SeeClickFix; Open311 API; no bulk export
-27,"Memphis, TN",scoreable,api,https://data.memphistn.gov/Good-Government/311-Generated-Service-Requests/5r9g-bwpp,Memphis Data Hub Socrata; 2M+ rows; daily
+27,"Memphis, TN",scoreable,api,https://maps.memphistn.gov/mapping/rest/services/OPM/COM_311_REQUESTS_OPM/FeatureServer,Migrated off Socrata (data.memphistn.gov retired) to OPM ArcGIS FeatureServer
 28,"Louisville, KY",scoreable,api,https://louisville-metro-opendata-lojic.hub.arcgis.com/datasets/LOJIC::louisville-metro-ky-metro-311-service-request-2025,LOJIC ArcGIS Hub; 2014-2025; weekly
 29,"Baltimore, MD",scoreable,api,https://services.arcgisonline.com/arcgis/rest/services/311_Customer_Service_Requests_2024/FeatureServer/0,Per-year ArcGIS; 2016-present; API confirmed
 30,"Milwaukee, WI",unconfirmed,city_docs,https://data.milwaukee.gov/,Portal exists; 311 status unclear
@@ -39,7 +39,7 @@ rank,city,status,evidence,endpoint_url,note
 38,"Mesa, AZ",unconfirmed,city_docs,https://data.mesaaz.gov/,Mesa Data Hub; no 311-specific dataset
 39,"Omaha, NE",unconfirmed,third_party,https://www.omahahotline.com/,Omaha Hotline; interactive map; no API
 40,"Raleigh, NC",scoreable,api,https://data.raleighnc.gov/,Open Data Raleigh ArcGIS; 311 present
-0,"Cincinnati, OH",scoreable,api,https://data.cincinnati-oh.gov/thriving-neighborhoods/Cincinnati-311-Non-Emergency-Service-Requests/4cjh-bm8b,Tyler Data & Insights Socrata; 2012-present; daily
+0,"Cincinnati, OH",partial,city_docs,https://data.cincinnati-oh.gov/thriving-neighborhoods/Cincinnati-311-Non-Emergency-Service-Requests/4cjh-bm8b,Tyler Data & Insights Socrata; dataset now returns "must be logged in" on every API path (resource/ and api/views/rows) regardless of app token/API key — not fetchable headlessly as of June 2026
 0,"Pittsburgh, PA",scoreable,api,https://data.wprdc.org/dataset/311-data,WPRDC CKAN; historical + new system Feb 2025
 0,"Minneapolis, MN",scoreable,api,https://opendata.minneapolismn.gov/,ArcGIS FeatureServer; 525K+ records; Jan 2021+
 0,"New Orleans, LA",scoreable,api,https://datadriven.nola.gov/open-data/featured/311-calls/,DataDriven ArcGIS Hub; GIS API support

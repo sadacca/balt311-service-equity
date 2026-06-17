@@ -18,6 +18,7 @@ import base64
 import json
 import os
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -118,6 +119,21 @@ def _get(url: str) -> list[dict]:
                 )
         except RuntimeError:
             raise  # don't retry deterministic failures
+        except urllib.error.HTTPError as exc:
+            body = exc.read()
+            if b"must be logged in" in body.lower() or b"\"error\":true" in body.lower():
+                # Dataset is permissioned to require an authenticated browser session —
+                # no app token or API key combination can satisfy this headlessly.
+                raise RuntimeError(
+                    f"HTTP {exc.code}: dataset requires a logged-in user session, not just "
+                    f"an app token/API key — not fetchable headlessly. Body: "
+                    f"{body[:200].decode('utf-8', errors='replace')!r}"
+                )
+            if attempt == RETRIES:
+                raise
+            wait = min(2 ** attempt, 30)
+            print(f"  socrata attempt {attempt} failed (HTTP {exc.code}); retrying in {wait}s")
+            time.sleep(wait)
         except Exception as exc:
             if attempt == RETRIES:
                 raise
