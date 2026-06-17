@@ -108,6 +108,7 @@ Everything else (System/Internal source, ECC types, ungeocoded) is excluded from
 | `peer_city_metrics.parquet` | city × year | cross-city delivery metrics (total_requests, requests_per_1k, median_days_to_close, closure_rate, on_time_rate, pct_same_day_close, population, closure_definition) — Phase 5, built by `scripts/peer_city.py` |
 | `peer_city_meta.csv` | city | fips, ACS population, portal_url, closure_definition |
 | `peer_city_tract_income.parquet` | city × tract | `geoid` (11-digit), `median_income` (ACS 5-year B19013_001E, year-independent) — per-city tract income for the cross-city **income-only** mix-adjusted equity score (Phase 5.5-1); built by `scripts/peer_city_equity.py`. Race is deferred (see TASKS.md Phase 5.5 scope decision) — this file has no race columns. |
+| `peer_city_tract_srtype_metrics.parquet` | city × year × tract × SRType | `geoid`, `SRType`, total_requests, closed_requests, closure_rate, median_days_to_close — per-city tract×SRType breakdown (Phase 5.5-2), the input (joined against `peer_city_tract_income.parquet` on `geoid`) to the within-category income equity score in P5.5-3. Built by `scripts/peer_city.py` via `balt311.tiger.fetch_city_tracts()` + `peer_metrics.compute_tract_srtype_metrics()`; Baltimore reuses its own `tract_srtype_metrics_{year}.parquet` instead of re-fetching. Not yet produced by the parallel `peer_city_matrix.yml` (deferred — see TASKS.md P5.5-2). |
 | `peer_city_maturity.csv` | city | 311 open-data publishing maturity scorecard — all 45 metros, 9 rubric dimensions 0–3 + in_cohort/status/evidence/derived; 6 hand-scored anchors, the rest derived from the census by `scripts/score_maturity.py` (inaccessible cities → 0). Phase 5.8/5.9 |
 | `peer_city_coverage_census.csv` | city | scoreable/partial/unconfirmed status of the 40 largest US cities + 5 mid-size enablers, each with an `evidence` tier (api/city_docs/third_party/none) and `endpoint_url` — Phase 5.8, verified canvass (`scripts/verify_census.py` re-probes the live endpoints) |
 
@@ -185,7 +186,8 @@ scripts/
 src/balt311/
   ingest.py                       # ArcGIS FeatureServer pagination (Baltimore)
   metrics.py                      # Cleaning, aggregation, CSA rollup, demographics rollup
-  peer_metrics.py                 # City-agnostic cross-city delivery metrics + ACS county pop
+  peer_metrics.py                 # City-agnostic cross-city delivery metrics + ACS county pop + tract×SRType
+  tiger.py                        # Generic Census TIGER tract boundary fetch, any city's FIPS (Phase 5.5-2)
   cities/                         # Per-city adapters: base, arcgis + carto + socrata + ckan (reusable clients),
                                   #   baltimore, dc, philadelphia, nyc, chicago, sf, austin, nashville, kansas_city, boston,
                                   #   memphis, cincinnati, seattle, dallas, los_angeles (Socrata wave 3)

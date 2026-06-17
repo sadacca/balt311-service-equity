@@ -52,6 +52,18 @@ class CityAdapter:
         on_time_rate (population / requests_per_1k are added by the driver)."""
         return None
 
+    def precomputed_tract_srtype(self, year: int, proc_dir) -> pd.DataFrame | None:
+        """Optional tract×SRType metrics already computed elsewhere (Phase 5.5-2), to avoid
+        a redundant fetch + spatial join. Baltimore overrides this to read its own
+        within-app `tract_srtype_metrics_{year}.parquet` so the cross-city equity input
+        matches the within-Baltimore tabs exactly. Returns None by default — most cities
+        fetch + join fresh in `peer_city.py`.
+
+        Columns when returned: geoid, SRType, total_requests, closed_requests,
+        closure_rate, median_days_to_close — the same shape
+        `peer_metrics.compute_tract_srtype_metrics` produces for the fetch-fresh cities."""
+        return None
+
     def scope(self, df: pd.DataFrame) -> pd.DataFrame:
         """Restrict to comparable "real service requests": non-ECC and geocoded.
         Subclasses extend with city-specific filters (e.g. resident-initiated)."""

@@ -72,6 +72,11 @@ jobs:
       - name: Install dependencies
         run: pip install pandas pyarrow
 
+      # geopandas intentionally omitted here: tract×SRType (Phase 5.5-2) isn't wired into
+      # this matrix/merge flow yet (no per-city artifact path or merge support for it), so
+      # peer_city.py's tract×SRType step no-ops with a logged warning per city instead of
+      # spending time on a TIGER fetch + spatial join whose output would be discarded when
+      # the runner is torn down. Use the sequential backfill workflow for tract×SRType output.
       - name: Fetch ${{ matrix.city }} for all years
         env:
           CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}

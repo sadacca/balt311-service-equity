@@ -48,7 +48,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install pandas pyarrow
+        run: pip install pandas pyarrow geopandas
 
       - name: Fetch + compute cross-city metrics
         env:
@@ -68,6 +68,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/processed/peer_city_metrics.parquet data/processed/peer_city_meta.csv
+          [ -f data/processed/peer_city_tract_srtype_metrics.parquet ] && git add data/processed/peer_city_tract_srtype_metrics.parquet || true
           if git diff --staged --quiet; then
             echo "Cross-city data unchanged — nothing to commit."
             exit 0

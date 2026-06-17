@@ -569,10 +569,30 @@ validates the whole cross-city pipeline that equity then reuses.
   `.github/workflows/peer_city_equity.yml` (`workflow_dispatch`, mirrors `peer_city.yml`).
   *Not yet run in CI — first run will validate FIPS parsing across all 15 adapters, including
   NYC's multi-county case.*
-- [ ] **P5.5-2: Per-city tract boundaries + point-in-polygon** — pull each city's TIGER tracts
-  (state+county FIPS) and assign each geocoded request to a tract (reuse Baltimore's spatial-join
-  logic). City-level boundary filter mirrors the existing FIPS-510 filter. Also produce per-city
-  `{city}_tract_srtype_metrics` (geo×SRType grain), needed for the within-category scoring below.
+- [x] **P5.5-2: Per-city tract boundaries + point-in-polygon** — new `balt311.tiger.fetch_city_tracts()`
+  generalizes the within-Baltimore TIGER fetch (hardcoded Maryland/county-510) to any state+county
+  FIPS, or several comma-separated ones grouped by state (NYC's five boroughs download each state's
+  cartographic-boundary ZIP once). New `peer_metrics.compute_tract_srtype_metrics()` mirrors
+  `scripts/pipeline.py`'s own tract×SRType aggregation but takes the adapter's `scope`/`is_closed`
+  hooks instead of Baltimore-specific raw columns, and point-in-polygon joins (`gpd.sjoin`,
+  `predicate="within"`) geocoded records to the fetched tracts. Wired into `scripts/peer_city.py`'s
+  `run()`: for each city, `adapter.precomputed_tract_srtype(year, PROC)` is tried first (Baltimore
+  overrides it to read its own `tract_srtype_metrics_{year}.parquet` directly, reusing the
+  within-app pipeline output with no re-fetch/re-join); other cities fall back to fetching TIGER
+  tracts + joining their already-fetched records. A failure in the tract/join step (network, a
+  city's tracts unavailable) is caught and logged per city, *not* fatal to that city's delivery
+  metrics. Output: `data/processed/peer_city_tract_srtype_metrics.parquet`, one row per
+  `(city, year, geoid, SRType)` with `total_requests`, `closed_requests`, `closure_rate`,
+  `median_days_to_close` — same cache/skip-existing/`--force` semantics as the delivery metrics,
+  keyed by `(city, year)`. Wired into `peer_city.yml`/`peer_city_backfill.yml` (added `geopandas`
+  to `pip install`, added the new parquet to the commit step). **Deferred**: the parallel
+  `peer_city_matrix.yml` doesn't carry this output through its per-city-artifact/merge flow yet —
+  its fetch step still installs only `pandas`/`pyarrow`, so the tract×SRType step no-ops with a
+  logged warning per city rather than computing output that would be discarded when the runner is
+  torn down. Use the sequential backfill workflow for tract×SRType output until that's extended.
+  Smoke-tested locally (synthetic tracts + records: tract assignment, closure, and median days all
+  verified; a fake adapter exercised the full `peer_city.py` driver path including cache/skip and
+  graceful degradation on a join failure) — not yet run against live TIGER downloads in CI.
 - [ ] **P5.5-3: Per-city mix-adjusted overall equity score** *(primary; income only — see scope
   decision above)* — for each city, compute the within-service-category income-based
   `utils.overlap_score()` (each city's own categories, split above/below that city's own tract
