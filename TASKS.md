@@ -639,6 +639,32 @@ validates the whole cross-city pipeline that equity then reuses.
   demographic-coverage notes, and a pointer to the race-deferral scope decision above.
   *(Gate for 5.6.)*
 
+> **CI run order, and why a "successful" parallel backfill alone won't populate Tab 8
+> (as of 2026-06-17):** `peer_city_equity.parquet` needs **two separate `workflow_dispatch`
+> runs, in this order**:
+> 1. `peer_city_matrix.yml` (or `peer_city.yml`/`peer_city_backfill.yml`) — produces
+>    `peer_city_tract_srtype_metrics.parquet` + `peer_city_tract_metrics.parquet` (delivery data).
+> 2. `peer_city_equity.yml` — fetches `peer_city_tract_income.parquet`, **then** runs
+>    `scripts/peer_city_equity_score.py`, which reads *all three* of the above and writes
+>    `peer_city_equity.parquet`. If step 1 hasn't produced a city's tract×SRType/tract rows
+>    yet, that city silently scores no row (the script no-ops gracefully per missing input,
+>    by design) rather than erroring — so it's easy to run step 2, see no failure, and still
+>    have an empty/partial Tab 8.
+>
+> Current committed state in `data/processed/`: `peer_city_tract_income.parquet` exists
+> (P5.5-1 has run), but **`peer_city_tract_srtype_metrics.parquet`,
+> `peer_city_tract_metrics.parquet`, and `peer_city_equity.parquet` do not exist yet** — so
+> Tab 8 still shows its soft-degrade notice.
+>
+> **Also note:** every cross-city workflow checks out `ref: main` (`peer_city_matrix.yml`,
+> `peer_city_equity.yml`, `peer_city.yml`, `peer_city_backfill.yml`) — they run whatever
+> `scripts/`/`src/` code is on `main`, not on a feature branch. The P5.5-2 tract-grain wiring
+> into `peer_city_matrix.yml` (`geopandas` install + per-city tract artifacts) and the Socrata
+> auth-fallback fix (`b9dccab`) only take effect on a CI run **after this branch
+> (`claude/tab7-bar-label-positioning-q1rqkj`) is merged to `main`** — running the matrix
+> workflow before that merge re-runs the old code (no tract output, no Socrata fallback),
+> which is consistent with why a prior parallel-backfill run produced no tract×SRType data.
+
 ---
 
 ### Phase 5.6 — Cross-City Service Equity tab (cohort)
