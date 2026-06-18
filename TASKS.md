@@ -721,12 +721,20 @@ validates the whole cross-city pipeline that equity then reuses.
   `raw_median_days_gap` column is now the metric-agnostic `raw_gap` (median diff for days, mean
   diff for closure rate). `city_equity.py` gained an `st.radio` metric selector — same two
   options/labels as `equity_adjusted._SRTYPE_METRICS` — feeding all three charts and the
-  metric-aware gap-list wording. No backward-compat shim for the old single-metric schema:
-  `peer_city_equity.parquet` has never been produced by a real CI run yet (confirmed empty
-  `data/processed/`), so there's no stale file to migrate. Smoke-tested: `compute_income_equity_
-  score` for both metrics against synthetic tract data; the full `peer_city_equity_score.py`
-  driver end-to-end against synthetic parquet inputs (correct 2-row-per-city-year output); the
-  UI via `AppTest` including switching the radio between metrics with no exceptions.
+  metric-aware gap-list wording. Smoke-tested: `compute_income_equity_score` for both metrics
+  against synthetic tract data; the full `peer_city_equity_score.py` driver end-to-end against
+  synthetic parquet inputs (correct 2-row-per-city-year output); the UI via `AppTest` including
+  switching the radio between metrics with no exceptions.
+  **Correction (2026-06-18):** the initial cut shipped with no backward-compat shim on the
+  premise that `peer_city_equity.parquet` had never been produced by a real CI run — that check
+  only looked at this branch's working tree, not `main`. A real pre-5.6-4 file (28 rows, no
+  `metric` column, `raw_median_days_gap` instead of `raw_gap`) already existed on `main` from an
+  earlier `peer_city_equity.yml` run, and every cross-city workflow checks out `ref: main` — so
+  the very next CI run hit it and crashed with `KeyError: 'metric'` in the upsert step. Fixed by
+  migrating the legacy schema on read in `peer_city_equity_score.py::run()`: if `existing` has no
+  `metric` column, rename `raw_median_days_gap` → `raw_gap` and tag every row
+  `metric="median_days_to_close"` before computing the upsert keys. Verified against the actual
+  legacy file pulled from `main`.
 - [x] **P5.6-5: Documentation checkpoint** — append `cross_city_comparison.md` §6.6: cross-city
   equity findings — how Baltimore's gap ranks against peer and leading cities. *(Gate for 5.7.)*
   Findings themselves (cohort ranking) still pending the next CI run per §6.5 — §6.6 currently

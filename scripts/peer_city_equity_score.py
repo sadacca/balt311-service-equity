@@ -98,6 +98,15 @@ def run(
     new_df = pd.DataFrame(rows)[EQUITY_COLUMNS]
 
     existing = pd.read_parquet(equity_path) if equity_path.exists() else None
+    if existing is not None and not existing.empty and "metric" not in existing.columns:
+        # Pre-5.6-4 file: single metric (days-to-close only), no `metric` column, and the
+        # gap column was named `raw_median_days_gap` instead of the metric-agnostic `raw_gap`.
+        log(f"  Migrating legacy single-metric {equity_path.name} ({len(existing)} rows) to "
+            "the (city, year, metric) schema.")
+        existing = existing.rename(columns={"raw_median_days_gap": "raw_gap"})
+        existing["metric"] = "median_days_to_close"
+        existing = existing[EQUITY_COLUMNS]
+
     if existing is not None and not existing.empty:
         keys = set(zip(new_df["city"], new_df["year"], new_df["metric"]))
         kept = existing[~existing.apply(lambda r: (r["city"], r["year"], r["metric"]) in keys, axis=1)]
