@@ -1,6 +1,8 @@
 # Baltimore 311 Service Equity
 
-Baltimore's 311 system receives hundreds of thousands of resident service requests each year — potholes, bulk trash, water leaks, rodent control. This dashboard provides operational visibility into those interactions for two audiences:
+Baltimore's 311 system receives hundreds of thousands of resident service requests each year — potholes, bulk trash, water leaks, rodent control. Baltimore was a first-mover with 311 and open data, and continues to lead in service delivery and the openess of its data. This allows citizens to and stakeholders to understand service delivery in Baltimore deeper than many other metros, and this repo and the paired dashbord provide insight into an analysis of Baltimore by itself (quality and equity of service delivery) and a sizing up of Baltimore vs other major metros (still ahead of the curve, making analysis like this possible).  
+
+Specifically, this repo and dashboard look to support:
 
 - **Citizens and advocates** — what requests are coming in, from where, and how does service delivery compare year over year and across neighborhood types
 - **Internal stakeholders** — department managers tracking their service types and citywide leadership asking whether performance is improving, equitable, and competitive with peer cities
