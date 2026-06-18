@@ -44,6 +44,15 @@ def find_resource_for_year(api_base: str, package_id: str, year: int) -> str | N
     return None
 
 
+def resource_fields(api_base: str, resource_id: str) -> list[str]:
+    """All raw field names DataStore has for a resource, from `datastore_search`'s `fields`
+    metadata (id/type pairs) rather than a record's keys — works even if the first page of
+    records happens to be empty."""
+    params = {"resource_id": resource_id, "limit": 0}
+    result = _get(f"{api_base}/datastore_search?{urllib.parse.urlencode(params)}")
+    return [f["id"] for f in result.get("fields", []) if f.get("id") != "_id"]
+
+
 def fetch_resource(api_base: str, resource_id: str, page_size: int = PAGE_SIZE) -> list[dict]:
     """All records in a DataStore resource, paged by limit/offset."""
     records: list[dict] = []

@@ -914,6 +914,26 @@ one continuous scale, not two disconnected exercises.
 > P5.9-4's schema-probe work or fold into P5.9-6's plausibility flag, rather than being a one-off
 > anchor edit, since the same gap likely affects other cohort cities once probed.
 
+> **Follow-up (2026-06-18): internal cross-city data audit tool, deliberately not on any tab.**
+> The Chicago finding above raised a broader question: before reporting *any* cohort city's
+> metric as structurally missing, can we tell that apart from a mis-mapped or fill-rate-sparse
+> field? Added `CityAdapter.schema_fields(year) -> list[str] | None` to the adapter contract
+> (`cities/base.py`) — the full raw column list a city's live portal publishes, not just the
+> ~6 canonical fields each adapter selects — implemented per-platform (`SocrataAdapter` base
+> class covers NYC/Chicago/SF/Austin/Nashville-N/A/KC/Cincinnati/Seattle/Dallas/LA generically;
+> Baltimore/DC/Memphis/Nashville via `arcgis.layer_field_names`; Philadelphia via
+> `carto.fetch_sql(... LIMIT 1)`; Boston via a new `ckan.resource_fields()` reading
+> `datastore_search`'s `fields` metadata). `scripts/audit_peer_city_data.py` consumes this in
+> two tiers: **Tier 1** (no network) flags null/implausible metrics already in
+> `peer_city_metrics.parquet` / `peer_city_tract_srtype_metrics.parquet` — same Chicago pattern,
+> caught automatically; **Tier 2** (network, `--live-schema`, CI-only — this sandbox can't reach
+> any cohort portal) re-derives each adapter's actual canonical→raw field mapping against the
+> *live* schema and flags unmapped raw columns worth a second look, plus any canonical field
+> that no longer resolves (a renamed/dropped column). Writes JSON to `data/audit/` (gitignored —
+> diagnostic, not app-consumed data, per the `data/processed/` "app reads only from here"
+> convention). **Deliberately not wired into any Streamlit tab or component** — internal/CI
+> tooling only, run on demand or as a future CI step, not a user-facing feature.
+
 ---
 
 ## Phase 6 — Seasonality Tab *(Long-term)*

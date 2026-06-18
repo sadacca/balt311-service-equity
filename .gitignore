@@ -2,6 +2,9 @@
 data/raw/
 data/interim/
 
+# Cross-city audit reports — diagnostic, regenerated on demand, not app-consumed
+data/audit/
+
 # Streamlit secrets — never commit
 .streamlit/secrets.toml
 

@@ -84,3 +84,9 @@ class BaltimoreAdapter(CityAdapter):
 
     def is_closed(self, df: pd.DataFrame) -> pd.Series:
         return df["SRStatus"].astype(str).str.strip().str.lower().isin(_CLOSED_STATUSES)
+
+    def schema_fields(self, year: int) -> list[str] | None:
+        from . import arcgis
+
+        url = ingest.ENDPOINTS.get(year)
+        return arcgis.layer_field_names(url) if url else None
