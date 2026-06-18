@@ -49,3 +49,7 @@ class PhiladelphiaAdapter(CityAdapter):
         if "status" in df.columns:
             return df["status"].astype(str).str.strip().str.lower().eq("closed")
         return super().is_closed(df)
+
+    def schema_fields(self, year: int) -> list[str] | None:
+        rows = carto.fetch_sql(SQL_API, f"SELECT * FROM {TABLE} LIMIT 1")
+        return list(rows[0]) if rows else None

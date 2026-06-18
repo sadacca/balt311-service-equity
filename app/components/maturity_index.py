@@ -206,7 +206,18 @@ def render_maturity_index(data_dir: Path) -> None:
             "can still be contaminated or gamed — most often by auto-closing records the instant "
             "they open (which inflates closure rate and crushes median time-to-close; see the ⚠ "
             "flags on the Service Delivery tab). A high publishing score is not a clean bill of "
-            "data health.\n\nScores are a provisional canvass (rubric §8), to be hardened in P5.8."
+            "data health.\n\n"
+            "4. **`field_completeness` scores schema presence, not fill rate.** It asks whether a "
+            "core field (e.g. a close timestamp) exists in the published schema — not whether "
+            "that field is reliably populated once it does. Chicago scores a 3 here because its "
+            "schema lists `closed_date` alongside the rest of the core set, but in practice that "
+            "column is null for nearly all records even among ones marked closed by status — "
+            "which is why Tab 8's mix-adjusted equity score can compute Chicago's closure rate "
+            "fine but can't compute its median days-to-close at all (see TASKS.md/"
+            "`cross_city_comparison.md` for the full finding). A genuine fill-rate signal exists "
+            "in the data already fetched (e.g. the NaN-rate on `median_days_to_close`) but isn't "
+            "folded into this score yet.\n\n"
+            "Scores are a provisional canvass (rubric §8), to be hardened in P5.8."
         )
 
 

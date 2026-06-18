@@ -186,6 +186,10 @@ scripts/
   peer_city_equity_score.py       # Per-city mix-adjusted income equity score (Phase 5.5-3)
   score_maturity.py               # Derive the 45-metro maturity scorecard from the census (Phase 5.9)
   verify_census.py                # Re-probe census endpoints to refresh the api evidence tier (Phase 5.8)
+  audit_peer_city_data.py         # Internal cross-city data audit — fill-rate/plausibility checks
+                                  #   (Tier 1, no network) + live raw-schema mis-mapping check via
+                                  #   CityAdapter.schema_fields() (Tier 2, network/CI). Writes JSON
+                                  #   to data/audit/ (gitignored); deliberately not on any tab.
 
 src/balt311/
   ingest.py                       # ArcGIS FeatureServer pagination (Baltimore)

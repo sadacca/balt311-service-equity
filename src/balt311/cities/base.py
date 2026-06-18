@@ -91,6 +91,16 @@ class CityAdapter:
         """Boolean per record. Default: a CloseDate is present."""
         return df["CloseDate"].notna() if "CloseDate" in df.columns else pd.Series(False, index=df.index)
 
+    def schema_fields(self, year: int) -> list[str] | None:
+        """All raw field names the live portal publishes for `year`, **before** canonical
+        mapping — i.e. the full schema, not just the ~6 fields this adapter selects. Used
+        only by `scripts/audit_peer_city_data.py` to check whether a better-fitting raw
+        field exists than the one actually mapped (mis-mapping risk), and whether a
+        previously-mapped field has disappeared from a live, possibly-changed schema.
+        Returns None where not implemented for this adapter/platform (the audit then skips
+        the mapping check for that city rather than failing it)."""
+        return None
+
 
 
 def apply_field_map(raw: list[dict], field_map: dict[str, str]) -> list[dict]:

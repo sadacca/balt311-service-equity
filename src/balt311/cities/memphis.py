@@ -64,3 +64,6 @@ class MemphisAdapter(CityAdapter):
                  f"AND {created} < TIMESTAMP '{year + 1}-01-01 00:00:00'")
         raw = arcgis.fetch_layer_keyset(layer_url, out_fields=",".join(field_map), where=where)
         return apply_field_map(raw, field_map)
+
+    def schema_fields(self, year: int) -> list[str] | None:
+        return arcgis.layer_field_names(f"{SERVICE_URL}/{LAYER}")

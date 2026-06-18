@@ -45,3 +45,7 @@ class BostonAdapter(CityAdapter):
         if "status" in df.columns:
             return df["status"].astype(str).str.strip().str.lower().eq("closed")
         return super().is_closed(df)
+
+    def schema_fields(self, year: int) -> list[str] | None:
+        rid = ckan.find_resource_for_year(API_BASE, PACKAGE_ID, year)
+        return ckan.resource_fields(API_BASE, rid) if rid else None

@@ -40,3 +40,7 @@ class DCAdapter(CityAdapter):
         # Keyset (OID) paging — DC's ~440k-row layers time out on deep offset paging.
         raw = arcgis.fetch_layer_keyset(layer_url, out_fields=",".join(FIELD_MAP))
         return apply_field_map(raw, FIELD_MAP)
+
+    def schema_fields(self, year: int) -> list[str] | None:
+        layer_id = arcgis.discover_year_layer(SERVICE_URL, year)
+        return arcgis.layer_field_names(f"{SERVICE_URL}/{layer_id}")

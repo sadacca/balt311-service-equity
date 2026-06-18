@@ -255,3 +255,9 @@ class SocrataAdapter(CityAdapter):
         if "status" in df.columns:
             closed = closed | df["status"].astype(str).str.strip().str.lower().isin(CLOSED_STATES)
         return closed
+
+    def schema_fields(self, year: int) -> list[str] | None:
+        dataset_id = self._dataset_for(year)
+        if not dataset_id:
+            return None
+        return discover_columns(self.domain, dataset_id, base_url=self._endpoint_url(dataset_id))

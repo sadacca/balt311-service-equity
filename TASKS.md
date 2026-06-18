@@ -883,6 +883,57 @@ one continuous scale, not two disconnected exercises.
   full-ranking methodology, the per-dimension anchors, the data-integrity flag (P5.9-6), and the
   headline ("N of 40 fully scoreable; Baltimore ranks #X of the scoreable set").
 
+> **Finding (2026-06-18): `field_completeness` scores schema presence, not fill rate — caught by
+> Tab 8's first real CI run.** Inspecting `peer_city_equity.parquet` after the first successful
+> `peer_city_equity.yml` run surfaced that some cohort cities can't be scored on one or both
+> equity metrics:
+> - **Chicago** scores `closure_rate` fine (n_srtypes_scored ≈ 74–80/year) but `median_days_to_
+>   close` is NaN almost everywhere at the tract×SRType grain. Not a bug — confirmed against the
+>   pooled `peer_city_metrics.parquet`, where Chicago's median ≈ 0.000012 days: a `closed_date`
+>   column exists in Chicago's schema and is hand-scored `field_completeness=3` in
+>   `score_maturity.py`'s `ANCHORS` for it (justified there as *"created_date, closed_date,
+>   lat/lon"*), but in practice that column is populated for only a sliver of records even among
+>   ones marked closed via `status` — the same auto-close-adjacent contamination pattern already
+>   flagged for NYC/Chicago elsewhere in this doc. The pipeline correctly drops records with no
+>   real duration rather than fabricate a 0-day close (`peer_metrics.py`'s `_aggregate_tract`/
+>   `compute_city_metrics`), so there's too little real data per tract×SRType cell to score a
+>   median — schema presence ≠ fill rate.
+> - **Memphis** goes further and fails to score `closure_rate` itself for 2024/2025
+>   (`n_srtypes_scored=0`) — it migrated off Socrata to a weaker-tracking ArcGIS FeatureServer
+>   (pooled closure rate 0–8%, implausible), a genuine maturity gap rather than a quirk.
+>
+> **Why this belongs in the Maturity Index, and currently doesn't, cleanly:** `field_completeness`
+> (rubric dimension in `score_maturity.py`/`maturity_index.py`) asks only whether a core field
+> exists in the published schema, not whether it's reliably populated — exactly the gap that let
+> Chicago score a 3 despite the empirical fill-rate problem above. A real fill-rate signal already
+> exists in data we fetch (the NaN-rate on `median_days_to_close`, `pct_same_day_close`) but isn't
+> folded into the score. **Action taken now:** added a caveat to `maturity_index.py`'s "Three
+> standing caveats" expander (now four) naming this limitation explicitly with the Chicago example,
+> so a reader isn't misled by the 3/3 score. **Not yet done** (deferred, scope decision pending):
+> actually re-deriving `field_completeness` from the fetched fill-rate signal — would extend
+> P5.9-4's schema-probe work or fold into P5.9-6's plausibility flag, rather than being a one-off
+> anchor edit, since the same gap likely affects other cohort cities once probed.
+
+> **Follow-up (2026-06-18): internal cross-city data audit tool, deliberately not on any tab.**
+> The Chicago finding above raised a broader question: before reporting *any* cohort city's
+> metric as structurally missing, can we tell that apart from a mis-mapped or fill-rate-sparse
+> field? Added `CityAdapter.schema_fields(year) -> list[str] | None` to the adapter contract
+> (`cities/base.py`) — the full raw column list a city's live portal publishes, not just the
+> ~6 canonical fields each adapter selects — implemented per-platform (`SocrataAdapter` base
+> class covers NYC/Chicago/SF/Austin/Nashville-N/A/KC/Cincinnati/Seattle/Dallas/LA generically;
+> Baltimore/DC/Memphis/Nashville via `arcgis.layer_field_names`; Philadelphia via
+> `carto.fetch_sql(... LIMIT 1)`; Boston via a new `ckan.resource_fields()` reading
+> `datastore_search`'s `fields` metadata). `scripts/audit_peer_city_data.py` consumes this in
+> two tiers: **Tier 1** (no network) flags null/implausible metrics already in
+> `peer_city_metrics.parquet` / `peer_city_tract_srtype_metrics.parquet` — same Chicago pattern,
+> caught automatically; **Tier 2** (network, `--live-schema`, CI-only — this sandbox can't reach
+> any cohort portal) re-derives each adapter's actual canonical→raw field mapping against the
+> *live* schema and flags unmapped raw columns worth a second look, plus any canonical field
+> that no longer resolves (a renamed/dropped column). Writes JSON to `data/audit/` (gitignored —
+> diagnostic, not app-consumed data, per the `data/processed/` "app reads only from here"
+> convention). **Deliberately not wired into any Streamlit tab or component** — internal/CI
+> tooling only, run on demand or as a future CI step, not a user-facing feature.
+
 ---
 
 ## Phase 6 — Seasonality Tab *(Long-term)*
