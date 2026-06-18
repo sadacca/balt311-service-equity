@@ -55,8 +55,8 @@ with st.sidebar:
         "income → ask whether that gap holds up within service categories → and finally "
         "separate how much of it is about *which* services an area requests versus how "
         "the same service is delivered. **Compare cities** sets Baltimore against a cohort "
-        "of peer cities on the same metrics — its Service Delivery and Open-Data Maturity "
-        "views are live; per-city Service Equity is still being built."
+        "of peer cities on the same metrics — Service Delivery, Service Equity, and "
+        "Open-Data Maturity are all live."
     )
     st.divider()
     st.markdown("### Within Baltimore — the story")
@@ -132,8 +132,11 @@ with st.sidebar:
         "profile, and a census of how few large US cities can be scored at all."
     )
     st.markdown(
-        "**Service Equity** — coming next\n\n"
-        "*Each city's own race/income service gaps.* Still being built."
+        "**Service Equity** — live\n\n"
+        "*Each city's own income-based service gaps* — a mix-adjusted score (volume-weighted "
+        "Mann-Whitney overlap, within SRType) for median days-to-close and closure rate, "
+        "raw vs. adjusted, comparing below- vs. above-median-income tracts. Income only for "
+        "now; a race-based score is future work."
     )
     with st.expander("Key terms"):
         st.markdown(

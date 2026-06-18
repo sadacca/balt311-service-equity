@@ -10,7 +10,7 @@ This dashboard provides operational visibility into Baltimore's 311 service requ
 Four comparison axes drive every design decision:
 1. **Historical** — how does this year compare to prior years (2016–2025)
 2. **Geographic** — which neighborhoods get faster / slower service, and why
-3. **Cross-municipal** — how does Baltimore compare to peer cities on the same metrics *(Phase 5 — Service Delivery + Open-Data Maturity tabs live; per-city Service Equity in progress)*
+3. **Cross-municipal** — how does Baltimore compare to peer cities on the same metrics *(Phase 5 — Service Delivery, Service Equity, and Open-Data Maturity tabs all live)*
 4. **Equity** — does service quality differ systematically by race or income of the requesting neighborhood
 
 The equity lens is not the only lens — operations clarity for managers is equally important and is the first tab.
@@ -19,7 +19,7 @@ The equity lens is not the only lens — operations clarity for managers is equa
 
 ## Active Branch
 
-All current development is on `claude/review-requirements-AlGBm`. Push only to this branch unless told otherwise. The production app auto-deploys from `main` on Streamlit Community Cloud.
+All current development is on `claude/tab7-bar-label-positioning-q1rqkj`. Push only to this branch unless told otherwise. The production app auto-deploys from `main` on Streamlit Community Cloud.
 
 ---
 
@@ -28,7 +28,7 @@ All current development is on `claude/review-requirements-AlGBm`. Push only to t
 Streamlit app at `app/app.py`, organized into **two groups** that keep the two fundamentally different kinds of analysis distinct, selected by a top-level **`st.segmented_control`** (not `st.tabs`) so only the active group's body executes — `st.tabs` renders every tab body on every run, which made opening Compare cities pay the full cost of rendering the six within-Baltimore tabs (the Areas PCA embeddings + the Mix-Adjusted regression — ~30s cold) underneath:
 
 - **🏙️ Within Baltimore** — the sequenced six-step story: Operations → Services → Area Service Usage → Equity → Service Equity → Mix-Adjusted Equity.
-- **🌐 Compare cities** — *(Phase 5)* city-to-city comparison: Service Delivery → Service Equity → Maturity Index. All three tabs are live: `city_delivery.py`, `city_equity.py` (mix-adjusted income equity score, raw as reference — full-cohort scores pending a CI run, see `peer_city_equity.parquet`), `maturity_index.py`. `cross_city.py` now holds only the shared group intro + comparability caveats. Cohort = 10 cities across four platforms (ArcGIS, Carto, Socrata, CKAN). City-level only, so they do **not** use `geo_level`.
+- **🌐 Compare cities** — *(Phase 5)* city-to-city comparison: Service Delivery → Service Equity → Maturity Index. All three tabs are live: `city_delivery.py`, `city_equity.py` (mix-adjusted income equity score, raw as reference — `peer_city_equity.parquet` populated by the first successful `peer_city_equity.yml` run; some cities score one or both metrics as null where the underlying field is sparsely filled rather than missing — see TASKS.md's `field_completeness` finding), `maturity_index.py`. `cross_city.py` now holds only the shared group intro + comparability caveats. Cohort = 15 cities across four platforms (ArcGIS, Carto, Socrata, CKAN). City-level only, so they do **not** use `geo_level`.
 
 The year selector is global (above both groups) — cross-city data is also city × year. The **geographic-unit toggle (Census Tract / CSA) is a single global control at the top of the Within-Baltimore group**, writing the shared `geo_level` session state every within-Baltimore tab reads (replacing the former per-tab toggles and the two-way-sync hack). The Areas tab manages its own data loading internally and ignores `geo_level` (it shows tracts and CSAs together in one embedding).
 
@@ -152,7 +152,7 @@ See `TASKS.md` for full detail. Current phase status:
 | 4 / 4d | SRType-stratified equity — six-tab arc (Services, Areas, Service Equity, Mix-Adjusted Equity) | Complete — all tabs shipped |
 | 4e | Per-geography mix-adjusted metrics (record-level direct-standardization `adjusted` stage) | Stage shipped — Tab 6 consumes it; P4e-3→5 (Equity-tab surfacing) open |
 | 4b | Area Analysis tab — peer comparison for managers | Candidate next release |
-| 5 | Cross-municipality benchmarking | In progress — Delivery + Maturity tabs live; 10-city cohort across 4 platforms (ArcGIS/Carto/Socrata/CKAN); Baltimore+DC+Philadelphia data landed, Socrata/CKAN cities pending CI; per-city Service Equity (5.5/5.6) next |
+| 5 | Cross-municipality benchmarking | Core scope (5.0–5.6, 5.8) done — Delivery, Service Equity (income-only mix-adjusted score), and Maturity Index tabs all live; 10-city cohort across 4 platforms (ArcGIS/Carto/Socrata/CKAN). Open: 5.7 within-type comparison (stretch), 5.9 full 40-metro numerical rankings (partial), race-based equity score (deferred) |
 | 6 | Seasonality tab | Long-term |
 
 Key open investigations before heavy Phase 4 / 5 work:

@@ -1,7 +1,7 @@
 # Requirements: 311 Service Equity Dashboard
 
-**Status:** Draft v1.1  
-**Date:** May 2026  
+**Status:** v1.2 — all six within-Baltimore tabs and all three cross-city tabs shipped; nominally through initially drafted scope. Remaining items are explicitly deferred/stretch (race-based cross-city equity score, within-type cross-city comparison, full 40-metro maturity rankings) — see `TASKS.md` for current item-level status.  
+**Date:** June 2026 (last substantive revision 2026-06-18)  
 **Confidence:** High — all primary data sources verified as active and publicly available  
 **Estimated Effort:** Low-Medium (2–4 weeks for analyst with Python/GIS skills)  
 **Strategic Value:** Highest of all six initiatives — motivates Tier 1 data publication and is immediately politically legible
@@ -137,15 +137,18 @@ methodological decisions that requirements depend on.
 3. **Service equity** *(medium aggregate → high within-type)* — see below.
 
 **The equity comparison compares scores, not places.** We do **not** match Baltimore tracts
-to another city's tracts. For each city we compute its *own internal* race-based and
-income-based Mann-Whitney overlap score (does the majority-Black / lower-income half of the
-city wait longer than the majority-White / higher-income half?), then compare those **scores**
-across cities. The tab answers "is Baltimore more or less equitable in its own delivery than
-its peers are in theirs?" This makes equity comparison **more portable than delivery
-comparison**: it rides entirely on nationally-uniform sources — the Census ACS API (tract
-race/income, identical query with a different state+county FIPS) and TIGER/Line tract
-boundaries — plus the latitude/longitude every candidate city already publishes for
-point-in-polygon tract assignment. No reliance on any city's own demographic publishing.
+to another city's tracts. For each city we compute its *own internal*
+**income-based** Mann-Whitney overlap score (does the lower-income half of the city wait
+longer than the higher-income half?), then compare those **scores** across cities. **Scoped to
+income only** — race was descoped (Phase 5.5 scope decision, see `TASKS.md`) because per-tract
+race demographics are not as uniformly available across the cohort as income; a race-based
+score remains explicit future work, not built. The tab answers "is Baltimore more or less
+equitable in its own delivery than its peers are in theirs?" This makes equity comparison
+**more portable than delivery comparison**: it rides entirely on nationally-uniform sources —
+the Census ACS API (tract median income, identical query with a different state+county FIPS)
+and TIGER/Line tract boundaries — plus the latitude/longitude every candidate city already
+publishes for point-in-polygon tract assignment. No reliance on any city's own demographic
+publishing.
 
 **Use the mix-adjusted score across cities, not the raw score.** The dashboard's own headline
 finding (§3.5 / Tab 5) is that much of the apparent citywide equity gap is a *service-mix*
@@ -243,35 +246,41 @@ Phase 4d adds four new tabs to the existing Operations and Equity tabs, producin
 
 All four new tabs require `srtype_metrics_{year}.parquet`, `{geo_key}_srtype_metrics_{year}.parquet`, and the demographics CSVs — these are **already committed on `main` for all years 2016–2025** (full backfill, PRs #33–37) and merged into the working branch; the data-availability blocker noted in earlier drafts of this phase was a branch-sync gap, not a real one (see Stage 0 in `TASKS.md` Phase 4d). New runtime dependencies: `scikit-learn` (PCA + clustering for Area Embedding) and `statsmodels` (OLS for Equity Adjusted) — see §8. Tab 6's per-neighborhood map/scatter additionally requires `{geo_key}_adjusted_metrics_{year}.parquet`, produced by the new `--stage adjusted` pipeline stage (record-level direct standardization on the equity subset); the app shows a "run the adjusted stage" notice until those files are committed, and both the single-year and backfill workflows now generate them after `--stage srtype`.
 
-### 4.6 Phase 5 Scope — Two Cross-City Comparison Tabs
+### 4.6 Phase 5 Scope — Cross-City Comparison Tabs
 
-Phase 5 adds two tabs that take the dashboard's fourth comparison axis (cross-municipal)
-from "not yet built" to live. Both keep **Baltimore as the fixed reference** — always present,
-always highlighted — and both compare *rates and scores*, never raw counts (see §3.6). The
-staged build (one pair city → cohort) and the full task list are in `TASKS.md` Phase 5; the
-feasibility evidence and per-phase results log are in `cross_city_comparison.md`.
+Phase 5 adds three tabs that take the dashboard's fourth comparison axis (cross-municipal)
+from "not yet built" to live — all three now shipped. Each keeps **Baltimore as the fixed
+reference** — always present, always highlighted — and compares *rates and scores*, never raw
+counts (see §3.6). The staged build (one pair city → cohort) and the full task list are in
+`TASKS.md` Phase 5; the feasibility evidence and per-phase results log are in
+`cross_city_comparison.md`.
 
 | # | Tab | Core question | Key interactions | Phase |
 |---|---|---|---|---|
-| 7 | **Cross-City Service Delivery** | Is Baltimore's 311 volume and delivery performance strong, average, or lagging versus peer and leading cities? | Cohort/city selector; metric toggle (requests per 1k, median days to close, closure rate, on-time rate where derivable); dot-plot or ranked bar with Baltimore highlighted; year aligned to the most recent shared year; comparability caveat banner (per-city closure semantics) | 5.2 (MVP: Baltimore + DC) → 5.4 (cohort) |
-| 8 | **Cross-City Service Equity** | Controlling for what each city requests, is Baltimore more or less equitable in *delivering the same services* than its peers? | Per-city **mix-adjusted** race/income overlap scores (primary — see §3.6) on a fixed `[0,1]` axis with the same green/amber/red threshold bands as `equity_trend.py`; Baltimore highlighted; **raw** score shown as a secondary reference (a wide raw↔adjusted gap = that city's disparity is mostly mix-driven); within-type breakdown for shared categories (Phase 5.7 stretch) | 5.6 (cohort) |
+| 7 | **Cross-City Service Delivery** | Is Baltimore's 311 volume and delivery performance strong, average, or lagging versus peer and leading cities? | Cohort/city selector; metric toggle (requests per 1k, median days to close, closure rate, on-time rate where derivable); dot-plot or ranked bar with Baltimore highlighted; year aligned to the most recent shared year; comparability caveat banner (per-city closure semantics) | 5.2 (MVP: Baltimore + DC) → 5.4 (cohort) — ✅ done, live |
+| 8 | **Cross-City Service Equity** | Controlling for what each city requests, is Baltimore more or less equitable in *delivering the same services* than its peers? | Per-city **mix-adjusted income** overlap scores (primary — see §3.6; race deferred, not built) on a fixed `[0,1]` axis with the same green/amber/red threshold bands as `equity_trend.py`; Baltimore highlighted; **raw** score shown as a secondary reference (a wide raw↔adjusted gap = that city's disparity is mostly mix-driven); within-type breakdown for shared categories (Phase 5.7, open — stretch) | 5.5–5.6 (cohort) — ✅ done, live; 5.7 open |
+| 9 | **Open-Data Maturity Index** | How maturely does each city publish its 311 open data, and how does that publishing maturity bound what this whole comparison can claim? | 9-dimension scored rubric (0–3) across the cohort plus a wider census of scoreable/partial/unconfirmed cities; league table with Baltimore's rank and gap profile; standing caveats on what the score does/doesn't measure (e.g. schema presence ≠ fill rate, see §5) | 5.8 (cohort scorecard) — ✅ done, live; 5.9 (full 40-metro numerical ranking) partial |
 
-**Why these two, in this order.** They answer the two most-cited unmet needs in
-`personas.md`: the **Citizen Journalist** and **Citywide Official** both need external context
-to make "Baltimore is doing well / poorly" defensible rather than a raw number (Tab 7), and
-the equity comparison (Tab 8) turns "Baltimore has an equity gap" into "Baltimore's gap is
-wider / narrower than peer cities' gaps" — a materially stronger, more publishable claim.
-Delivery comes first: it is the lower-difficulty comparison and validates the whole cross-city
-pipeline; equity follows because it reuses that pipeline plus the portable ACS-tract join
-(§3.6).
+**Why this order.** Tabs 7 and 8 answer the two most-cited unmet needs in `personas.md`: the
+**Citizen Journalist** and **Citywide Official** both need external context to make "Baltimore
+is doing well / poorly" defensible rather than a raw number (Tab 7), and the equity comparison
+(Tab 8) turns "Baltimore has an equity gap" into "Baltimore's gap is wider / narrower than peer
+cities' gaps" — a materially stronger, more publishable claim. Delivery comes first: it is the
+lower-difficulty comparison and validates the whole cross-city pipeline; equity follows because
+it reuses that pipeline plus the portable ACS-tract join (§3.6). Tab 9 (Maturity Index) comes
+last because it is the meta-question the first two tabs raise by example — every comparability
+caveat on Tabs 7–8 traces back to *how well a city publishes its 311 data in the first place*,
+so the rubric formalizes that into its own scored, citable artifact rather than leaving it as
+scattered caveat text.
 
 **Reference-city framing.** Baltimore is the reference both in the UI (highlighted, pinned)
 and analytically (every value reads "relative to Baltimore's"). The cohort grew from a single
-pair (Baltimore + DC) at MVP to **10 cities across four API families**, each new adapter
+pair (Baltimore + DC) at MVP to **15 cities across four API families**, each new adapter
 unlocking several cities at once (ArcGIS → Carto → Socrata → CKAN; see
-`cross_city_comparison.md` §3): Baltimore / DC / Nashville (ArcGIS — Nashville on ArcGIS Hub),
-Philadelphia (Carto), NYC / Chicago / San Francisco / Austin / Kansas City (Socrata), Boston
-(CKAN). Tabs 7–8 form a
+`cross_city_comparison.md` §3): Baltimore / DC / Nashville / Memphis (ArcGIS — Nashville on
+ArcGIS Hub, Memphis migrated off Socrata), Philadelphia (Carto), NYC / Chicago / San Francisco
+/ Austin / Kansas City / Cincinnati / Seattle / Dallas / Los Angeles (Socrata), Boston (CKAN).
+Tabs 7–8 form a
 dedicated **"Compare cities"** group, kept separate from the within-Baltimore six-tab arc.
 
 **New Phase 5 dependencies:** a per-city ingestion adapter layer (`src/balt311/cities/`), one
