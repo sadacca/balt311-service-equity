@@ -932,7 +932,10 @@ one continuous scale, not two disconnected exercises.
 > that no longer resolves (a renamed/dropped column). Writes JSON to `data/audit/` (gitignored —
 > diagnostic, not app-consumed data, per the `data/processed/` "app reads only from here"
 > convention). **Deliberately not wired into any Streamlit tab or component** — internal/CI
-> tooling only, run on demand or as a future CI step, not a user-facing feature.
+> tooling only, run on demand or as a future CI step, not a user-facing feature. Runnable via
+> `workflow_dispatch` (`.github/workflows/peer_city_audit.yml`, "Cross-city data audit
+> (internal)") with `year`/`cities`/`live_schema` inputs; the report is uploaded as a workflow
+> artifact, not committed (it's diagnostic, not app data).
 
 ---
 

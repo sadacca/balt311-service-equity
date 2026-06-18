@@ -208,6 +208,8 @@ src/balt311/
   peer_city_backfill.yml          # Cross-city metrics, multi-year sequential (Phase 5)
   peer_city_matrix.yml            # Cross-city metrics, one job PER CITY in parallel + single merge/commit (Phase 5)
   peer_city_equity.yml            # Per-city tract median income, income-only (Phase 5.5-1)
+  peer_city_audit.yml             # Internal data audit, workflow_dispatch — uploads report as
+                                  #   an artifact (not committed); not a user-facing feature
 
 data/processed/                   # Committed — app reads only from here
 data/raw/                         # Gitignored
