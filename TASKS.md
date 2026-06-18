@@ -349,12 +349,14 @@ Data is already in place (Stage 0 ✅). Build roughly in final tab order so each
 
 ---
 
-## Phase 5 — Cross-Municipality Comparison *(v2.0.0 target)*
+## Phase 5 — Cross-Municipality Comparison *(v2.0.0 — core scope shipped)*
 
 **Goal**: place Baltimore's 311 volume, service delivery, and service equity in context
-against peer and leading cities, with **Baltimore as the fixed reference**. Once shipped,
-Baltimore's numbers become interpretable as strong, average, or lagging rather than raw
-figures. The defining feature of **version 2.0.0**.
+against peer and leading cities, with **Baltimore as the fixed reference**. Shipped:
+Baltimore's numbers are now interpretable as strong, average, or lagging rather than raw
+figures, across all three live cross-city tabs (Delivery, Service Equity, Maturity Index).
+Open sub-phases (5.7 within-type comparison, 5.9 full 40-metro rankings, doc checkpoints) are
+explicitly stretch/follow-on, not core scope.
 
 > **Feasibility & evidence**: the city evaluation matrix, API-maturity assessment,
 > success-likelihood ratings, adapter-family sequencing, and normalization rules live in
@@ -686,7 +688,7 @@ validates the whole cross-city pipeline that equity then reuses.
 
 ---
 
-### Phase 5.6 — Cross-City Service Equity tab (cohort)
+### Phase 5.6 — Cross-City Service Equity tab (cohort) *(✅ done — live; only P5.6-6 race score open, deferred future work)*
 
 - [x] **P5.6-1: Equity comparison component** — `app/components/city_equity.py`. Plots each
   city's **mix-adjusted income-based** overlap score (the primary metric, per the 5.5 scope
@@ -761,7 +763,7 @@ validates the whole cross-city pipeline that equity then reuses.
 
 ---
 
-### Phase 5.8 — 311 Open-Data Maturity Index *(planned enhancement)*
+### Phase 5.8 — 311 Open-Data Maturity Index *(✅ done — live; only P5.8-5 doc checkpoint open)*
 
 **Goal**: rank Baltimore's 311 *open-data publishing maturity* against the set of US cities that
 publish 311 open data — and, just as importantly, **credit** the cities (Baltimore foremost)
@@ -812,7 +814,7 @@ index is built to show both truths honestly.
 
 ---
 
-## Phase 5.9 — Full numerical municipal rankings (top-40 metros) *(planned enhancement)*
+## Phase 5.9 — Full numerical municipal rankings (top-40 metros) *(mostly done — league table live; P5.9-4 partial, P5.9-5/5.9-6 open)*
 
 **Goal**: deepen the maturity index from today's **6-metro detailed scorecard + a coarse
 ✅/🟡/❔ census** into a **full numerical ranking of all 40 largest US metros** (plus the
@@ -1019,4 +1021,4 @@ These improvements address specific persona gaps identified in the June 2026 nee
 
 ---
 
-*Last updated: June 2026. Mark items `[x]` when done.*
+*Last updated: 2026-06-18. Mark items `[x]` when done. Status as of this update: all six within-Baltimore tabs and all three cross-city tabs (Delivery, Service Equity, Maturity Index) are live — nominally through all initially drafted scope. Open work is explicitly deferred/stretch (Phase 5.7 within-type comparison, Phase 5.9 full 40-metro rankings, race-based cross-city equity score, doc checkpoints) or new follow-on tooling (the cross-city data audit, P4e Equity-tab surfacing, Phase 4b/6).*
