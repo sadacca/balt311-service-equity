@@ -1,0 +1,52 @@
+name: Cross-city data audit (internal)
+
+on:
+  workflow_dispatch:
+    inputs:
+      year:
+        description: "Year to audit (required for the live-schema check)"
+        required: false
+        default: "2025"
+        type: string
+      cities:
+        description: "Comma-separated city slugs (e.g. 'baltimore,dc')"
+        required: false
+        default: "baltimore,dc,philadelphia,nyc,chicago,sf,austin,nashville,kansas_city,boston,memphis,cincinnati,seattle,dallas,los_angeles"
+        type: string
+      live_schema:
+        description: "Also run Tier 2: live raw-schema mis-mapping check (network)"
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  audit:
+    name: "Cross-city audit — ${{ inputs.cities }}"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pandas pyarrow
+
+      - name: Run audit
+        run: |
+          FLAGS=""
+          [ "${{ inputs.live_schema }}" = "true" ] && FLAGS="$FLAGS --live-schema"
+          python scripts/audit_peer_city_data.py --year "${{ inputs.year }}" --cities "${{ inputs.cities }}" $FLAGS
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: peer-city-audit-${{ inputs.year }}
+          path: data/audit/
+          retention-days: 30
