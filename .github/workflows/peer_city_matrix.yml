@@ -9,6 +9,10 @@ name: Parallel cross-city 311 backfill (Phase 5)
 # Matrix jobs always (re)fetch their city for the requested years (each starts from an empty
 # per-city file). Use the sequential backfill workflow when you want smart "skip what's
 # already present" reuse instead.
+#
+# Each (city, year) fetch is wrapped in `timeout` (per_year_timeout_minutes, default 45m) —
+# a single slow/hanging portal year is killed and skipped rather than consuming the whole
+# 180-minute job-level budget and silently losing every other year for that city.
 
 concurrency:
   group: peer-city-data        # shares the lane with the other peer-city workflows (no races)
@@ -37,6 +41,11 @@ on:
         required: false
         default: false
         type: boolean
+      per_year_timeout_minutes:
+        description: "Max minutes for a single (city, year) fetch before it's killed and skipped"
+        required: false
+        default: "45"
+        type: string
 
 jobs:
   setup:
@@ -85,12 +94,13 @@ jobs:
           [ "${{ inputs.force }}" = "true" ] && FLAGS="$FLAGS --force"
           for year in ${{ inputs.years }}; do
             echo "===== ${{ matrix.city }} · $year ====="
-            python scripts/peer_city.py --year "$year" --cities "${{ matrix.city }}" \
+            timeout "${{ inputs.per_year_timeout_minutes }}m" \
+              python scripts/peer_city.py --year "$year" --cities "${{ matrix.city }}" \
               --metrics-path "out/${{ matrix.city }}.parquet" \
               --meta-path "out/${{ matrix.city }}.meta.csv" \
               --tract-srtype-path "out/${{ matrix.city }}.tract_srtype.parquet" \
               --tract-path "out/${{ matrix.city }}.tract.parquet" $FLAGS \
-              || echo "WARNING: ${{ matrix.city }} $year failed (rc=$?) — continuing"
+              || echo "WARNING: ${{ matrix.city }} $year timed out after ${{ inputs.per_year_timeout_minutes }}m or failed (rc=$?) — continuing"
           done
 
       - uses: actions/upload-artifact@v4

@@ -673,6 +673,17 @@ validates the whole cross-city pipeline that equity then reuses.
 > workflow before that merge re-runs the old code (no tract output, no Socrata fallback),
 > which is consistent with why a prior parallel-backfill run produced no tract×SRType data.
 
+> **Per-year timeout in `peer_city_matrix.yml` (as of 2026-06-17):** DC's portal started hanging
+> mid-fetch, and the fetch job's `for year in ...; do python scripts/peer_city.py ...; done` loop
+> had no per-iteration timeout — only the job-level `timeout-minutes: 180` applied, so one slow
+> year could burn the whole budget and lose every other year for that city. Each year's invocation
+> is now wrapped in `timeout "${{ inputs.per_year_timeout_minutes }}m" ...` (new `workflow_dispatch`
+> input, default `45`) — a hung year is killed and logged as a warning, and the loop moves on to
+> the next year instead of stalling the whole matrix job. The sequential `peer_city.yml` /
+> `peer_city_backfill.yml` workflows have an analogous structural gap (one un-timed-out
+> `peer_city.py` call per year, covering all cities) but weren't touched here — out of scope for
+> this fix, which was specifically about the parallel matrix workflow.
+
 ---
 
 ### Phase 5.6 — Cross-City Service Equity tab (cohort)
