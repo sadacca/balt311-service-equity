@@ -883,6 +883,37 @@ one continuous scale, not two disconnected exercises.
   full-ranking methodology, the per-dimension anchors, the data-integrity flag (P5.9-6), and the
   headline ("N of 40 fully scoreable; Baltimore ranks #X of the scoreable set").
 
+> **Finding (2026-06-18): `field_completeness` scores schema presence, not fill rate — caught by
+> Tab 8's first real CI run.** Inspecting `peer_city_equity.parquet` after the first successful
+> `peer_city_equity.yml` run surfaced that some cohort cities can't be scored on one or both
+> equity metrics:
+> - **Chicago** scores `closure_rate` fine (n_srtypes_scored ≈ 74–80/year) but `median_days_to_
+>   close` is NaN almost everywhere at the tract×SRType grain. Not a bug — confirmed against the
+>   pooled `peer_city_metrics.parquet`, where Chicago's median ≈ 0.000012 days: a `closed_date`
+>   column exists in Chicago's schema and is hand-scored `field_completeness=3` in
+>   `score_maturity.py`'s `ANCHORS` for it (justified there as *"created_date, closed_date,
+>   lat/lon"*), but in practice that column is populated for only a sliver of records even among
+>   ones marked closed via `status` — the same auto-close-adjacent contamination pattern already
+>   flagged for NYC/Chicago elsewhere in this doc. The pipeline correctly drops records with no
+>   real duration rather than fabricate a 0-day close (`peer_metrics.py`'s `_aggregate_tract`/
+>   `compute_city_metrics`), so there's too little real data per tract×SRType cell to score a
+>   median — schema presence ≠ fill rate.
+> - **Memphis** goes further and fails to score `closure_rate` itself for 2024/2025
+>   (`n_srtypes_scored=0`) — it migrated off Socrata to a weaker-tracking ArcGIS FeatureServer
+>   (pooled closure rate 0–8%, implausible), a genuine maturity gap rather than a quirk.
+>
+> **Why this belongs in the Maturity Index, and currently doesn't, cleanly:** `field_completeness`
+> (rubric dimension in `score_maturity.py`/`maturity_index.py`) asks only whether a core field
+> exists in the published schema, not whether it's reliably populated — exactly the gap that let
+> Chicago score a 3 despite the empirical fill-rate problem above. A real fill-rate signal already
+> exists in data we fetch (the NaN-rate on `median_days_to_close`, `pct_same_day_close`) but isn't
+> folded into the score. **Action taken now:** added a caveat to `maturity_index.py`'s "Three
+> standing caveats" expander (now four) naming this limitation explicitly with the Chicago example,
+> so a reader isn't misled by the 3/3 score. **Not yet done** (deferred, scope decision pending):
+> actually re-deriving `field_completeness` from the fetched fill-rate signal — would extend
+> P5.9-4's schema-probe work or fold into P5.9-6's plausibility flag, rather than being a one-off
+> anchor edit, since the same gap likely affects other cohort cities once probed.
+
 ---
 
 ## Phase 6 — Seasonality Tab *(Long-term)*

@@ -301,6 +301,7 @@ These gaps limit the analysis but do not block it. They are documented here to s
 | No cost-of-service field | Cannot compute cost equity across neighborhoods | Add estimated labor cost by request type |
 | No source channel field | **Partially resolved**: `MethodReceived` field in raw data distinguishes Phone/API/Mail/Email (resident-initiated) from System/Internal (staff/proactive). Citizen-initiated subset computable and shown as sub-row in KPI bar and second trace in time series. Full source analysis tab (P4c) remains future work. | Add `request_source` field (phone, app, staff) |
 | No staff-to-district assignment data | Cannot normalize by inspector capacity | Publish district-level staffing counts |
+| **Cross-city**: a close-timestamp field can exist in a portal's schema but be unreliably filled | Chicago publishes `closed_date` (credited `field_completeness=3` in the Maturity Index rubric) yet that column is null for nearly all records even among ones marked closed by status — so its `closure_rate` scores fine but `median_days_to_close` can't be computed at the tract×SRType grain (Tab 8). The rubric currently measures field *presence*, not fill *rate*, which overstates maturity for cities like this. Found 2026-06-18 via the first real run of `peer_city_equity.yml` — see `TASKS.md` P5.9-5 note. | Either the city reliably populates the close timestamp it already publishes, or the rubric is extended to score fill rate, not just presence (tracked as deferred scope in `TASKS.md`, not yet implemented) |
 
 ---
 
