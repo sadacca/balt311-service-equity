@@ -14,7 +14,7 @@ Four comparison axes structure the analysis:
 3. **Cross-municipal** — how does Baltimore compare to peer cities on the same metrics?
 4. **Equity** — does service quality differ systematically by race or income of the requesting neighborhood?
 
-The equity lens is not the only lens — operational clarity for managers is equally important and is the first tab.
+Both within Baltimore and cross city analysis are live:
 
 **[Live dashboard → balt311equity.streamlit.app](https://balt311equity.streamlit.app/)**
 
