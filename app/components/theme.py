@@ -86,7 +86,8 @@ EMBEDDING_SCALE = "Viridis"         # area-embedding continuous color
 MATURITY_SCALE = "RdYlGn"           # 0–3 rubric scores
 
 # ── Typography ─────────────────────────────────────────────────────────────────
-FONT_FAMILY = "Inter, Source Sans Pro, sans-serif"  # Inter (loaded by inject_global_css), system fallback
+FONT_FAMILY = "Inter, Source Sans Pro, sans-serif"  # body / charts — Inter (loaded by inject_global_css)
+DISPLAY_FAMILY = "Space Grotesk, Inter, sans-serif"  # headlines / masthead — bold editorial display sans
 FONT_SIZE = 12
 LEGEND_FONT_SIZE = 11
 
@@ -143,7 +144,7 @@ def notice_unavailable(msg: str) -> None:
 # Python color tokens above; keep the two in sync.
 _GLOBAL_CSS = f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap');
 
 :root {{
     --primary: {PRIMARY};
@@ -168,10 +169,17 @@ html, body, [class*="css"], button, input, textarea, select {{
 [data-testid="stHeader"] {{ background: transparent; }}
 [data-testid="stToolbar"] {{ right: 0.5rem; }}
 
-/* Headings — tight tracking + deep-navy ink (Stripe restraint). */
-h1, h2, h3 {{ color: var(--ink); letter-spacing: -0.02em; }}
+/* Headings — Space Grotesk editorial display face, bigger confident scale, deep-navy
+   ink. Body text stays Inter (set above) for legibility; only headlines get the display
+   face. (The masthead headline sets its own inline Space Grotesk + white color.) */
+h1, h2, h3 {{
+    font-family: 'Space Grotesk', 'Inter', sans-serif !important;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+}}
 h1 {{ font-weight: 700; }}
-h2, h3 {{ font-weight: 600; }}
+h2 {{ font-weight: 700; font-size: 1.55rem; }}
+h3 {{ font-weight: 600; font-size: 1.18rem; }}
 
 /* Cards — st.metric and bordered containers get a soft rounded surface
    (Google-Health calm cards: hairline border + barely-there shadow). Metrics get a
@@ -195,6 +203,18 @@ h2, h3 {{ font-weight: 600; }}
 /* Airy metric value weight. */
 [data-testid="stMetricValue"] {{ font-weight: 600; color: var(--ink); font-size: 1.9rem; }}
 [data-testid="stMetricLabel"] {{ color: var(--muted-ink); }}
+/* Delta as a rounded chip/pill (keeps Streamlit's up/down color; off-deltas read neutral). */
+[data-testid="stMetricDelta"] {{
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    margin-top: 4px;
+    padding: 1px 9px;
+    border-radius: 999px;
+    background: rgba(10,37,64,.06);
+    font-size: 0.82rem;
+    font-weight: 600;
+}}
 
 /* Horizontal radios (year, geo toggle) → modern rounded pills. */
 div[role="radiogroup"] label {{
@@ -269,8 +289,38 @@ def hero_banner(title: str, tagline: str) -> str:
 """
 
 
+def masthead(kicker: str, title: str, tagline: str) -> str:
+    """Return a bold full-width editorial masthead band (Reuters/Upshot feature-top feel).
+
+    A solid deep-ink → blue gradient band with a soft brand-red glow in the corner, an
+    uppercase letter-spaced kicker, a large Space Grotesk headline, and a tagline — all
+    light-on-dark. Being solid, it also sidesteps the transparent-toolbar seam. Pure CSS,
+    no image/canvas/animation. Render with ``st.markdown(theme.masthead(...), unsafe_allow_html=True)``.
+    """
+    c0, _, c2 = HALO
+    glow = f"radial-gradient(closest-side, {_rgba(c2, 0.45)}, transparent 75%)"
+    return f"""
+<div style="position:relative; margin:0 0 1.5rem 0; padding:1.7rem 1.9rem 1.8rem;
+     border-radius:16px; overflow:hidden;
+     background:linear-gradient(120deg, {INK} 0%, #123A63 48%, {c0} 100%);
+     box-shadow:0 6px 22px rgba(10,37,64,.18);">
+  <div style="position:absolute; top:-70px; right:-50px; width:360px; height:220px;
+       background:{glow}; filter:blur(34px); z-index:0; pointer-events:none;"></div>
+  <div style="position:relative; z-index:1;">
+    <div style="font-family:{DISPLAY_FAMILY}; font-weight:700; font-size:0.76rem;
+         letter-spacing:0.18em; text-transform:uppercase; color:rgba(176,202,234,0.95);">{kicker}</div>
+    <h1 style="font-family:{DISPLAY_FAMILY}; margin:0.4rem 0 0; color:#ffffff;
+         font-size:2.7rem; line-height:1.04; font-weight:700; letter-spacing:-0.01em;
+         -webkit-text-fill-color:#ffffff;">{title}</h1>
+    <p style="margin:0.6rem 0 0; color:rgba(255,255,255,0.80); font-size:1.05rem;
+         max-width:700px;">{tagline}</p>
+  </div>
+</div>
+"""
+
+
 def _rgba(hex_color: str, alpha: float) -> str:
-    """'#RRGGBB' + alpha -> 'rgba(r, g, b, a)' for the hero halo gradient stops."""
+    """'#RRGGBB' + alpha -> 'rgba(r, g, b, a)' for the hero/masthead gradient stops."""
     h = hex_color.lstrip("#")
     r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
     return f"rgba({r}, {g}, {b}, {alpha})"

@@ -195,10 +195,11 @@ years = available_years(geo_key)
 # the bare st.title. Year is global to both groups (cross-city data is also city × year)
 # and sits directly beneath as pill-styled year controls.
 st.markdown(
-    theme.hero_banner(
-        "Baltimore 311 Service Equity",
-        "Does your neighborhood affect how quickly the city responds when you call 311? "
-        "A decade of service data — 2016 to 2025 — read by neighborhood.",
+    theme.masthead(
+        "Baltimore · 311 Service Equity",
+        "Does your block change the wait?",
+        "A decade of city service data — 2016 to 2025 — read by neighborhood: who calls, "
+        "from where, and how fast Baltimore responds.",
     ),
     unsafe_allow_html=True,
 )
