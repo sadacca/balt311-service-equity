@@ -5,6 +5,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+from components import theme
+
 
 METRIC_OPTIONS: dict[str, str] = {
     "Median days to close": "median_days_to_close",
@@ -30,7 +32,7 @@ def build_choropleth(
 ) -> go.Figure:
     valid_vals = df[metric_col].dropna()
     if sequential:
-        colorscale = "Blues"
+        colorscale = theme.SEQUENTIAL_SCALE
         midpoint = None
         data_max = float(valid_vals.max()) if not valid_vals.empty else 1.0
         range_color = [0, data_max]
@@ -45,14 +47,14 @@ def build_choropleth(
         # the high end; `RdBu_r` is the reverse.
         if metric_col == "median_days_to_close":
             # Higher days = slower = worse → red at the high end.
-            colorscale = "RdBu_r"
+            colorscale = theme.DIVERGING_WORSE_HIGH
             colorbar_ticks = {
                 "tickvals": [data_min, data_mid, data_max],
                 "ticktext": ["Shorter wait", "City median", "Longer wait"],
             }
         else:
             # Closure / on-time rate, requests-per-1k: higher = better → red at the low end.
-            colorscale = "RdBu"
+            colorscale = theme.DIVERGING_BETTER_HIGH
             colorbar_ticks = {
                 "tickvals": [data_min, data_mid, data_max],
                 "ticktext": ["Lower", "City median", "Higher"],
@@ -77,6 +79,7 @@ def build_choropleth(
     fig.update_layout(
         margin={"r": 0, "t": 0, "l": 0, "b": 55},
         height=580,
+        font={"family": theme.FONT_FAMILY, "size": theme.FONT_SIZE},
         coloraxis_colorbar=dict(
             orientation="h",
             x=0.5,

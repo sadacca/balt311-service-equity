@@ -28,6 +28,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+from components import theme
 # Reuse the canonical per-type scoring (cached) and the box-strip distribution
 # comparison rather than re-implementing either — keeps this tab's numbers
 # identical to Tab 5's and its distribution plots identical to the Equity tab's.
@@ -68,7 +69,7 @@ _RANK_TOP_N = 20
 # coefficient is per +$10k rather than a near-zero per-dollar figure.
 _REG_MIN_TYPE_ROWS = 25
 
-_DIM_COLORS = {"Race": "#8B2020", "Income": "#1F4E8C"}
+_DIM_COLORS = theme.DIM_COLORS
 
 
 def _wmean(values: pd.Series, weights: pd.Series) -> float:
@@ -118,22 +119,20 @@ def _short_label(srtype: str) -> str:
 def _add_score_bands(fig: go.Figure) -> None:
     """Green/amber/red overlap-score threshold bands, drawn behind the data — same
     convention and thresholds as the other equity tabs."""
-    fig.add_hrect(y0=0.7, y1=1.0, fillcolor="green", opacity=0.06, line_width=0)
-    fig.add_hrect(y0=0.4, y1=0.7, fillcolor="orange", opacity=0.06, line_width=0)
-    fig.add_hrect(y0=0.0, y1=0.4, fillcolor="red", opacity=0.06, line_width=0)
+    fig.add_hrect(y0=0.7, y1=1.0, fillcolor=theme.SCORE_GREEN, opacity=0.06, line_width=0)
+    fig.add_hrect(y0=0.4, y1=0.7, fillcolor=theme.SCORE_AMBER, opacity=0.06, line_width=0)
+    fig.add_hrect(y0=0.0, y1=0.4, fillcolor=theme.SCORE_RED, opacity=0.06, line_width=0)
 
 
 def _score_layout(height: int) -> dict:
     """Shared layout for the equity-score line charts — fixed [0,1] axis (scores are
     bounded) and percent formatting."""
-    return dict(
+    return theme.base_layout(
         height=height,
         margin={"t": 8, "b": 8, "l": 55, "r": 8},
         xaxis=dict(title="Year", dtick=1),
-        yaxis=dict(title="Equity score", range=[0, 1], tickformat=".0%", gridcolor="#eeeeee"),
-        plot_bgcolor="white", paper_bgcolor="white",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
-                    font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
+        yaxis=dict(title="Equity score", range=[0, 1], tickformat=".0%", gridcolor=theme.GRID),
+        legend=theme.LEGEND_H,
     )
 
 
@@ -217,8 +216,8 @@ def _norm_trend_fig(trend: pd.DataFrame, dimension: str, year: int) -> go.Figure
     if not raw.empty:
         fig.add_trace(go.Scatter(
             x=raw["year"], y=raw["score"], mode="lines+markers", name="Raw (citywide)",
-            line=dict(width=2, dash="dash", color="#999999"),
-            marker=dict(size=6, color="#999999", symbol="diamond"),
+            line=dict(width=2, dash="dash", color=theme.REF_LINE),
+            marker=dict(size=6, color=theme.REF_LINE, symbol="diamond"),
             hovertemplate="<b>Raw</b><br>%{x}: %{y:.0%}<extra></extra>",
         ))
     adj = sub[sub["kind"] == "Mix-adjusted"].dropna(subset=["score"]).sort_values("year")
@@ -229,7 +228,7 @@ def _norm_trend_fig(trend: pd.DataFrame, dimension: str, year: int) -> go.Figure
             line=dict(width=2.4, color=color), marker=dict(size=7, color=color),
             hovertemplate="<b>Mix-adjusted</b><br>%{x}: %{y:.0%}<extra></extra>",
         ))
-    fig.add_vline(x=year, line_width=1, line_dash="dot", line_color="#999999")
+    fig.add_vline(x=year, line_width=1, line_dash="dot", line_color=theme.REF_LINE)
     fig.update_layout(**_score_layout(300))
     return fig
 
@@ -290,7 +289,7 @@ def _residual_choropleth_fig(
     m = m or 1.0
     # RdBu: low→red, high→blue. For a higher-is-better metric a positive residual is
     # good, so RdBu already puts it on blue. For a lower-is-better metric flip it.
-    colorscale = "RdBu" if higher_better else "RdBu_r"
+    colorscale = theme.DIVERGING_BETTER_HIGH if higher_better else theme.DIVERGING_WORSE_HIGH
     better_at_high = higher_better  # whether +residual is the "better" end
     ticktext = (
         ["Worse than city", "On par", "Better than city"]
@@ -308,6 +307,7 @@ def _residual_choropleth_fig(
     )
     fig.update_layout(
         margin={"r": 0, "t": 0, "l": 0, "b": 55}, height=560,
+        font={"family": theme.FONT_FAMILY, "size": theme.FONT_SIZE},
         coloraxis_colorbar=dict(
             orientation="h", x=0.5, xanchor="center", y=-0.04, yanchor="top",
             thickness=12, len=0.85, title=dict(text=f"{metric_label} vs. city norm", side="top"),
@@ -380,7 +380,7 @@ def _raw_adjusted_scatter_fig(
     fig = px.scatter(
         df, x="raw", y="adjusted",
         color=color_col,
-        color_continuous_scale="Viridis" if color_col else None,
+        color_continuous_scale=theme.EMBEDDING_SCALE if color_col else None,
         size="volume", size_max=22,
         hover_name="label" if "label" in df.columns else "geoid",
         hover_data={
@@ -421,16 +421,15 @@ def _raw_adjusted_scatter_fig(
 
     fig.add_trace(go.Scatter(
         x=[lo, hi], y=[lo, hi], mode="lines",
-        line=dict(color="#888888", width=1, dash="dash"),
+        line=dict(color=theme.REF_LINE, width=1, dash="dash"),
         name="Mix had no effect", hoverinfo="skip", showlegend=False,
     ))
-    fig.update_layout(
+    fig.update_layout(**theme.base_layout(
         height=460, margin={"t": 8, "b": 8, "l": 8, "r": 8},
-        plot_bgcolor="white", paper_bgcolor="white",
-        xaxis=dict(gridcolor="#eeeeee", tickformat=fmt, range=[lo, hi]),
-        yaxis=dict(gridcolor="#eeeeee", tickformat=fmt, range=[lo, hi]),
+        xaxis=dict(gridcolor=theme.GRID, tickformat=fmt, range=[lo, hi]),
+        yaxis=dict(gridcolor=theme.GRID, tickformat=fmt, range=[lo, hi]),
         coloraxis_colorbar=dict(title="Median<br>income", tickprefix="$", tickformat=",.0f"),
-    )
+    ))
     return fig
 
 
@@ -463,20 +462,20 @@ def _ranking_fig(ranked: pd.DataFrame, dimension: str) -> go.Figure:
     labels = [_short_label(s) for s in d["SRType"]]
     colors = [score_label(v)[1] for v in d[dimension]]
     fig = go.Figure()
-    for x0, x1, c in [(0.7, 1.0, "green"), (0.4, 0.7, "orange"), (0.0, 0.4, "red")]:
+    for x0, x1, c in [(0.7, 1.0, theme.SCORE_GREEN), (0.4, 0.7, theme.SCORE_AMBER), (0.0, 0.4, theme.SCORE_RED)]:
         fig.add_vrect(x0=x0, x1=x1, fillcolor=c, opacity=0.05, line_width=0)
     fig.add_trace(go.Scatter(
         x=d[dimension], y=labels, mode="markers",
-        marker=dict(size=11, color=colors, line=dict(width=1, color="#444444")),
+        marker=dict(size=11, color=colors, line=dict(width=1, color=theme.MARKER_LINE)),
         hovertemplate="<b>%{y}</b><br>" + dimension + " equity score: %{x:.0%}<extra></extra>",
     ))
-    fig.update_layout(
+    fig.update_layout(**theme.base_layout(
         height=max(280, 26 * len(labels) + 60),
         margin={"t": 8, "b": 8, "l": 8, "r": 8},
-        xaxis=dict(title=f"{dimension}-based equity score", range=[0, 1], tickformat=".0%", gridcolor="#eeeeee"),
+        xaxis=dict(title=f"{dimension}-based equity score", range=[0, 1], tickformat=".0%", gridcolor=theme.GRID),
         yaxis=dict(title=None, automargin=True),
-        plot_bgcolor="white", paper_bgcolor="white", showlegend=False,
-    )
+        showlegend=False,
+    ))
     return fig
 
 
@@ -609,10 +608,10 @@ def _coef_fig(coef: pd.DataFrame) -> go.Figure:
     """Forest plot of each predictor's coefficient with its 95% CI, on the log-days
     scale; a dashed zero line marks 'no effect'."""
     fig = go.Figure()
-    fig.add_vline(x=0, line_dash="dash", line_color="#999999", line_width=1)
+    fig.add_vline(x=0, line_dash="dash", line_color=theme.REF_LINE, line_width=1)
     for _, r in coef.iterrows():
         sig = r["pvalue"] < 0.05
-        color = "#d73027" if sig else "#999999"
+        color = theme.BRAND if sig else theme.REF_LINE
         fig.add_trace(go.Scatter(
             x=[r["beta"]], y=[r["term"]],
             error_x=dict(
@@ -627,12 +626,11 @@ def _coef_fig(coef: pd.DataFrame) -> go.Figure:
             ),
             showlegend=False,
         ))
-    fig.update_layout(
+    fig.update_layout(**theme.base_layout(
         height=200, margin={"t": 8, "b": 8, "l": 8, "r": 8},
-        xaxis=dict(title="Coefficient on log(1 + days to close)", gridcolor="#eeeeee", zeroline=False),
+        xaxis=dict(title="Coefficient on log(1 + days to close)", gridcolor=theme.GRID, zeroline=False),
         yaxis=dict(title=None, automargin=True),
-        plot_bgcolor="white", paper_bgcolor="white",
-    )
+    ))
     return fig
 
 
@@ -708,7 +706,7 @@ def render_equity_adjusted(
         )
 
     if demographics is None or demographics.empty:
-        st.info(
+        theme.notice_pending(
             f"Demographic data unavailable — `{geo_key}_demographics.csv` not found in "
             "`data/processed/`. Re-run the pipeline to generate it."
         )
@@ -716,7 +714,7 @@ def render_equity_adjusted(
 
     geo_hist = load_geo_srtype_history(data_dir, geo_key)
     if geo_hist.empty:
-        st.info(
+        theme.notice_pending(
             "Geo × SRType data unavailable — run "
             "`pipeline.py --stage srtype --year <year>` to generate it."
         )
@@ -775,7 +773,7 @@ def render_equity_adjusted(
 
     norm = compute_normalized_geo_metrics(data_dir, geo_key, year, metric_col)
     if norm.empty:
-        st.info(
+        theme.notice_pending(
             f"The mix-adjusted per-neighborhood view needs the **`adjusted`** pipeline "
             f"stage, which writes `{geo_key}_adjusted_metrics_{year}.parquet`. Run "
             f"`python scripts/pipeline.py --year {year} --stage adjusted` (or the backfill "
@@ -884,7 +882,7 @@ def render_equity_adjusted(
         coef, meta = compute_regression(data_dir, geo_key, demographics)
 
     if coef.empty:
-        st.info("Not enough panel data to fit the regression at this geographic level.")
+        theme.notice_unavailable("Not enough panel data to fit the regression at this geographic level.")
     else:
         c_plot, c_tbl = st.columns([3, 2])
         with c_plot:

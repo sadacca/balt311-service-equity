@@ -15,6 +15,7 @@ import streamlit as st
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import QuantileTransformer, RobustScaler
 
+from components import theme
 from components.srtype_shared import MIN_GEO_SRTYPE_N, load_geo_srtype_history
 
 _MIN_GEO_YEAR_TOTAL = 200
@@ -31,12 +32,7 @@ _SZ_TRACT = 30
 
 # Quadrant labels: UL/UR/LL/LR (upper-left, upper-right, lower-left, lower-right).
 # Avoids geographic cardinal-direction confounds — these are embedding dimensions, not compass bearings.
-_QUADRANT_COLORS = {
-    "UL": "rgba(100, 149, 237, 0.08)",
-    "UR": "rgba(60,  179, 113, 0.08)",
-    "LL": "rgba(255, 165,   0, 0.08)",
-    "LR": "rgba(218, 112, 214, 0.08)",
-}
+_QUADRANT_COLORS = theme.QUADRANT_COLORS
 _QUADRANT_ORDER = ["UL", "UR", "LL", "LR"]
 
 _PCT_COLS = {
@@ -418,11 +414,11 @@ def _add_highlight_trace(fig, emb: pd.DataFrame, search: str, year: int | None =
 
 def _top_legend_layout(is_categorical: bool) -> dict:
     if is_categorical:
-        return dict(
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        return theme.base_layout(
+            legend=theme.LEGEND_H,
             margin=dict(l=10, r=10, t=10, b=10),
         )
-    return dict(
+    return theme.base_layout(
         coloraxis_colorbar=dict(
             orientation="h", yanchor="bottom", y=1.02,
             xanchor="center", x=0.5, thickness=15, len=0.6,
@@ -562,13 +558,13 @@ def _render_quadrant_srtype_bar(
         color_discrete_sequence=px.colors.qualitative.Bold,
     )
     fig.update_yaxes(tickformat=".0%")
-    fig.update_layout(
+    fig.update_layout(**theme.base_layout(
         barmode="stack", height=440,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        legend=theme.LEGEND_H,
         margin=dict(l=10, r=10, t=10, b=10),
         yaxis_title="% of tracts",
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    ))
+    st.plotly_chart(fig, use_container_width=True, config=theme.CHART_CONFIG)
 
 
 # ── View renderers ────────────────────────────────────────────────────────────
@@ -582,7 +578,7 @@ def _render_usage_view(data_dir: Path, year: int, highlight: str = "") -> None:
 
     embedding, feature_cols, var = compute_combined_usage_embedding(data_dir)
     if embedding.empty:
-        st.info("Not enough usage history to build the embedding.")
+        theme.notice_unavailable("Not enough usage history to build the embedding.")
         return
 
     embedding = embedding.copy()
@@ -662,7 +658,7 @@ def _render_usage_view(data_dir: Path, year: int, highlight: str = "") -> None:
         hover_data=hover_data,
         labels=hover_labels,
         category_orders={"year": years_sorted},
-        color_continuous_scale="Viridis",
+        color_continuous_scale=theme.EMBEDDING_SCALE,
     )
     fig.update_traces(
         textposition="top center",
@@ -687,7 +683,7 @@ def _render_usage_view(data_dir: Path, year: int, highlight: str = "") -> None:
 
     _dedup_legend(fig)
     _add_highlight_trace(fig, display_df, highlight, year=year)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, config=theme.CHART_CONFIG)
     nsa_note = (
         f"~{round(_CSA_LABEL_FRAC * 100):.0f}% of tract NSA names labeled (min {_CSA_LABEL_MIN_PER_QUAD} per quadrant, farthest-point sampled). "
         "Hover any marker for neighborhood, quadrant, and service details."
@@ -722,7 +718,7 @@ def _render_demographic_view(data_dir: Path, year: int, highlight: str = "") -> 
 
     embedding, feature_cols, var = compute_combined_demographic_embedding(data_dir)
     if embedding.empty:
-        st.info(
+        theme.notice_pending(
             "Demographic files not found in `data/processed/`. "
             "Run `regen_demographics.yml` to generate them."
         )
@@ -828,7 +824,7 @@ def _render_demographic_view(data_dir: Path, year: int, highlight: str = "") -> 
     _add_quadrant_backgrounds(fig, x_mid, y_mid, x_range, y_range)
     _dedup_legend(fig)
     _add_highlight_trace(fig, display_df, highlight)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, config=theme.CHART_CONFIG)
     nsa_note = (
         f"~{round(_CSA_LABEL_FRAC * 100):.0f}% of tract NSA names labeled (min {_CSA_LABEL_MIN_PER_QUAD} per quadrant). "
         "Hover any marker for neighborhood, quadrant, and demographic details."

@@ -7,6 +7,7 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from components import theme
 from components.area_embedding import render_area_embedding
 from components.category_equity_explorer import render_category_equity_explorer
 from components.category_explorer import render_category_explorer
@@ -276,7 +277,7 @@ if group == "🏙️ Within Baltimore":
 
     with tab_ops:
         if not data_ready:
-            st.info(_NO_DATA_MSG)
+            theme.notice_pending(_NO_DATA_MSG)
         else:
             render_operations(
                 DATA_DIR, geo_key, year,
@@ -289,7 +290,7 @@ if group == "🏙️ Within Baltimore":
 
     with tab_cat:
         if not data_ready:
-            st.info(_NO_DATA_MSG)
+            theme.notice_pending(_NO_DATA_MSG)
         else:
             render_category_explorer(DATA_DIR, year)
 
@@ -298,7 +299,7 @@ if group == "🏙️ Within Baltimore":
 
     with tab_eq:
         if not data_ready:
-            st.info(_NO_DATA_MSG)
+            theme.notice_pending(_NO_DATA_MSG)
         else:
             render_equity(
                 DATA_DIR, geo_key, year,
@@ -311,13 +312,13 @@ if group == "🏙️ Within Baltimore":
 
     with tab_cat_eq:
         if not data_ready:
-            st.info(_NO_DATA_MSG)
+            theme.notice_pending(_NO_DATA_MSG)
         else:
             render_category_equity_explorer(DATA_DIR, demographics, geo_key, year)
 
     with tab_adj:
         if not data_ready:
-            st.info(_NO_DATA_MSG)
+            theme.notice_pending(_NO_DATA_MSG)
         else:
             # Carry over the Equity tab's metric selection so the two equity tabs stay
             # aligned; falls back to days-to-close inside the component when that metric

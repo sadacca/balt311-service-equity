@@ -12,8 +12,10 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-_BALTIMORE_COLOR = "#C8102E"   # reference city — stands out from the muted peers
-_PEER_COLOR = "#5f6368"        # dark enough that white in-bar labels stay legible
+from components import theme
+
+_BALTIMORE_COLOR = theme.BRAND   # reference city — stands out from the muted peers
+_PEER_COLOR = theme.PEER         # dark enough that white in-bar labels stay legible
 
 # label → (column, value format, higher_is_better | None for neutral)
 _METRICS: dict[str, tuple[str, str, bool | None]] = {
@@ -83,13 +85,13 @@ def _bar(df: pd.DataFrame, col: str, label: str, fmt: str, flagged: set | None =
         hovertemplate="<b>%{y}</b><br>" + label + ": %{text}<extra></extra>",
     ))
     has_outside = any(p == "outside" for p in textpositions)
-    fig.update_layout(
+    fig.update_layout(**theme.base_layout(
         height=max(130, 40 * len(d) + 56),
         bargap=0.25,
         margin={"t": 24, "b": 10, "l": 10, "r": 80 if has_outside else 10},
         xaxis_title=label, yaxis_title=None,
-        plot_bgcolor="white", paper_bgcolor="white", showlegend=False,
-    )
+        showlegend=False,
+    ))
     fig.update_yaxes(automargin=True, tickfont={"size": 12})
     if col in _RATE_COLS:
         fig.update_xaxes(tickformat=".0%", range=[0, 1])
@@ -123,14 +125,13 @@ def _trend(df_all: pd.DataFrame, cities: list[str], col: str, label: str, fmt: s
             opacity=1.0 if is_balt else 0.55,
             hovertemplate="<b>%{fullData.name}</b><br>%{x}: %{y}<extra></extra>",
         ))
-    fig.update_layout(
+    fig.update_layout(**theme.base_layout(
         height=280,
         margin={"t": 24, "b": 10, "l": 10, "r": 10},
         xaxis_title=None, yaxis_title=label,
-        plot_bgcolor="white", paper_bgcolor="white",
-        showlegend=True, legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
+        showlegend=True, legend=theme.LEGEND_H,
         hovermode="x unified",
-    )
+    ))
     fig.update_xaxes(dtick=1, tickformat="d")
     if col in _RATE_COLS:
         fig.update_yaxes(tickformat=".0%")
@@ -140,17 +141,14 @@ def _trend(df_all: pd.DataFrame, cities: list[str], col: str, label: str, fmt: s
 def render_city_delivery(data_dir: Path, year: int) -> None:
     metrics_path = data_dir / "peer_city_metrics.parquet"
     if not metrics_path.exists():
-        st.subheader("Cross-City Service Delivery")
-        st.info(
+        theme.notice_pending(
             "Cross-city metrics haven't been generated yet. Run the **Cross-city 311 "
             "metrics** GitHub Actions workflow (or `python scripts/peer_city.py --year "
-            "<year>`) to produce `peer_city_metrics.parquet`.",
-            icon="🚧",
+            "<year>`) to produce `peer_city_metrics.parquet`."
         )
         return
 
     df = pd.read_parquet(metrics_path)
-    st.subheader("Cross-City Service Delivery")
     st.caption(
         "Baltimore against peer cities on the same delivery metrics, compared as **rates**, "
         "Baltimore highlighted as the reference. City-level only — no neighborhood breakdown."

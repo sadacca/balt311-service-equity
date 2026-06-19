@@ -15,6 +15,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from components import theme
 from components.equity_trend import compute_citywide_equity_trend
 from components.srtype_shared import (
     CATEGORY_NAMES,
@@ -43,15 +44,9 @@ _CONCERN_MIN_GEO_COVERAGE = 0.5
 _CONCERN_MIN_REQUESTS_PER_YEAR = 250
 _CONCERN_MIN_YEARS = 5
 
-# Race / income trend-line colors — match the group colors `equity_distributions.py`
-# already established, so the same dimension reads consistently across both tabs.
-_DIM_COLORS = {"Race": "#8B2020", "Income": "#1F4E8C"}
-
-# Cycled through for the among-category trend lines — same palette Tab 2 uses.
-_PALETTE = [
-    "#636EFA", "#EF553B", "#00CC96", "#AB63FA", "#FFA15A",
-    "#19D3F3", "#FF6692", "#B6E880", "#FF97FF", "#FECB52",
-]
+# Race / income trend-line colors — the shared demographic-dimension tokens, so the same
+# dimension reads consistently across every equity tab.
+_DIM_COLORS = theme.DIM_COLORS
 
 
 def _short_label(srtype: str) -> str:
@@ -62,22 +57,20 @@ def _short_label(srtype: str) -> str:
 def _add_score_bands(fig: go.Figure) -> None:
     """Green/amber/red overlap-score threshold bands, drawn behind the data —
     same convention and thresholds as `equity_trend.py`'s citywide trend chart."""
-    fig.add_hrect(y0=0.7, y1=1.0, fillcolor="green",  opacity=0.06, line_width=0)
-    fig.add_hrect(y0=0.4, y1=0.7, fillcolor="orange", opacity=0.06, line_width=0)
-    fig.add_hrect(y0=0.0, y1=0.4, fillcolor="red",    opacity=0.06, line_width=0)
+    fig.add_hrect(y0=0.7, y1=1.0, fillcolor=theme.SCORE_GREEN, opacity=0.06, line_width=0)
+    fig.add_hrect(y0=0.4, y1=0.7, fillcolor=theme.SCORE_AMBER, opacity=0.06, line_width=0)
+    fig.add_hrect(y0=0.0, y1=0.4, fillcolor=theme.SCORE_RED,   opacity=0.06, line_width=0)
 
 
 def _score_layout_kwargs(height: int) -> dict:
     """Shared layout for every equity-score line chart on this tab — fixed [0,1]
     axis (scores are bounded, unlike operational metrics) and percent formatting."""
-    return dict(
+    return theme.base_layout(
         height=height,
         margin={"t": 8, "b": 8, "l": 55, "r": 8},
         xaxis=dict(title="Year", dtick=1),
-        yaxis=dict(title="Equity score", range=[0, 1], tickformat=".0%", gridcolor="#eeeeee"),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
+        yaxis=dict(title="Equity score", range=[0, 1], tickformat=".0%", gridcolor=theme.GRID),
+        legend=theme.LEGEND_H,
     )
 
 
@@ -341,7 +334,7 @@ def _multi_category_score_fig(
         if d.empty:
             continue
         label = CATEGORY_NAMES.get(cat, cat)
-        color = _PALETTE[i % len(_PALETTE)]
+        color = theme.PALETTE[i % len(theme.PALETTE)]
         fig.add_trace(go.Scatter(
             x=d["year"], y=d["score"],
             mode="lines+markers", name=cat,
@@ -355,11 +348,11 @@ def _multi_category_score_fig(
             fig.add_trace(go.Scatter(
                 x=cw["year"], y=cw["score"],
                 mode="lines+markers", name="All categories",
-                line=dict(width=2.4, dash="dash", color="#333333"),
-                marker=dict(size=7, color="#333333", symbol="diamond"),
+                line=dict(width=2.4, dash="dash", color=theme.AXIS_LINE),
+                marker=dict(size=7, color=theme.AXIS_LINE, symbol="diamond"),
                 hovertemplate="<b>All categories</b><br>%{x}: %{y:.0%}<extra></extra>",
             ))
-    fig.add_vline(x=year, line_width=1, line_dash="dot", line_color="#999999")
+    fig.add_vline(x=year, line_width=1, line_dash="dot", line_color=theme.REF_LINE)
     fig.update_layout(**_score_layout_kwargs(320))
     return fig
 
@@ -385,7 +378,7 @@ def _category_score_trend_fig(
         line=dict(color=color, width=2),
         marker=dict(
             size=[11 if y == year else 7 for y in valid["year"]],
-            color=["#d73027" if y == year else color for y in valid["year"]],
+            color=[theme.BRAND if y == year else color for y in valid["year"]],
         ),
         hovertemplate="%{x}: %{y:.0%}<extra>" + dimension + "</extra>",
     ))
@@ -395,8 +388,8 @@ def _category_score_trend_fig(
         fig.add_trace(go.Scatter(
             x=cw["year"], y=cw["score"],
             mode="lines+markers", name="All categories",
-            line=dict(width=2, dash="dash", color="#333333"),
-            marker=dict(size=6, color="#333333", symbol="diamond"),
+            line=dict(width=2, dash="dash", color=theme.AXIS_LINE),
+            marker=dict(size=6, color=theme.AXIS_LINE, symbol="diamond"),
             hovertemplate="<b>All categories</b><br>%{x}: %{y:.0%}<extra></extra>",
         ))
 
@@ -433,8 +426,8 @@ def _subtype_score_multiline_fig(
         fig.add_trace(go.Scatter(
             x=other["year"], y=other["score"],
             mode="lines+markers", name=other_label,
-            line=dict(width=2, dash="dot", color="#999999"),
-            marker=dict(size=5, color="#999999"),
+            line=dict(width=2, dash="dot", color=theme.REF_LINE),
+            marker=dict(size=5, color=theme.REF_LINE),
             hovertemplate=f"<b>{other_label}</b><br>%{{x}}: %{{y:.0%}}<extra></extra>",
         ))
 
@@ -458,17 +451,16 @@ def _grain_comparison_fig(scores: list[float], dimension: str) -> go.Figure:
         hovertemplate="<b>%{x}</b><br>%{y:.0%}<extra></extra>",
         width=0.55,
     ))
-    fig.add_hrect(y0=0.7, y1=1.16, fillcolor="green",  opacity=0.05, line_width=0)
-    fig.add_hrect(y0=0.4, y1=0.7,  fillcolor="orange", opacity=0.05, line_width=0)
-    fig.add_hrect(y0=0.0, y1=0.4,  fillcolor="red",    opacity=0.05, line_width=0)
-    fig.update_layout(
+    fig.add_hrect(y0=0.7, y1=1.16, fillcolor=theme.SCORE_GREEN, opacity=0.05, line_width=0)
+    fig.add_hrect(y0=0.4, y1=0.7,  fillcolor=theme.SCORE_AMBER, opacity=0.05, line_width=0)
+    fig.add_hrect(y0=0.0, y1=0.4,  fillcolor=theme.SCORE_RED,   opacity=0.05, line_width=0)
+    fig.update_layout(**theme.base_layout(
         height=260,
         margin={"t": 8, "b": 8, "l": 50, "r": 8},
-        yaxis=dict(title="Equity score", range=[0, 1.16], tickformat=".0%", gridcolor="#eeeeee"),
+        yaxis=dict(title="Equity score", range=[0, 1.16], tickformat=".0%", gridcolor=theme.GRID),
         xaxis=dict(title=None),
-        plot_bgcolor="white", paper_bgcolor="white",
         showlegend=False,
-    )
+    ))
     return fig
 
 
@@ -481,28 +473,27 @@ def _concern_distribution_fig(eligible_scores: list[float], concern_scores: list
     bins — shows whether the most concerning types are a distinct, separated tail or
     just the bottom edge of one continuous distribution."""
     fig = go.Figure()
-    fig.add_vrect(x0=0.7, x1=1.0, fillcolor="green",  opacity=0.05, line_width=0)
-    fig.add_vrect(x0=0.4, x1=0.7, fillcolor="orange", opacity=0.05, line_width=0)
-    fig.add_vrect(x0=0.0, x1=0.4, fillcolor="red",    opacity=0.05, line_width=0)
+    fig.add_vrect(x0=0.7, x1=1.0, fillcolor=theme.SCORE_GREEN, opacity=0.05, line_width=0)
+    fig.add_vrect(x0=0.4, x1=0.7, fillcolor=theme.SCORE_AMBER, opacity=0.05, line_width=0)
+    fig.add_vrect(x0=0.0, x1=0.4, fillcolor=theme.SCORE_RED,   opacity=0.05, line_width=0)
     fig.add_trace(go.Histogram(
         x=eligible_scores, xbins=_CONCERN_BINS, name="All eligible types",
-        marker_color="#999999", opacity=0.65,
+        marker_color=theme.REF_LINE, opacity=0.65,
         hovertemplate="%{x}<br>%{y} type(s)<extra>All eligible types</extra>",
     ))
     fig.add_trace(go.Histogram(
         x=concern_scores, xbins=_CONCERN_BINS, name="Flagged for review",
-        marker_color="#d73027", opacity=0.85,
+        marker_color=theme.BRAND, opacity=0.85,
         hovertemplate="%{x}<br>%{y} type(s)<extra>Flagged for review</extra>",
     ))
-    fig.update_layout(
+    fig.update_layout(**theme.base_layout(
         height=240,
         barmode="overlay",
         margin={"t": 8, "b": 8, "l": 50, "r": 8},
         xaxis=dict(title=f"{dimension}-based equity score", range=[0, 1], tickformat=".0%"),
-        yaxis=dict(title="Number of service types", gridcolor="#eeeeee"),
-        plot_bgcolor="white", paper_bgcolor="white",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
-    )
+        yaxis=dict(title="Number of service types", gridcolor=theme.GRID),
+        legend=theme.LEGEND_H,
+    ))
     return fig
 
 

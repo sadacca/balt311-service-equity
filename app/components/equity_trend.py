@@ -5,16 +5,9 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from components import theme
 from components.map_view import METRIC_OPTIONS
 from components.utils import overlap_score, score_label
-
-# One color per metric, consistent across both trend charts
-_METRIC_COLORS = {
-    "Median days to close":        "#2166ac",
-    "Closure rate":                "#d73027",
-    "On-time rate":                "#1a9641",
-    "Requests per 1,000 residents": "#762a83",
-}
 
 
 @st.cache_data
@@ -64,9 +57,9 @@ def _trend_fig(trend_df: pd.DataFrame, dimension: str, metric_label: str) -> go.
     fig = go.Figure()
 
     # Threshold bands (drawn first, below the lines)
-    fig.add_hrect(y0=0.7, y1=1.0, fillcolor="green",  opacity=0.06, line_width=0)
-    fig.add_hrect(y0=0.4, y1=0.7, fillcolor="orange", opacity=0.06, line_width=0)
-    fig.add_hrect(y0=0.0, y1=0.4, fillcolor="red",    opacity=0.06, line_width=0)
+    fig.add_hrect(y0=0.7, y1=1.0, fillcolor=theme.SCORE_GREEN, opacity=0.06, line_width=0)
+    fig.add_hrect(y0=0.4, y1=0.7, fillcolor=theme.SCORE_AMBER, opacity=0.06, line_width=0)
+    fig.add_hrect(y0=0.0, y1=0.4, fillcolor=theme.SCORE_RED,   opacity=0.06, line_width=0)
 
     sub = (
         trend_df[(trend_df["dimension"] == dimension) & (trend_df["metric"] == metric_label)]
@@ -74,7 +67,7 @@ def _trend_fig(trend_df: pd.DataFrame, dimension: str, metric_label: str) -> go.
         .sort_values("year")
     )
     if not sub.empty:
-        color = _METRIC_COLORS.get(metric_label, "#666666")
+        color = theme.METRIC_COLORS.get(metric_label, theme.REF_LINE)
         fig.add_trace(go.Scatter(
             x=sub["year"],
             y=sub["score"],
@@ -85,7 +78,7 @@ def _trend_fig(trend_df: pd.DataFrame, dimension: str, metric_label: str) -> go.
             hovertemplate="%{x}: %{y:.0%}<extra>" + metric_label + "</extra>",
         ))
 
-    fig.update_layout(
+    fig.update_layout(**theme.base_layout(
         height=260,
         margin={"t": 8, "b": 8, "l": 55, "r": 8},
         showlegend=False,
@@ -93,12 +86,10 @@ def _trend_fig(trend_df: pd.DataFrame, dimension: str, metric_label: str) -> go.
             title="Equity score",
             range=[0, 1],
             tickformat=".0%",
-            gridcolor="#eeeeee",
+            gridcolor=theme.GRID,
         ),
         xaxis=dict(title="Year", dtick=1),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-    )
+    ))
     return fig
 
 
