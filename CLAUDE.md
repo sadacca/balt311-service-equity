@@ -144,7 +144,7 @@ Geo ID conventions: tract files use 11-digit GEOID strings in a `geoid` column. 
 
 ## Roadmap Summary
 
-See `TASKS.md` for full detail. Current phase status:
+See `TASKS.md` for the live open-task list (by topic) and `TASKS_ARCHIVE.md` for the full per-phase completed-work record. Current phase status:
 
 | Phase | What | Status |
 |-------|------|--------|
@@ -215,7 +215,8 @@ data/processed/                   # Committed — app reads only from here
 data/raw/                         # Gitignored
 data/interim/                     # Gitignored
 
-TASKS.md                          # Full task list and roadmap
+TASKS.md                          # Living open-task list, organized by topic
+TASKS_ARCHIVE.md                  # Completed-work + decision history (full per-phase record)
 personas.md                       # User personas and roadmap priority matrix
 requirements.md                   # Original requirements spec (living document)
 README.md                         # Public-facing documentation
