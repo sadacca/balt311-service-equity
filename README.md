@@ -1,6 +1,6 @@
 # Baltimore 311 Service Equity
 
-Baltimore's 311 system receives hundreds of thousands of resident service requests each year: potholes, bulk trash, water leaks, rodent control all open for review for over a decade. Baltimore was the first to serve up, 311 and its openness with data gives citizens and stakeholders a chance to understand service delivery in Baltimore deeper than many other metros! 
+Baltimore's 311 system receives hundreds of thousands of resident service requests each year: potholes, bulk trash, water leaks, rodent control all open for review for over a decade. Baltimore was the first to serve up 311, and Baltimore's openness with data gives citizens and stakeholders a chance to understand service delivery in Baltimore deeper than many other metros! 
 
 This repo and the paired dashbord try to shine a light on Baltimore's service to its residents (quality and equity of service delivery) and a sizing up of Baltimore vs other major metros (still ahead of the curve, making analysis like this possible).  
 
