@@ -1019,6 +1019,26 @@ These improvements address specific persona gaps identified in the June 2026 nee
 - **Geographic performance choropleth for selected SRType** — second metric toggle on the Operations tab geographic map: "View by: Volume / Closure rate / Median days." All data already in `tract_srtype_metrics`; `build_choropleth()` already accepts any metric column. This is "which neighborhoods am I serving slowly?" — the manager's most operationally useful question.
 - **SRType geographic outlier table** — when a SRType is selected, a ranked table of top-5 and bottom-5 CSAs by closure rate or median days. No pipeline change; filter the already-loaded geo×SRType DataFrame.
 
+### UI / UX Modernization & Performance *(deferred — recommendations from the June 2026 design pass)*
+
+Follow-on to the design-consistency pass (which centralized colors/typography/chart chrome into `app/components/theme.py`). Goal: make the dashboard read as slicker, more modern, and snappier. Three tiers, in recommended execution order. None are on the active roadmap yet.
+
+**Tier 1 — Quick wins (small, low-risk):**
+- **Migrate off the deprecated `width` API** — ~49 `use_container_width=True` call sites across `app/`; Streamlit removes it after 2025-12-31 (already past), so swap to `width="stretch"`. Mechanical, clears the deprecation warning, future-proofs.
+- **Slim the sidebar** — `app.py:36–167` is ~132 lines of per-tab prose (partly duplicated by each tab's intro caption). Trim to a thin nav + one `st.popover("About")`; the single most "un-modern" element today.
+- **Modernize global controls** — Year (`app.py:198`) and geo-unit (`app.py:261`) are horizontal `st.radio`; swap to `st.pills` / `st.segmented_control` to match the group selector and read as toggles, not form inputs.
+- **Help-expanders → `st.popover`** — ~19 `st.expander` blocks, many reference/"What to look for" text; inline ⓘ popovers declutter the vertical scroll.
+- **Loading affordances** — wrap the expensive renders (Areas embedding, Mix-Adjusted regression) in `st.spinner(...)`.
+
+**Tier 2 — Snappiness (performance):**
+- **Gate within-Baltimore tabs** — the group uses `st.tabs` (`app.py:273`), which executes *all six* tab bodies on every rerun (incl. the Areas PCA embedding and the regression). Apply the same `st.segmented_control` gating already used at the group level so only the active tab renders. Biggest perceived-speed lever.
+- **Lean harder on `@st.fragment`** — only 2 fragments exist today (both in `area_embedding.py`); wrapping each tab's render in a fragment confines in-tab interactions (metric change, row click) to that fragment instead of a full-script rerun.
+
+**Tier 3 — Larger redesign (modern structure + visual system):**
+- **`st.navigation` + `st.Page` (multipage)** — the modern nav idiom; gives per-view URLs, browser back/forward, and runs *only* the active page (solving Tier 2's perf problem structurally). The two-group / nine-view structure maps cleanly onto page groups. Substantially reorganizes `app.py`.
+- **Visual system via a small CSS layer + cards** — `st.container(border=True)` "cards" around KPI bars and each chart+caption; a compact sticky header band (title + year + context on one row) via a centralized `theme.inject_css()` helper; tighter type scale and reduced default vertical spacing.
+- **Custom metric cards** — replace the generic `st.metric` KPI bar with bordered, token-colored accent cards (delta as a subtle pill); all `theme.py`-driven.
+
 ---
 
-*Last updated: 2026-06-18. Mark items `[x]` when done. Status as of this update: all six within-Baltimore tabs and all three cross-city tabs (Delivery, Service Equity, Maturity Index) are live — nominally through all initially drafted scope. Open work is explicitly deferred/stretch (Phase 5.7 within-type comparison, Phase 5.9 full 40-metro rankings, race-based cross-city equity score, doc checkpoints) or new follow-on tooling (the cross-city data audit, P4e Equity-tab surfacing, Phase 4b/6).*
+*Last updated: 2026-06-19. Mark items `[x]` when done. Status as of this update: all six within-Baltimore tabs and all three cross-city tabs (Delivery, Service Equity, Maturity Index) are live — nominally through all initially drafted scope. Design-consistency pass shipped (central `theme.py` design tokens). Open work is explicitly deferred/stretch (Phase 5.7 within-type comparison, Phase 5.9 full 40-metro rankings, race-based cross-city equity score, doc checkpoints), new follow-on tooling (the cross-city data audit, P4e Equity-tab surfacing, Phase 4b/6), or the UI/UX modernization tiers above.*
