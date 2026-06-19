@@ -31,7 +31,7 @@ PEER = "#5f6368"       # peer cities — dark enough for white in-bar labels
 MUTED = "#a6a6a6"      # raw / secondary-reference series
 
 # Neutrals
-GRID = "#eeeeee"       # axis gridlines
+GRID = "#EAEFF5"       # axis gridlines (cool, low-contrast to match the surface palette)
 REF_LINE = "#999999"   # dotted reference / vlines / "all other" series
 AXIS_LINE = "#333333"  # emphasized reference line (e.g. citywide-average dashed)
 MARKER_LINE = "#444444"
@@ -168,7 +168,8 @@ h1 {{ font-weight: 700; }}
 h2, h3 {{ font-weight: 600; }}
 
 /* Cards — st.metric and bordered containers get a soft rounded surface
-   (Google-Health calm cards: hairline border + barely-there shadow). */
+   (Google-Health calm cards: hairline border + barely-there shadow). Metrics get a
+   primary accent top-edge and a subtle hover lift for more presence. */
 [data-testid="stMetric"],
 [data-testid="stVerticalBlockBorderWrapper"] {{
     background: var(--surface);
@@ -177,15 +178,35 @@ h2, h3 {{ font-weight: 600; }}
     padding: 0.9rem 1.1rem;
     box-shadow: 0 1px 2px rgba(10,37,64,.04), 0 1px 3px rgba(10,37,64,.06);
 }}
+[data-testid="stMetric"] {{
+    border-top: 3px solid var(--primary);
+    transition: box-shadow .15s ease, transform .15s ease;
+}}
+[data-testid="stMetric"]:hover {{
+    box-shadow: 0 2px 6px rgba(10,37,64,.07), 0 4px 12px rgba(10,37,64,.08);
+    transform: translateY(-1px);
+}}
 /* Airy metric value weight. */
-[data-testid="stMetricValue"] {{ font-weight: 600; color: var(--ink); }}
+[data-testid="stMetricValue"] {{ font-weight: 600; color: var(--ink); font-size: 1.9rem; }}
 [data-testid="stMetricLabel"] {{ color: var(--muted-ink); }}
 
-/* Segmented control + horizontal radios → modern rounded pill nav. */
-[data-testid="stSegmentedControl"] button,
+/* Horizontal radios (year, geo toggle) → modern rounded pills. */
 div[role="radiogroup"] label {{
     border-radius: 999px !important;
     transition: background .15s ease, color .15s ease;
+}}
+
+/* Group switcher → a prominent filled pill nav (the app's primary navigation). */
+[data-testid="stSegmentedControl"] button {{
+    border-radius: 999px !important;
+    padding: 0.45rem 1.15rem !important;
+    font-weight: 600;
+    transition: background .15s ease, color .15s ease;
+}}
+[data-testid="stSegmentedControl"] button[aria-checked="true"],
+[data-testid="stSegmentedControl"] button[aria-selected="true"] {{
+    background: var(--primary) !important;
+    color: #fff !important;
 }}
 
 /* Tab strip — lighter, with a clean primary active indicator. */
@@ -230,8 +251,11 @@ def hero_banner(title: str, tagline: str) -> str:
   <div style="position:absolute; top:-44px; left:-64px; width:420px; height:170px;
        background:{halo}; filter:blur(20px); z-index:0; pointer-events:none;"></div>
   <div style="position:relative; z-index:1;">
-    <h1 style="margin:0; font-size:2.1rem;">{title}</h1>
-    <p style="margin:0.3rem 0 0; color:{MUTED_INK}; font-size:1.02rem; max-width:660px;">
+    <h1 style="margin:0; font-size:2.35rem; line-height:1.1;
+         background:linear-gradient(100deg, {c0}, {c1} 52%, #8B2230);
+         -webkit-background-clip:text; background-clip:text;
+         color:transparent; -webkit-text-fill-color:transparent;">{title}</h1>
+    <p style="margin:0.35rem 0 0; color:{MUTED_INK}; font-size:1.02rem; max-width:660px;">
       {tagline}
     </p>
   </div>
