@@ -132,19 +132,19 @@ Two equity questions at different levels:
 
 - [x] **P4-1a: Geo × SRType metrics pipeline** — `tract_srtype_metrics_{year}.parquet` and `csa_srtype_metrics_{year}.parquet` produced by `stage_srtype`. Contains total_requests, closed_requests, closure_rate, median_days_to_close. *(Done in P3-10; listed here because it unblocks P4-1b.)*
 
-- [ ] **P4-1b: Within-type equity scoring** — for each (SRType, geo) with sufficient coverage, compute race-based and income-based Mann-Whitney overlap scores using `tract_srtype_metrics` joined to demographics. Minimum threshold: ≥5 requests per cell (UI-enforced) and ≥10 tracts per demographic group (for meaningful score). Output: `srtype_equity_{year}.parquet` — one row per SRType with overlap scores for each metric.
+- [x] **P4-1b: Within-type equity scoring** — for each (SRType, geo) with sufficient coverage, compute race-based and income-based Mann-Whitney overlap scores using `tract_srtype_metrics` joined to demographics. Minimum threshold: ≥5 requests per cell (UI-enforced) and ≥10 tracts per demographic group (for meaningful score). Output: `srtype_equity_{year}.parquet` — one row per SRType with overlap scores for each metric. *(Done — shipped via P4d-10a/10b/11b (Tab 5) and P4d-14 (Tab 6); computed in-app from `tract_srtype_metrics` rather than as a separate parquet.)*
 
-- [ ] **P4-2: Adjusted city equity score** — volume-weighted mean of within-type overlap scores across all covered SRTypes. More defensible than aggregate score for policy use.
+- [x] **P4-2: Adjusted city equity score** — volume-weighted mean of within-type overlap scores across all covered SRTypes. More defensible than aggregate score for policy use. *(Done — `compute_adjusted_scores()` in `equity_adjusted.py`, per P4d-14.)*
 
 ### App additions
 
-- [ ] **P4-3: SRType equity ranking panel** — table or dot-plot of SRTypes ranked by within-type overlap score. Color-coded by score band. Click a row to see the full distribution comparison for that type. Answers: "which services are delivered most inequitably?"
+- [x] **P4-3: SRType equity ranking panel** — table or dot-plot of SRTypes ranked by within-type overlap score. Color-coded by score band. Click a row to see the full distribution comparison for that type. Answers: "which services are delivered most inequitably?" *(Done — shipped via P4d-15 (Tab 6 ranking dot-plot) and the "Where equity review is most warranted" panel in Tab 5.)*
 
-- [ ] **P4-4: Adjusted vs. aggregate equity score display** — show both scores with explanation of the difference.
+- [x] **P4-4: Adjusted vs. aggregate equity score display** — show both scores with explanation of the difference. *(Done — raw vs. mix-adjusted shown in Tab 6 (`_norm_trend_fig`) and the three-grain comparison in Tab 5, per P4d-14.)*
 
-- [ ] **P4-5: BNIA Vital Signs direct integration for CSA demographics** — replace population-weighted ACS rollup with authoritative BNIA CSA indicators (`pct_nhblk`, `pct_nhwht`, `mhhi`). Compare against ACS rollup to validate.
+- [ ] **P4-5: BNIA Vital Signs direct integration for CSA demographics** *(deferred — future-work data-validation refinement; not active scope)* — replace population-weighted ACS rollup with authoritative BNIA CSA indicators (`pct_nhblk`, `pct_nhwht`, `mhhi`). Compare against ACS rollup to validate.
 
-- [ ] **P4-6: Regression panel** — OLS: `log(days_to_close)` ~ pct_black + median_income + SRType FE + month FE. Displays race and income coefficients with 95% CI.
+- [x] **P4-6: Regression panel** — OLS: `log(days_to_close)` ~ pct_black + median_income + SRType FE + month FE. Displays race and income coefficients with 95% CI. *(Done — shipped via P4d-16; WLS on the tract×SRType×year panel with SRType + year FE, forest plot + interpretation in Tab 6.)*
 
 ---
 
@@ -184,7 +184,7 @@ Two geographies are "peers" if they share similar inputs (demographic profile, S
 
 - [ ] **P4b-1: Area overview panel** — for any selected tract or CSA, a summary card showing all key metrics alongside citywide and peer-group benchmarks. Replaces the current summary panel's raw numbers with contextualised comparisons.
 
-- [ ] **P4b-2: Peer similarity index** — compute a simple distance metric across geographies using: demographic profile (pct_black, pct_white, median_income) + request mix (SRType share vector). Identify the N closest peers (N=5 default) for any selected geography. Computed in-app from existing processed files — no new pipeline output required for an initial version.
+- [x] **P4b-2: Peer similarity index** — compute a simple distance metric across geographies using: demographic profile (pct_black, pct_white, median_income) + request mix (SRType share vector). Identify the N closest peers (N=5 default) for any selected geography. Computed in-app from existing processed files — no new pipeline output required for an initial version. *(Done — reframed and shipped as the Areas PCA embedding (P4d-5/6, Tab 3), which renders the whole peer structure rather than a nearest-neighbor list; the literal N-nearest-peers table also shipped on the Equity tab via P4f-4 `render_peer_comparison()`. P4b-1/3/4/5 remain deferred future-work.)*
 
 - [ ] **P4b-3: Peer comparison chart** — for a selected area and its peers, show side-by-side bar or dot-plot of each outcome metric. Highlight the selected area. Helps a manager answer: "areas like mine are getting X closure rate — why am I at Y?"
 
@@ -224,7 +224,7 @@ This phase consolidates and gives concrete, ordered shape to P4-1b, P4-2, P4-3, 
 - [x] **P4d-0a: Geo×SRType + citywide SRType metrics for all years** — `srtype_metrics_{2016..2025}.parquet`, `tract_srtype_metrics_{2016..2025}.parquet`, `csa_srtype_metrics_{2016..2025}.parquet` all committed on `main` and now merged into this branch.
 - [x] **P4d-0b: Demographics CSVs** — `tract_demographics.csv`, `csa_demographics.csv` committed on `main` and merged into this branch.
 - [x] **P4d-0c: Verify outputs** — schemas confirmed as above; `total_requests` cross-check against Operations KPI figures and the TD-2 demographic spot-checks remain good due-diligence before relying on these numbers in the new tabs, but are no longer a blocker to starting the build.
-- [ ] **P4d-0d: Graceful degradation, still worth keeping** — even though all years are now present, keep the `@st.cache_data` loaders returning `None`/empty `DataFrame` on missing files (mirror `load_demographics` in `app.py`, `_load_geo_srtype_metrics` in `operations_panel.py`) with an `st.info()` pointing at the generating pipeline command — protects against future years being added to `tract_metrics_*` before their `srtype`/demographics counterparts land.
+- [x] **P4d-0d: Graceful degradation, still worth keeping** — even though all years are now present, keep the `@st.cache_data` loaders returning `None`/empty `DataFrame` on missing files (mirror `load_demographics` in `app.py`, `_load_geo_srtype_metrics` in `operations_panel.py`) with an `st.info()` pointing at the generating pipeline command — protects against future years being added to `tract_metrics_*` before their `srtype`/demographics counterparts land. *(Done — loaders return `None`/empty across the app; missing-data states route through the shared `theme.notice_pending()`/`notice_unavailable()` helpers added in the design-consistency pass.)*
 
 ### Tab 2 — Service Category Explorer, operations-only (`app/components/category_explorer.py`)
 
@@ -324,9 +324,9 @@ Data is already in place (Stage 0 ✅). Build roughly in final tab order so each
 
 ---
 
-## Phase 4f — Council Member Features *(after Phase 4e)*
+## Phase 4f — Council Member Features *(4 of 6 shipped; council-district overlay bumped to future work)*
 
-**Goal**: make the dashboard usable for a city council member or district staff who needs to understand how their district is performing — not just how the city overall is performing. The four improvements implemented in June 2026 (see verification below) give council members a multi-neighborhood comparison tool, neighborhood search, worst-performer rankings, and a peer-similarity lens. The council district overlay remains the highest-value open item.
+**Goal**: make the dashboard usable for a city council member or district staff who needs to understand how their district is performing — not just how the city overall is performing. The four improvements implemented in June 2026 (see verification below) give council members a multi-neighborhood comparison tool, neighborhood search, worst-performer rankings, and a peer-similarity lens. **The council-district overlay (P4f-5/6) is the last open Phase 4 item; it is blocked on external boundary data and has been bumped to future work (see Long-term Enhancements) — closing out Phase 4 as active scope.**
 
 ### Implemented (June 2026)
 
@@ -335,10 +335,12 @@ Data is already in place (Stage 0 ✅). Build roughly in final tab order so each
 - [x] **P4f-3: Worst-performing neighborhoods table** — ranked table of the 5 neighborhoods with the most extreme (worst) metric values, shown below the distribution charts in `equity_distributions.py`. Direction is metric-aware: longest wait for days-to-close, lowest rate for closure/on-time rate. *Done — `_render_outlier_table()` in `equity_distributions.py`.*
 - [x] **P4f-4: Peer neighborhood comparison** — when a neighborhood is selected on the Equity tab map, `render_peer_comparison()` (new function in `summary_panel.py`) computes the 3 most demographically similar geographies using Euclidean distance on normalized `pct_black`, `pct_white`, `median_income` features from the demographics CSV, then renders a comparison table: selected neighborhood (★) vs. each peer, all key metrics side by side. No pipeline change — uses already-loaded `*_demographics.csv`. *Done — `summary_panel.py` `_find_peers()`, `render_peer_comparison()`; called from `app.py` after the map columns.*
 
-### Remaining (open)
+### Bumped to future work (post-v2.0.0)
 
-- [ ] **P4f-5: Council district overlay + filter** — add Baltimore City council district boundaries as a toggle GeoJSON layer on the Equity tab choropleth; a district selector filters the distribution panels and comparison table to tracts within that district. **Blocked on data**: requires council district boundary GeoJSON (available at [Baltimore City Open Data — Council Districts](https://data.baltimorecity.gov/)) and a tract→district spatial crosswalk. Once the GeoJSON is acquired, the pipeline stage (`stage_council_crosswalk()`) can be modeled after the existing BNIA `stage_csa_boundaries()` pattern. The spatial join uses the same `geopandas.sjoin_nearest` approach as the NSA crosswalk.
-- [ ] **P4f-6: District-level equity distributions** — when a council district is selected (P4f-5), filter `equity_distributions.py` to show the race/income distribution for only the tracts in that district, with the citywide distribution overlaid as a reference. Answers: "is the equity gap in my district larger or smaller than the citywide average?"
+*Relocated to **Long-term Enhancements** — these are the only un-built Phase 4 deliverables and are blocked on external data, so they no longer sit in active scope.*
+
+- [ ] **P4f-5: Council district overlay + filter** *(future work)* — add Baltimore City council district boundaries as a toggle GeoJSON layer on the Equity tab choropleth; a district selector filters the distribution panels and comparison table to tracts within that district. **Blocked on data**: requires council district boundary GeoJSON (available at [Baltimore City Open Data — Council Districts](https://data.baltimorecity.gov/)) and a tract→district spatial crosswalk. Once the GeoJSON is acquired, the pipeline stage (`stage_council_crosswalk()`) can be modeled after the existing BNIA `stage_csa_boundaries()` pattern. The spatial join uses the same `geopandas.sjoin_nearest` approach as the NSA crosswalk.
+- [ ] **P4f-6: District-level equity distributions** *(future work)* — when a council district is selected (P4f-5), filter `equity_distributions.py` to show the race/income distribution for only the tracts in that district, with the citywide distribution overlaid as a reference. Answers: "is the equity gap in my district larger or smaller than the citywide average?"
 
 ### Verification
 
@@ -357,6 +359,13 @@ Baltimore's numbers are now interpretable as strong, average, or lagging rather 
 figures, across all three live cross-city tabs (Delivery, Service Equity, Maturity Index).
 Open sub-phases (5.7 within-type comparison, 5.9 full 40-metro rankings, doc checkpoints) are
 explicitly stretch/follow-on, not core scope.
+
+> **Phase 5 audit (2026-06-19): code + data are fully populated; only documentation checkpoints, one QA item, and explicitly-deferred/stretch work remain open.** All three cross-city tabs are live (`city_delivery.py`, `city_equity.py`, `maturity_index.py`) and **every cross-city data file is now committed in `data/processed/`** — `peer_city_metrics.parquet`, `peer_city_equity.parquet`, `peer_city_tract_income.parquet`, `peer_city_tract_srtype_metrics.parquet`, `peer_city_tract_metrics.parquet`, `peer_city_maturity.csv`, `peer_city_coverage_census.csv`, `peer_city_meta.csv`. The first successful `peer_city_*` CI runs have happened (the 2026-06-18 `field_completeness` finding below was derived from inspecting the populated `peer_city_equity.parquet`), so the **"pending CI run / data run pending" qualifiers scattered through the sub-phases below are stale**. Genuinely open after this audit:
+> - **Documentation checkpoints** — record the *actual cohort findings* into `cross_city_comparison.md` §6.x (several §6.x sections exist but still read "findings pending data"): **P5.1-6, P5.2-4, P5.3-5, P5.4-3, P5.6-5** (cohort numbers), **P5.8-5, P5.9-5**.
+> - **Per-city onboarding QA** — **P5.3-4** (spot-validate each city against its own published figure).
+> - **Deferred / stretch** — **P5.6-6** (race-based score), all of **Phase 5.7** (within-type comparison), **P5.9-4** (schema-probe depth for the ~15 derived cities — partial), **P5.9-6** (plausibility flag in the league table).
+>
+> Everything else in Phase 5 (adapters, data layer, all three tabs, equity scoring, maturity scorecard + full 45-metro league table) is shipped and verified.
 
 > **Feasibility & evidence**: the city evaluation matrix, API-maturity assessment,
 > success-likelihood ratings, adapter-family sequencing, and normalization rules live in
@@ -428,8 +437,9 @@ validates the whole cross-city pipeline that equity then reuses.
 - [x] **P5.1-4: City population for per-1k** — pull each city's ACS total population by FIPS
   (reuse the existing `ACS_POPULATION_URL` pattern with the city's state+county FIPS). Store in
   a small `peer_city_meta.csv` (city, fips, population, portal_url, closure_definition).
-- [ ] **P5.1-5: Run MVP pair** — produce `peer_city_metrics` rows for Baltimore + DC for the
+- [x] **P5.1-5: Run MVP pair** — produce `peer_city_metrics` rows for Baltimore + DC for the
   most recent shared year; cross-check Baltimore's row against the Operations KPI bar (must match).
+  *(Done — first CI runs complete; `peer_city_metrics.parquet` committed with the full cohort; the §6.1 Baltimore cross-check passed for 2025 up to two documented method differences. Only the §6.1 write-up, P5.1-6, remains.)*
 - [ ] **P5.1-6: Documentation checkpoint** — append `cross_city_comparison.md` §6.1: DC schema
   quirks, closure-semantics finding, row counts, any field-map surprises, Baltimore-row
   cross-check result. *(Gate for starting 5.2.)*
@@ -500,8 +510,8 @@ validates the whole cross-city pipeline that equity then reuses.
 - [x] **P5.4-1: Generalize Tab 7 to N cities** — the delivery component renders the full cohort,
   Baltimore still highlighted as reference; add a cohort/city multiselect so the user can focus a
   comparison set; sort by the selected metric.
-- [ ] **P5.4-2: Year-alignment control** — default to the most recent year present in all
-  selected cities; surface which years are shared vs. missing.
+- [x] **P5.4-2: Year-alignment control** — default to the most recent year present in all
+  selected cities; surface which years are shared vs. missing. *(Done — `city_delivery.py` selects the most recent year shared by ≥2 cities (`shared_years`/`use_year`), captions "Showing **{year}** — the most recent year shared across the compared cities" when it differs from the global selection, and lists any cities missing the selected metric.)*
 - [x] **P5.4-4: "Clean" median days-to-close (drop same-day closures)** — `compute_city_metrics`
   now also records `median_days_to_close_excl_same_day` (median over closed requests with >0 days),
   and the Service Delivery tab offers a checkbox on the median metric to switch to it — a more
@@ -1006,6 +1016,7 @@ These improvements address specific persona gaps identified in the June 2026 nee
 
 ### For the Citywide Official (Persona 3)
 
+- **Council-district overlay + district-level equity** *(was Phase 4f-5/6 — bumped here)* — a toggleable council-district boundary layer on the Equity choropleth plus a district selector that filters the distribution panels and comparison table to that district's tracts (with the citywide distribution overlaid as reference). **Blocked on external data**: needs the Baltimore City council-district boundary GeoJSON ([Baltimore City Open Data](https://data.baltimorecity.gov/)) and a tract→district crosswalk; once acquired, model the pipeline stage on the existing BNIA `stage_csa_boundaries()` / NSA `geopandas.sjoin_nearest` pattern. The highest-value council-member feature once the boundary data lands.
 - **Executive summary / print view** — a `?view=executive` URL parameter that renders a single-screen, print-friendly layout: 4 KPIs + equity trend charts + grain comparison + auto-generated plain-language "key findings" paragraph. No new data; layout-only.
 
 ### For the HS Civics / Statistics Student (Persona 6)
@@ -1041,4 +1052,8 @@ Follow-on to the design-consistency pass (which centralized colors/typography/ch
 
 ---
 
-*Last updated: 2026-06-19. Mark items `[x]` when done. Status as of this update: all six within-Baltimore tabs and all three cross-city tabs (Delivery, Service Equity, Maturity Index) are live — nominally through all initially drafted scope. Design-consistency pass shipped (central `theme.py` design tokens). Open work is explicitly deferred/stretch (Phase 5.7 within-type comparison, Phase 5.9 full 40-metro rankings, race-based cross-city equity score, doc checkpoints), new follow-on tooling (the cross-city data audit, P4e Equity-tab surfacing, Phase 4b/6), or the UI/UX modernization tiers above.*
+*Last updated: 2026-06-19 (Phase 4 close-out + Phase 5 audit). Mark items `[x]` when done. Status as of this update:*
+- *All six within-Baltimore tabs and all three cross-city tabs are live; the central `theme.py` design-consistency pass shipped.*
+- ***Phase 4 closed as active scope.*** *The stale conceptual checkboxes (P4-1b/2/3/4/6) shipped via Phase 4d and are now ticked; P4d-0d (graceful degradation) is ticked. The council-district overlay (P4f-5/6) — the one remaining un-built deliverable, blocked on external boundary data — was bumped to **future work** (Long-term Enhancements). Remaining un-built ideas (P4-5 BNIA, Phase 4b area-analysis panels, Phase 4c request-source tab, P4d-6b/7b/8, P4e-3/4/5 adjusted-metric surfacing) stay recorded but are deferred future-work / enhancements, not active scope.*
+- ***Phase 5 audited:*** *code + all eight `peer_city_*` data files are populated and the three tabs are live; the "pending CI run" qualifiers are stale. Genuinely open: documentation checkpoints (§6.x findings — P5.1-6, P5.2-4, P5.3-5, P5.4-3, P5.6-5, P5.8-5, P5.9-5), per-city QA (P5.3-4), and deferred/stretch (P5.6-6 race score, Phase 5.7 within-type, P5.9-4 partial, P5.9-6 plausibility flag).*
+- *Other tracked threads: the cross-city data audit tool (internal, shipped), and the UI/UX modernization tiers above.*
