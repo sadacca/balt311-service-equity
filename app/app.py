@@ -27,6 +27,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Clean-light polish layer (Inter + card/nav/heading restyle). Static, injected once.
+theme.inject_global_css()
+
 try:
     MAPBOX_TOKEN = st.secrets["mapbox"]["token"]
 except (KeyError, FileNotFoundError):

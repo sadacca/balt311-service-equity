@@ -36,6 +36,19 @@ REF_LINE = "#999999"   # dotted reference / vlines / "all other" series
 AXIS_LINE = "#333333"  # emphasized reference line (e.g. citywide-average dashed)
 MARKER_LINE = "#444444"
 
+# Surface palette — Stripe-style near-monochrome cool grays for the app chrome (cards,
+# borders, ink). Kept distinct from the data-series colors above so chart identity is
+# untouched. Mirrored into CSS custom properties by inject_global_css() — keep in sync.
+CANVAS = "#FFFFFF"     # page background
+SURFACE = "#F6F9FC"    # card / secondary background
+BORDER = "#E3E8EF"     # hairline border
+INK = "#0A2540"        # primary text (deep navy)
+MUTED_INK = "#525F7F"  # secondary text
+
+# Hero gradient halo — a single decorative gradient used once behind the header (Phase 2),
+# never behind content. Kept to three stops per Stripe's gradient discipline.
+HALO = ("#1F4E8C", "#3A6FB0", "#C8102E")
+
 # One color per equity metric (the citywide equity-trend lines)
 METRIC_COLORS: dict[str, str] = {
     "Median days to close": "#2166ac",
@@ -73,7 +86,7 @@ EMBEDDING_SCALE = "Viridis"         # area-embedding continuous color
 MATURITY_SCALE = "RdYlGn"           # 0–3 rubric scores
 
 # ── Typography ─────────────────────────────────────────────────────────────────
-FONT_FAMILY = "Source Sans Pro, sans-serif"  # matches the Streamlit theme font
+FONT_FAMILY = "Inter, Source Sans Pro, sans-serif"  # Inter (loaded by inject_global_css), system fallback
 FONT_SIZE = 12
 LEGEND_FONT_SIZE = 11
 
@@ -101,6 +114,13 @@ def base_layout(**overrides) -> dict:
         "font": {"family": FONT_FAMILY, "size": FONT_SIZE},
     }
     layout.update(overrides)
+    # Unified tooltip styling matching the app's card look — applied unless a caller
+    # overrode it. setdefault so per-chart hoverlabel overrides still win.
+    layout.setdefault("hoverlabel", {
+        "bgcolor": "white",
+        "bordercolor": BORDER,
+        "font": {"family": FONT_FAMILY, "size": FONT_SIZE, "color": INK},
+    })
     return layout
 
 
@@ -113,3 +133,80 @@ def notice_pending(msg: str) -> None:
 def notice_unavailable(msg: str) -> None:
     """Data is missing for the current selection (no construction action implied)."""
     st.info(msg)
+
+
+# ── Global CSS (clean-light polish layer) ─────────────────────────────────────────
+# A single static <style> block injected once from app.py (right after set_page_config).
+# It loads Inter and restyles Streamlit's chrome — cards, headings, pill nav, tabs — into
+# the Stripe / Google-Health clean-light look. No JS, no animation beyond cheap CSS hover
+# transitions, so it adds no per-rerun cost. The CSS custom properties below mirror the
+# Python color tokens above; keep the two in sync.
+_GLOBAL_CSS = f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {{
+    --primary: {PRIMARY};
+    --brand: {BRAND};
+    --ink: {INK};
+    --muted-ink: {MUTED_INK};
+    --surface: {SURFACE};
+    --border: {BORDER};
+}}
+
+/* Inter across the whole Streamlit DOM so widget/markdown text matches the charts. */
+html, body, [class*="css"], button, input, textarea, select {{
+    font-family: 'Inter', 'Source Sans Pro', sans-serif !important;
+}}
+
+/* Trim Streamlit's tall default top padding for a tighter, more designed header. */
+.block-container {{ padding-top: 2.2rem; }}
+
+/* Headings — tight tracking + deep-navy ink (Stripe restraint). */
+h1, h2, h3 {{ color: var(--ink); letter-spacing: -0.02em; }}
+h1 {{ font-weight: 700; }}
+h2, h3 {{ font-weight: 600; }}
+
+/* Cards — st.metric and bordered containers get a soft rounded surface
+   (Google-Health calm cards: hairline border + barely-there shadow). */
+[data-testid="stMetric"],
+[data-testid="stVerticalBlockBorderWrapper"] {{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.9rem 1.1rem;
+    box-shadow: 0 1px 2px rgba(10,37,64,.04), 0 1px 3px rgba(10,37,64,.06);
+}}
+/* Airy metric value weight. */
+[data-testid="stMetricValue"] {{ font-weight: 600; color: var(--ink); }}
+[data-testid="stMetricLabel"] {{ color: var(--muted-ink); }}
+
+/* Segmented control + horizontal radios → modern rounded pill nav. */
+[data-testid="stSegmentedControl"] button,
+div[role="radiogroup"] label {{
+    border-radius: 999px !important;
+    transition: background .15s ease, color .15s ease;
+}}
+
+/* Tab strip — lighter, with a clean primary active indicator. */
+[data-testid="stTabs"] [data-baseweb="tab-list"] {{ gap: 0.4rem; }}
+[data-testid="stTabs"] [data-baseweb="tab"] {{
+    padding: 0.4rem 0.85rem;
+    color: var(--muted-ink);
+}}
+[data-testid="stTabs"] [aria-selected="true"] {{ color: var(--ink); font-weight: 600; }}
+[data-testid="stTabs"] [data-baseweb="tab-highlight"] {{ background: var(--primary); }}
+
+/* Sidebar — calm surface tone. */
+[data-testid="stSidebar"] {{ background: var(--surface); }}
+
+/* Soften dividers and expanders. */
+hr {{ border-color: var(--border); }}
+[data-testid="stExpander"] {{ border-radius: 10px; border-color: var(--border); }}
+</style>
+"""
+
+
+def inject_global_css() -> None:
+    """Inject the clean-light polish CSS once. Call right after st.set_page_config."""
+    st.markdown(_GLOBAL_CSS, unsafe_allow_html=True)
