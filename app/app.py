@@ -180,6 +180,19 @@ geo_level = st.session_state["geo_level"]
 geo_key = "tract" if geo_level == "Census Tract" else "csa"
 featureidkey = "properties.GEOID" if geo_level == "Census Tract" else "properties.csa_name"
 
+# ── Persist cross-view selections across gated switches ───────────────────────
+# The within-Baltimore tabs are gated below (only the ACTIVE tab's body executes), so
+# Streamlit garbage-collects the state of a widget on runs where its tab/group isn't
+# rendered. Re-commit the two keys that must survive a view switch:
+#   - eq_metric: the Equity tab's metric selector, which the Mix-Adjusted tab reads on
+#     runs where the Equity tab itself isn't rendered;
+#   - wb_tab: the active step, so toggling to Compare cities and back returns you to it.
+# Both widgets set no default=, so re-committing them is warning-free (a blanket re-commit
+# collides with widgets that pass default=/value=). Must run before any widget renders.
+for _k in ("eq_metric", "wb_tab"):
+    if _k in st.session_state:
+        st.session_state[_k] = st.session_state[_k]
+
 
 @st.cache_data
 def available_years(gk: str) -> list[int]:
@@ -190,10 +203,10 @@ def available_years(gk: str) -> list[int]:
 
 years = available_years(geo_key)
 
-# ── Header hero + year navigation ─────────────────────────────────────────────
-# A designed hero banner (title + tagline over a single soft gradient halo) replaces
-# the bare st.title. Year is global to both groups (cross-city data is also city × year)
-# and sits directly beneath as pill-styled year controls.
+# ── Masthead + year navigation ────────────────────────────────────────────────
+# A bold full-width editorial masthead band (kicker + headline + tagline). Year is global
+# to both groups (cross-city data is also city × year) and sits directly beneath as
+# pill-styled year controls.
 st.markdown(
     theme.masthead(
         "Baltimore · 311 Service Equity",
@@ -254,9 +267,12 @@ demographics = load_demographics(DATA_DIR / f"{geo_key}_demographics.csv")
 # every tab body on every run, which made opening Compare cities pay the full cost of the six
 # within-Baltimore tabs underneath (the Areas PCA embeddings and the Mix-Adjusted regression).
 # Gating here means Compare cities renders just its three light tabs.
+# Seed the default via session_state (not default=) so the persist loop's re-commit of
+# this key doesn't trip Streamlit's "default + session_state" warning every run.
+st.session_state.setdefault("top_group", "🏙️ Within Baltimore")
 group = st.segmented_control(
     "View", ["🏙️ Within Baltimore", "🌐 Compare cities"],
-    default="🏙️ Within Baltimore", label_visibility="collapsed", key="top_group",
+    label_visibility="collapsed", key="top_group",
 ) or "🏙️ Within Baltimore"
 
 # ══ Within Baltimore — the sequenced six-step story ═══════════════════════════
@@ -283,12 +299,21 @@ if group == "🏙️ Within Baltimore":
             st.session_state["geo_level"] = new_geo
             st.rerun()
 
-    tab_ops, tab_cat, tab_areas, tab_eq, tab_cat_eq, tab_adj = st.tabs([
+    # Gate the six tabs the same way the two groups are gated: a segmented control so only
+    # the ACTIVE tab's body executes. st.tabs renders all six bodies on every run — the
+    # Areas PCA embedding and the Mix-Adjusted regression are the heavy ones, so computing
+    # them while you're on Operations was the biggest avoidable cost. Selections survive
+    # tab switches via the persist loop near the top of this script.
+    _WB_TABS = [
         "Operations", "Services", "Area Service Usage", "Equity", "Service Equity",
         "Mix-Adjusted Equity",
-    ])
+    ]
+    st.session_state.setdefault("wb_tab", "Operations")
+    wb_tab = st.segmented_control(
+        "Step", _WB_TABS, label_visibility="collapsed", key="wb_tab",
+    ) or "Operations"
 
-    with tab_ops:
+    if wb_tab == "Operations":
         if not data_ready:
             theme.notice_pending(_NO_DATA_MSG)
         else:
@@ -301,16 +326,16 @@ if group == "🏙️ Within Baltimore":
                 mapbox_token=MAPBOX_TOKEN,
             )
 
-    with tab_cat:
+    elif wb_tab == "Services":
         if not data_ready:
             theme.notice_pending(_NO_DATA_MSG)
         else:
             render_category_explorer(DATA_DIR, year)
 
-    with tab_areas:
+    elif wb_tab == "Area Service Usage":
         render_area_embedding(DATA_DIR, year)
 
-    with tab_eq:
+    elif wb_tab == "Equity":
         if not data_ready:
             theme.notice_pending(_NO_DATA_MSG)
         else:
@@ -323,19 +348,20 @@ if group == "🏙️ Within Baltimore":
                 demographics=demographics,
             )
 
-    with tab_cat_eq:
+    elif wb_tab == "Service Equity":
         if not data_ready:
             theme.notice_pending(_NO_DATA_MSG)
         else:
             render_category_equity_explorer(DATA_DIR, demographics, geo_key, year)
 
-    with tab_adj:
+    elif wb_tab == "Mix-Adjusted Equity":
         if not data_ready:
             theme.notice_pending(_NO_DATA_MSG)
         else:
             # Carry over the Equity tab's metric selection so the two equity tabs stay
             # aligned; falls back to days-to-close inside the component when that metric
-            # doesn't exist at the service-type grain.
+            # doesn't exist at the service-type grain. The persist loop keeps `eq_metric`
+            # alive even though the Equity tab isn't rendered on this run.
             render_equity_adjusted(
                 DATA_DIR, demographics, geo_key, year,
                 geojson=geojson,
