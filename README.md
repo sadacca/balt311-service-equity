@@ -1,11 +1,13 @@
 # Baltimore 311 Service Equity
 
-Baltimore's 311 system receives hundreds of thousands of resident service requests each year — potholes, bulk trash, water leaks, rodent control. Baltimore was a first-mover with 311 and open data, and continues to lead in service delivery and the openess of its data. This allows citizens to and stakeholders to understand service delivery in Baltimore deeper than many other metros, and this repo and the paired dashbord provide insight into an analysis of Baltimore by itself (quality and equity of service delivery) and a sizing up of Baltimore vs other major metros (still ahead of the curve, making analysis like this possible).  
+Baltimore's 311 system receives hundreds of thousands of resident service requests each year: potholes, bulk trash, water leaks, rodent control all open for review for over a decade. Baltimore was the first to serve up, 311 and its openness with data gives citizens and stakeholders a chance to understand service delivery in Baltimore deeper than many other metros! 
+
+This repo and the paired dashbord try to shine a light on Baltimore's service to its residents (quality and equity of service delivery) and a sizing up of Baltimore vs other major metros (still ahead of the curve, making analysis like this possible).  
 
 Specifically, this repo and dashboard look to support:
 
-- **Citizens and advocates** — what requests are coming in, from where, and how does service delivery compare year over year and across neighborhood types
-- **Internal stakeholders** — department managers tracking their service types and citywide leadership asking whether performance is improving, equitable, and competitive with peer cities
+- **Citizens and advocates** knowing what requests are coming in, from where, and how does service delivery compare year over year and across neighborhood types
+- **Internal stakeholders** like department leads tracking their service types and citywide leadership asking whether performance is improving, equitable, and competitive with peer cities
 
 Four comparison axes structure the analysis:
 
@@ -20,11 +22,13 @@ Both within Baltimore and cross city analysis are live:
 
 ---
 
-## Why this analysis is possible — credit where it's due
+## Why this analysis is possible:
 
-Before any of the findings below, one fact deserves to lead: **this entire repository exists only because Baltimore publishes its 311 data openly, completely, and at the record level.** Baltimore was the **first US city to deploy a 311 non-emergency system (1996)**, pioneered **CitiStat (1999)** — the data-driven performance-management model the rest of the country went on to copy — and was an **early adopter of the Open311 GeoReport v2 standard (~2011)**, a standard that even today only on the order of a dozen US cities have implemented, putting Baltimore ahead of many far larger cities. That open posture is exactly what lets a resident, journalist, or researcher evaluate the city in the depth and breadth this dashboard does.
+**this entire repository exists only because Baltimore and several other metros publish their 311 data openly, completely, and at the record level.** Baltimore was the **first US city to deploy a 311 non-emergency system (1996)**, pioneered **CitiStat (1999)**, the data-driven performance-management model the rest of the country went on to copy, and was an **early adopter of the Open311 GeoReport v2 standard (~2011)**, a standard that even today only on the order of a dozen US cities have implemented, putting Baltimore ahead of many far larger cities. That open posture is exactly what lets a resident, journalist, or researcher evaluate the city in the depth and breadth this dashboard does.
 
-There is an uncomfortable irony worth naming: the more openly a city publishes, the more it exposes itself to scrutiny, while less-transparent cities escape criticism by default. Most US cities simply could not be analyzed this way — the data isn't there. So this dashboard holds two things at once: it evaluates Baltimore's performance *and* it is a tribute to Baltimore's openness. Every critical finding here should be read in that light. Openness invites criticism, and that is precisely why it deserves praise — a city willing to be measured this honestly is doing something most are not, and that willingness is itself a civic achievement.
+The irony: the more openly a city publishes, the more it exposes itself to scrutiny, while less-transparent cities escape criticism by default. Most US cities simply could not be analyzed this way, the data isn't there. To highlight, this dashboard also has a quickly done census of 311 openess across the biggest metros, calling out those that lag, and highlighting those that lead (like Baltimore!).
+
+While there's not much to say critically here, its worth emphasizing: openness invites criticism, and that is precisely why it deserves praise. A city willing to be measured this honestly is doing something most are not, and that willingness is itself a civic achievement.
 
 ---
 
