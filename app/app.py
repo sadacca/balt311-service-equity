@@ -27,6 +27,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Clean-light polish layer (Inter + card/nav/heading restyle). Static, injected once.
+theme.inject_global_css()
+
 try:
     MAPBOX_TOKEN = st.secrets["mapbox"]["token"]
 except (KeyError, FileNotFoundError):
@@ -187,9 +190,18 @@ def available_years(gk: str) -> list[int]:
 
 years = available_years(geo_key)
 
-# ── Header + year navigation ──────────────────────────────────────────────────
-# Year is global to both groups (cross-city data is also city × year).
-st.title("Baltimore 311 Service Equity")
+# ── Header hero + year navigation ─────────────────────────────────────────────
+# A designed hero banner (title + tagline over a single soft gradient halo) replaces
+# the bare st.title. Year is global to both groups (cross-city data is also city × year)
+# and sits directly beneath as pill-styled year controls.
+st.markdown(
+    theme.hero_banner(
+        "Baltimore 311 Service Equity",
+        "Does your neighborhood affect how quickly the city responds when you call 311? "
+        "A decade of service data — 2016 to 2025 — read by neighborhood.",
+    ),
+    unsafe_allow_html=True,
+)
 
 if "ops_year_clicked" in st.session_state:
     clicked = st.session_state.pop("ops_year_clicked")
