@@ -160,7 +160,13 @@ html, body, [class*="css"], button, input, textarea, select {{
 }}
 
 /* Trim Streamlit's tall default top padding for a tighter, more designed header. */
-.block-container {{ padding-top: 2.2rem; }}
+.block-container {{ padding-top: 2.6rem; }}
+
+/* Make Streamlit's always-present top toolbar transparent so the page background and
+   the hero halo flow under it seamlessly (it otherwise paints an opaque band that
+   clashes with the gradient). The menu/status controls stay legible at top-right. */
+[data-testid="stHeader"] {{ background: transparent; }}
+[data-testid="stToolbar"] {{ right: 0.5rem; }}
 
 /* Headings — tight tracking + deep-navy ink (Stripe restraint). */
 h1, h2, h3 {{ color: var(--ink); letter-spacing: -0.02em; }}
