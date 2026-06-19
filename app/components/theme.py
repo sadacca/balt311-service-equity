@@ -210,3 +210,37 @@ hr {{ border-color: var(--border); }}
 def inject_global_css() -> None:
     """Inject the clean-light polish CSS once. Call right after st.set_page_config."""
     st.markdown(_GLOBAL_CSS, unsafe_allow_html=True)
+
+
+def hero_banner(title: str, tagline: str) -> str:
+    """Return the header hero markup — title + tagline over a single soft gradient halo.
+
+    The halo (the HALO token) is the app's one decorative gradient, sat *behind the
+    title only* per Stripe's discipline — a blurred radial glow, not a content
+    background. Pure CSS, no image/canvas/animation. Render with
+    ``st.markdown(theme.hero_banner(...), unsafe_allow_html=True)``.
+    """
+    c0, c1, c2 = HALO
+    halo = (
+        f"radial-gradient(closest-side, {_rgba(c0, 0.18)}, {_rgba(c1, 0.10)}, "
+        f"{_rgba(c2, 0.06)}, transparent 80%)"
+    )
+    return f"""
+<div style="position:relative; padding:0.4rem 0 0.8rem 0; margin-bottom:0.4rem;">
+  <div style="position:absolute; top:-44px; left:-64px; width:420px; height:170px;
+       background:{halo}; filter:blur(20px); z-index:0; pointer-events:none;"></div>
+  <div style="position:relative; z-index:1;">
+    <h1 style="margin:0; font-size:2.1rem;">{title}</h1>
+    <p style="margin:0.3rem 0 0; color:{MUTED_INK}; font-size:1.02rem; max-width:660px;">
+      {tagline}
+    </p>
+  </div>
+</div>
+"""
+
+
+def _rgba(hex_color: str, alpha: float) -> str:
+    """'#RRGGBB' + alpha -> 'rgba(r, g, b, a)' for the hero halo gradient stops."""
+    h = hex_color.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({r}, {g}, {b}, {alpha})"
