@@ -14,6 +14,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from components import theme
+
 # Rubric dimension column → display label (order = left-to-right on the heatmap).
 _DIMS = {
     "availability_license": "Availability<br>& license",
@@ -91,20 +93,19 @@ def _scorecard_heatmap(df: pd.DataFrame, max_total: int) -> go.Figure:
     fig = go.Figure(go.Heatmap(
         z=z, x=list(_DIM_SHORT.values()), y=ylabels,
         text=z, texttemplate="%{text}", textfont={"size": 13},
-        colorscale="RdYlGn", zmin=0, zmax=_MAX_PER_DIM,
+        colorscale=theme.MATURITY_SCALE, zmin=0, zmax=_MAX_PER_DIM,
         showscale=False,  # the score is printed in every cell — the colorbar is redundant
         xgap=2, ygap=2,
         hovertemplate="%{y}<br>%{x}: %{z}/3<extra></extra>",
     ))
-    fig.update_layout(
+    fig.update_layout(**theme.base_layout(
         height=130 + 34 * len(df),
         margin={"t": 10, "b": 10, "l": 10, "r": 10},
         yaxis={"autorange": "reversed"},  # rank 1 at the top
         # Short labels, angled, with automargin — single-word headers slanted so the nine
         # columns never overlap on a narrow (mobile) viewport.
         xaxis={"side": "top", "tickangle": -45, "tickfont": {"size": 11}, "automargin": True},
-        plot_bgcolor="white", paper_bgcolor="white",
-    )
+    ))
     return fig
 
 
@@ -123,10 +124,9 @@ def _gap_profile(df: pd.DataFrame) -> list[str]:
 
 
 def render_maturity_index(data_dir: Path) -> None:
-    st.subheader("311 Open-Data Maturity")
     path = data_dir / "peer_city_maturity.csv"
     if not path.exists():
-        st.info("Maturity scorecard not found (`peer_city_maturity.csv`).", icon="🚧")
+        theme.notice_pending("Maturity scorecard not found (`peer_city_maturity.csv`).")
         return
 
     df = pd.read_csv(path)
@@ -159,7 +159,7 @@ def render_maturity_index(data_dir: Path) -> None:
         )
 
     # Detailed heatmap — every scoreable city across the nine rubric dimensions.
-    st.markdown("#### Detailed scorecard — every scoreable city")
+    st.subheader("Detailed scorecard — every scoreable city")
     # staticPlot: the heatmap is a read-only image — no zoom/drag/select — so a mobile finger
     # swipe scrolls the page past it instead of being captured by the chart. Every value is
     # printed in-cell and the row labels carry rank/total, so no interactivity is lost.
@@ -236,7 +236,7 @@ def _render_full_table(df: pd.DataFrame, max_total: int) -> None:
     """Full numerical ranking of all metros — every rubric dimension, sortable, with the
     inaccessible cities scored 0 sitting at the bottom."""
     counts = df["status"].value_counts() if "status" in df.columns else {}
-    st.markdown("#### Full numerical ranking — all 45 metros (sortable)")
+    st.subheader("Full numerical ranking — all 45 metros (sortable)")
     st.markdown(
         f"✅ {int(counts.get('scoreable', 0))} scoreable · 🟡 {int(counts.get('partial', 0))} "
         f"partial · ❔ {int(counts.get('unconfirmed', 0))} none/unconfirmed. **Cities whose "

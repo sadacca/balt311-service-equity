@@ -9,6 +9,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from components import theme
 from components.srtype_shared import (
     CATEGORY_NAMES,
     EXCLUDED_CATEGORIES,
@@ -35,13 +36,6 @@ _LOG_TICKTEXT = ["100", "1K", "10K", "100K", "1M"]
 # their legends, which wrap awkwardly past ~8 horizontal entries) readable for
 # categories (e.g. Solid Waste) that contain dozens of SRTypes.
 _TOP_SUBTYPES_N = 7
-
-# Cycled through for the among-category comparison lines — Plotly's default
-# qualitative palette gives ten visually distinct colors.
-_PALETTE = [
-    "#636EFA", "#EF553B", "#00CC96", "#AB63FA", "#FFA15A",
-    "#19D3F3", "#FF6692", "#B6E880", "#FF97FF", "#FECB52",
-]
 
 
 def _category_aggregates(sr_all: pd.DataFrame) -> pd.DataFrame:
@@ -105,7 +99,7 @@ def _multi_category_line_fig(
         if d.empty:
             continue
         label = CATEGORY_NAMES.get(cat, cat)
-        color = _PALETTE[i % len(_PALETTE)]
+        color = theme.PALETTE[i % len(theme.PALETTE)]
         fig.add_trace(go.Scatter(
             x=d["year"], y=d[value_col],
             mode="lines+markers", name=cat,
@@ -119,12 +113,12 @@ def _multi_category_line_fig(
             fig.add_trace(go.Scatter(
                 x=cw["year"], y=cw[value_col],
                 mode="lines+markers", name="Citywide average",
-                line=dict(width=2.4, dash="dash", color="#333333"),
-                marker=dict(size=7, color="#333333", symbol="diamond"),
+                line=dict(width=2.4, dash="dash", color=theme.AXIS_LINE),
+                marker=dict(size=7, color=theme.AXIS_LINE, symbol="diamond"),
                 hovertemplate=f"<b>Citywide average</b><br>%{{x}}: {hover_fmt}<extra></extra>",
             ))
-    fig.add_vline(x=year, line_width=1, line_dash="dot", line_color="#999999")
-    fig.update_layout(
+    fig.add_vline(x=year, line_width=1, line_dash="dot", line_color=theme.REF_LINE)
+    fig.update_layout(**theme.base_layout(
         height=320,
         margin={"t": 8, "b": 8, "l": 70, "r": 8},
         xaxis=dict(title="Year", dtick=1),
@@ -134,12 +128,10 @@ def _multi_category_line_fig(
             tickvals=_LOG_TICKVALS if log_y else None,
             ticktext=_LOG_TICKTEXT if log_y else None,
             tickformat=".0%" if is_pct else None,
-            gridcolor="#eeeeee",
+            gridcolor=theme.GRID,
         ),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
-    )
+        legend=theme.LEGEND_H,
+    ))
     return fig
 
 
@@ -151,21 +143,19 @@ def _line_fig(d: pd.DataFrame, value_col: str, value_label: str, year: int, is_p
         x=valid["year"],
         y=valid[value_col],
         mode="lines+markers",
-        line=dict(color="#1F4E8C", width=2),
+        line=dict(color=theme.PRIMARY, width=2),
         marker=dict(
             size=[11 if y == year else 7 for y in valid["year"]],
-            color=["#d73027" if y == year else "#1F4E8C" for y in valid["year"]],
+            color=[theme.BRAND if y == year else theme.PRIMARY for y in valid["year"]],
         ),
         hovertemplate=f"%{{x}}: {hover_fmt}<extra></extra>",
     ))
-    fig.update_layout(
+    fig.update_layout(**theme.base_layout(
         height=240,
         margin={"t": 8, "b": 8, "l": 60, "r": 8},
         xaxis=dict(title="Year", dtick=1),
-        yaxis=dict(title=value_label, tickformat=".0%" if is_pct else None, gridcolor="#eeeeee"),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-    )
+        yaxis=dict(title=value_label, tickformat=".0%" if is_pct else None, gridcolor=theme.GRID),
+    ))
     return fig
 
 
@@ -203,20 +193,18 @@ def _subtype_multiline_fig(
             fig.add_trace(go.Scatter(
                 x=other["year"], y=other[value_col],
                 mode="lines+markers", name=other_label,
-                line=dict(width=2, dash="dot", color="#999999"),
-                marker=dict(size=5, color="#999999"),
+                line=dict(width=2, dash="dot", color=theme.REF_LINE),
+                marker=dict(size=5, color=theme.REF_LINE),
                 hovertemplate=f"<b>{other_label}</b><br>%{{x}}: {hover_fmt}<extra></extra>",
             ))
 
-    fig.update_layout(
+    fig.update_layout(**theme.base_layout(
         height=340,
         margin={"t": 8, "b": 8, "l": 60, "r": 8},
         xaxis=dict(title="Year", dtick=1),
-        yaxis=dict(title=value_label, tickformat=".0%" if is_pct else None, gridcolor="#eeeeee"),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font=dict(size=10), bgcolor="rgba(0,0,0,0)"),
-    )
+        yaxis=dict(title=value_label, tickformat=".0%" if is_pct else None, gridcolor=theme.GRID),
+        legend=theme.LEGEND_H,
+    ))
     return fig
 
 

@@ -25,15 +25,16 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from components import theme
 from components.utils import score_label
 
-_BALTIMORE_COLOR = "#C8102E"   # reference city — stands out from the muted peers
-_PEER_COLOR = "#5f6368"        # dark enough that white in-bar labels stay legible
-_RAW_COLOR = "#a6a6a6"         # lighter still — the secondary/reference series
+_BALTIMORE_COLOR = theme.BRAND   # reference city — stands out from the muted peers
+_PEER_COLOR = theme.PEER         # dark enough that white in-bar labels stay legible
+_RAW_COLOR = theme.MUTED         # lighter still — the secondary/reference series
 
 # Green/amber/red overlap-score threshold bands — same convention and thresholds as
 # `score_label()` and the within-Baltimore equity tabs.
-_BANDS = [(0.0, 0.4, "red"), (0.4, 0.7, "orange"), (0.7, 1.0, "green")]
+_BANDS = [(0.0, 0.4, theme.SCORE_RED), (0.4, 0.7, theme.SCORE_AMBER), (0.7, 1.0, theme.SCORE_GREEN)]
 
 # Same two metrics, same labels, as the within-Baltimore `equity_adjusted._SRTYPE_METRICS`.
 _METRICS = {
@@ -65,13 +66,13 @@ def _score_bar(df: pd.DataFrame, metric_label: str) -> go.Figure:
         hovertemplate="<b>%{y}</b><br>Mix-adjusted score: %{x:.0%}<extra></extra>",
     ))
     _add_score_bands(fig)
-    fig.update_layout(
+    fig.update_layout(**theme.base_layout(
         height=max(130, 40 * len(d) + 56),
         bargap=0.25,
         margin={"t": 24, "b": 10, "l": 10, "r": 40},
         xaxis_title=f"Mix-adjusted income equity score · {metric_label.lower()}", yaxis_title=None,
-        plot_bgcolor="white", paper_bgcolor="white", showlegend=False,
-    )
+        showlegend=False,
+    ))
     fig.update_yaxes(automargin=True, tickfont={"size": 12})
     fig.update_xaxes(range=[0, 1.08], tickformat=".0%")
     return fig
@@ -94,14 +95,13 @@ def _raw_vs_adjusted(df: pd.DataFrame, metric_label: str) -> go.Figure:
         marker_color=colors,
         hovertemplate="<b>%{y}</b><br>Mix-adjusted score: %{x:.0%}<extra></extra>",
     ))
-    fig.update_layout(
+    fig.update_layout(**theme.base_layout(
         height=max(130, 40 * len(d) + 80),
         barmode="group", bargap=0.25, bargroupgap=0.1,
         margin={"t": 24, "b": 10, "l": 10, "r": 10},
         xaxis_title=f"Income equity score · {metric_label.lower()}", yaxis_title=None,
-        plot_bgcolor="white", paper_bgcolor="white",
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
-    )
+        legend=theme.LEGEND_H,
+    ))
     fig.update_yaxes(automargin=True, tickfont={"size": 12})
     fig.update_xaxes(range=[0, 1.0], tickformat=".0%")
     return fig
@@ -130,14 +130,13 @@ def _trend(df_all: pd.DataFrame, cities: list[str], metric_col: str) -> go.Figur
             hovertemplate="<b>%{fullData.name}</b><br>%{x}: %{y:.0%}<extra></extra>",
         ))
     _add_score_bands_y(fig)
-    fig.update_layout(
+    fig.update_layout(**theme.base_layout(
         height=280,
         margin={"t": 24, "b": 10, "l": 10, "r": 10},
         xaxis_title=None, yaxis_title="Mix-adjusted score",
-        plot_bgcolor="white", paper_bgcolor="white",
-        showlegend=True, legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
+        showlegend=True, legend=theme.LEGEND_H,
         hovermode="x unified",
-    )
+    ))
     fig.update_xaxes(dtick=1, tickformat="d")
     fig.update_yaxes(range=[0, 1], tickformat=".0%")
     return fig
@@ -151,18 +150,15 @@ def _add_score_bands_y(fig: go.Figure) -> None:
 def render_city_equity(data_dir: Path, year: int) -> None:
     equity_path = data_dir / "peer_city_equity.parquet"
     if not equity_path.exists():
-        st.subheader("Cross-City Service Equity")
-        st.info(
+        theme.notice_pending(
             "Cross-city equity scores haven't been generated yet. Run the **Cross-city "
             "equity data** GitHub Actions workflow (or `python scripts/peer_city_equity_score.py`"
             ", after `peer_city.py` has produced the tract×SRType data) to produce "
-            "`peer_city_equity.parquet`.",
-            icon="🚧",
+            "`peer_city_equity.parquet`."
         )
         return
 
     df = pd.read_parquet(equity_path)
-    st.subheader("Cross-City Service Equity")
     st.caption(
         "Within each city, does it deliver 311 services more or less equitably to its "
         "below- vs. above-median-income neighborhoods? **Income only** — see the "

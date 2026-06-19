@@ -3,11 +3,13 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from components import theme
 from components.utils import format_metric, hex_to_rgba, overlap_score, score_label
 
-# Colors: dark red for disadvantaged group, steel blue for advantaged group
-_COLOR_A = "#8B2020"  # majority-Black / below-median-income
-_COLOR_B = "#1F4E8C"  # majority-White / above-median-income
+# Disadvantaged group (majority-Black / below-median-income) in the demographic red,
+# advantaged group (majority-White / above-median-income) in the primary blue.
+_COLOR_A = theme.RACE
+_COLOR_B = theme.INCOME
 
 _N_OUTLIERS = 5  # neighborhoods shown in the worst-performer table
 
@@ -81,15 +83,14 @@ def _comparison_fig(
         _box_trace(group_a, f"{label_a} (n={n_a})", _COLOR_A),
         _box_trace(group_b, f"{label_b} (n={n_b})", _COLOR_B),
     ])
-    fig.update_layout(
+    fig.update_layout(**theme.base_layout(
         height=300,
         margin={"t": 8, "b": 8, "l": 50, "r": 8},
         showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1, font_size=11),
-        yaxis=dict(gridcolor="#eeeeee", zeroline=False),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-    )
+        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="right", x=1,
+                    font_size=theme.LEGEND_FONT_SIZE),
+        yaxis=dict(gridcolor=theme.GRID, zeroline=False),
+    ))
 
     chart_col, badge_col = st.columns([3, 1])
     with chart_col:

@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from components import theme
 from components.map_view import METRIC_OPTIONS, build_choropleth
 from components.srtype_shared import (
     CATEGORY_NAMES,
@@ -249,10 +250,10 @@ def _timeseries_fig(
             mode="lines+markers",
             name="All requests",
             showlegend=has_eq,
-            line=dict(color="#1F4E8C", width=2),
+            line=dict(color=theme.PRIMARY, width=2),
             marker=dict(
                 size=[12 if y == year else 7 for y in valid["year"]],
-                color=["#d73027" if y == year else "#1F4E8C" for y in valid["year"]],
+                color=[theme.BRAND if y == year else theme.PRIMARY for y in valid["year"]],
             ),
             hovertemplate=hover_fmt,
         ))
@@ -261,12 +262,12 @@ def _timeseries_fig(
             fig.add_hline(
                 y=mean_val,
                 line_dash="dot",
-                line_color="#bbbbbb",
+                line_color=theme.REF_LINE,
                 line_width=1,
                 annotation_text="period avg",
                 annotation_position="bottom right",
                 annotation_font_size=10,
-                annotation_font_color="#999999",
+                annotation_font_color=theme.REF_LINE,
             )
 
     if has_eq:
@@ -277,28 +278,27 @@ def _timeseries_fig(
                 y=eq_valid[metric_col],
                 mode="lines+markers",
                 name="Citizen-initiated",
-                line=dict(color="#E07B39", width=2, dash="dash"),
+                line=dict(color=theme.SECONDARY, width=2, dash="dash"),
                 marker=dict(
                     size=[10 if y == year else 6 for y in eq_valid["year"]],
-                    color=["#d73027" if y == year else "#E07B39" for y in eq_valid["year"]],
+                    color=[theme.BRAND if y == year else theme.SECONDARY for y in eq_valid["year"]],
                 ),
                 hovertemplate=hover_fmt,
             ))
 
-    fig.update_layout(
+    fig.update_layout(**theme.base_layout(
         height=250 if has_eq else 220,
         margin={"t": 30 if has_eq else 8, "b": 8, "l": 60, "r": 8},
         yaxis=dict(
             title=metric_label,
             tickformat=".0%" if is_pct else None,
-            gridcolor="#eeeeee",
+            gridcolor=theme.GRID,
         ),
         xaxis=dict(title="Year", dtick=1),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                    font={"size": theme.LEGEND_FONT_SIZE}),
         showlegend=has_eq,
-    )
+    ))
     return fig
 
 
@@ -370,12 +370,10 @@ def _srtype_charts(data_dir: Path, year: int) -> tuple[str | None, str | None]:
     # ── Year-over-year detail ─────────────────────────────────────────────────
     history = load_srtype_history(data_dir)
     selected_rows = event.selection.rows
-    chart_layout = dict(
+    chart_layout = theme.base_layout(
         height=260,
         margin={"t": 8, "b": 8, "l": 60, "r": 8},
         xaxis=dict(title="Year", dtick=1),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
     )
 
     if selected_rows and not history.empty:
@@ -409,8 +407,8 @@ def _srtype_charts(data_dir: Path, year: int) -> tuple[str | None, str | None]:
         scope_str = f"**{selected_cat} category**" if selected_cat else "**All request types**"
         chart_title = f"{scope_str} — year over year · selected year in red"
 
-    bar_colors_vol = ["#d73027" if y == year else "#1F4E8C" for y in vol_hist["year"]]
-    bar_colors_days = ["#d73027" if y == year else "#1F4E8C" for y in days_hist["year"]]
+    bar_colors_vol = [theme.BRAND if y == year else theme.PRIMARY for y in vol_hist["year"]]
+    bar_colors_days = [theme.BRAND if y == year else theme.PRIMARY for y in days_hist["year"]]
 
     st.markdown(chart_title)
     col_vol, col_days = st.columns(2)
@@ -422,7 +420,7 @@ def _srtype_charts(data_dir: Path, year: int) -> tuple[str | None, str | None]:
             marker_color=bar_colors_vol,
             hovertemplate="%{x}: %{y:,}<extra></extra>",
         ))
-        fig_vol.update_layout(**chart_layout, yaxis=dict(title="Requests", gridcolor="#eeeeee"))
+        fig_vol.update_layout(**chart_layout, yaxis=dict(title="Requests", gridcolor=theme.GRID))
         vol_ev = st.plotly_chart(fig_vol, use_container_width=True, key="srtype_vol",
                         on_select="rerun", config={"displayModeBar": False})
 
@@ -434,7 +432,7 @@ def _srtype_charts(data_dir: Path, year: int) -> tuple[str | None, str | None]:
             marker_color=bar_colors_days,
             hovertemplate="%{x}: %{y:.1f} days<extra></extra>",
         ))
-        fig_days.update_layout(**chart_layout, yaxis=dict(title="Days", gridcolor="#eeeeee"))
+        fig_days.update_layout(**chart_layout, yaxis=dict(title="Days", gridcolor=theme.GRID))
         days_ev = st.plotly_chart(fig_days, use_container_width=True, key="srtype_days",
                         on_select="rerun", config={"displayModeBar": False})
 
