@@ -139,25 +139,33 @@ if "eq_metric" in st.session_state:
 
 years = available_years(geo_key)
 
-# ── Single-line header + global year navigation ───────────────────────────────
-# A slim one-line title bar (was a tall masthead band), then the global year selector
-# (cross-city data is also city × year, so year is shared by both page groups).
-st.markdown(
-    "<div class='app-header'>"
-    "<span class='app-title'>Baltimore 311 · Service Equity</span>"
-    "<span class='app-tagline'>Does your block change the wait? "
-    "A decade of city service data, read by neighborhood.</span>"
-    "</div>",
-    unsafe_allow_html=True,
-)
-
+# ── Single-line header + global year selector ─────────────────────────────────
+# Title/tagline on the left; the global year filter is a compact dropdown pinned to the
+# top-right of the same line. Year is shared by both page groups (cross-city data is also
+# city × year) but isn't central to the story, so it stays unobtrusive here rather than a
+# full-width radio row + caption that pushed content below the fold. The ACS note moves into
+# the dropdown's tooltip.
 if "ops_year_clicked" in st.session_state:
     clicked = st.session_state.pop("ops_year_clicked")
     if clicked in years:
         st.session_state["year_select"] = clicked
 
-year = st.radio("Year", years, horizontal=True, key="year_select")
-st.caption("Demographics from ACS 2023 5-Year Estimates")
+head_col, year_col = st.columns([8, 2], vertical_alignment="bottom")
+with head_col:
+    st.markdown(
+        "<div class='app-header'>"
+        "<span class='app-title'>Baltimore 311 · Service Equity</span>"
+        "<span class='app-tagline'>Does your block change the wait? "
+        "A decade of city service data, read by neighborhood.</span>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+with year_col:
+    year = st.selectbox(
+        "Year", years, key="year_select", label_visibility="collapsed",
+        help="Year of 311 data shown across every view. "
+        "Demographics are ACS 2023 5-Year Estimates (year-independent).",
+    )
 
 # ── Data loading ──────────────────────────────────────────────────────────────
 parquet_path = DATA_DIR / f"{geo_key}_metrics_{year}.parquet"
