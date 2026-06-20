@@ -250,6 +250,35 @@ div[role="radiogroup"] label {{
 /* Soften dividers and expanders. */
 hr {{ border-color: var(--border); }}
 [data-testid="stExpander"] {{ border-radius: 10px; border-color: var(--border); }}
+
+/* ── Single-line header ──────────────────────────────────────────────────────── */
+.app-header {{
+    display: flex; align-items: baseline; gap: 0.7rem; flex-wrap: wrap;
+    margin: 0 0 0.4rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border);
+}}
+.app-title {{
+    font-family: 'Space Grotesk', 'Inter', sans-serif; font-weight: 700;
+    font-size: 1.5rem; line-height: 1.1; color: var(--ink); letter-spacing: -0.02em;
+}}
+.app-tagline {{ color: var(--muted-ink); font-size: 0.95rem; }}
+
+/* ── Top nav: frame switcher + story stepper ─────────────────────────────────── */
+/* Active frame = filled pill (non-clickable); the other frame is a page_link below. */
+.frame-pill {{
+    display: inline-block; padding: 0.34rem 0.95rem; border-radius: 999px;
+    font-family: 'Space Grotesk', 'Inter', sans-serif; font-weight: 600; font-size: 0.92rem;
+    background: var(--primary); color: #fff; white-space: nowrap;
+}}
+/* page_links rendered as pills; Streamlit flags the current page with aria-current. */
+[data-testid="stPageLink"] a {{
+    border-radius: 999px; padding: 0.3rem 0.7rem;
+    transition: background .15s ease, color .15s ease;
+}}
+[data-testid="stPageLink"] a:hover {{ background: var(--surface); }}
+[data-testid="stPageLink"] a[aria-current="page"] {{
+    background: var(--primary); font-weight: 600;
+}}
+[data-testid="stPageLink"] a[aria-current="page"] * {{ color: #fff !important; }}
 </style>
 """
 

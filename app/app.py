@@ -63,8 +63,8 @@ def load_demographics(path: Path) -> pd.DataFrame | None:
 
 
 # ── Sidebar — dashboard overview ──────────────────────────────────────────────
-# st.navigation renders the page links at the top of the sidebar; this overview sits
-# below them as reference.
+# Navigation now lives in a custom top nav (st.navigation position="hidden"); the sidebar
+# is reference only — overview, what-is-311, key terms, data credits.
 with st.sidebar:
     st.title("Baltimore 311\nService Equity")
     st.markdown(
@@ -139,17 +139,15 @@ if "eq_metric" in st.session_state:
 
 years = available_years(geo_key)
 
-# ── Masthead + global year navigation ─────────────────────────────────────────
-# A bold full-width editorial masthead band, then the global year selector (cross-city
-# data is also city × year, so year is shared by both page groups). Both render on every
-# page, above the active page's body.
+# ── Single-line header + global year navigation ───────────────────────────────
+# A slim one-line title bar (was a tall masthead band), then the global year selector
+# (cross-city data is also city × year, so year is shared by both page groups).
 st.markdown(
-    theme.masthead(
-        "Baltimore · 311 Service Equity",
-        "Does your block change the wait?",
-        "A decade of city service data — 2016 to 2025 — read by neighborhood: who calls, "
-        "from where, and how fast Baltimore responds.",
-    ),
+    "<div class='app-header'>"
+    "<span class='app-title'>Baltimore 311 · Service Equity</span>"
+    "<span class='app-tagline'>Does your block change the wait? "
+    "A decade of city service data, read by neighborhood.</span>"
+    "</div>",
     unsafe_allow_html=True,
 )
 
@@ -270,12 +268,60 @@ compare_pages = [
     st.Page(page_maturity, title="Maturity Index", icon="🏅", url_path="maturity"),
 ]
 
-pg = st.navigation({"Within Baltimore": within_pages, "Compare cities": compare_pages})
+# position="hidden" suppresses the default sidebar nav; we render our own top nav below so
+# the two frames and the six-step story are always visible (and mobile-friendly). Only the
+# active page still runs, so the per-page performance win is unchanged.
+pg = st.navigation(
+    {"Within Baltimore": within_pages, "Compare cities": compare_pages},
+    position="hidden",
+)
 
-# ── Per-group chrome — shown above the active page's body ──────────────────────
+# ── Top navigation — frame switcher + story stepper (replaces the sidebar nav) ─
 # Identity check against the page list (not pg.url_path): Streamlit blanks the default
 # page's url_path to "" at the app root, so a string match would misfire on the landing page.
-if pg in within_pages:
+within_active = pg in within_pages
+
+# Frame switcher: the active frame is a filled, non-clickable pill; the other frame is a
+# page_link to its landing page. This keeps "which of the two frames am I in" always clear.
+fcol1, fcol2, _ = st.columns([2.4, 2.4, 5.2])
+with fcol1:
+    if within_active:
+        st.markdown("<span class='frame-pill'>🏙 Within Baltimore</span>",
+                    unsafe_allow_html=True)
+    else:
+        st.page_link(within_pages[0], label="🏙 Within Baltimore")
+with fcol2:
+    if within_active:
+        st.page_link(compare_pages[0], label="🌐 Compare cities")
+    else:
+        st.markdown("<span class='frame-pill'>🌐 Compare cities</span>",
+                    unsafe_allow_html=True)
+
+if within_active:
+    # Numbered story stepper — the six within-Baltimore views are a sequence, so number
+    # them and add Prev/Next. st.page_link auto-highlights the current page.
+    idx = within_pages.index(pg)
+    for col, (i, page) in zip(st.columns(len(within_pages)),
+                              enumerate(within_pages, start=1)):
+        with col:
+            st.page_link(page, label=f"{i} · {page.title}")
+    prev_col, next_col, _ = st.columns([1.2, 1.2, 7.6])
+    with prev_col:
+        st.page_link(within_pages[max(idx - 1, 0)], label="◀ Prev", disabled=idx == 0)
+    with next_col:
+        st.page_link(within_pages[min(idx + 1, len(within_pages) - 1)],
+                     label="Next ▶", disabled=idx == len(within_pages) - 1)
+else:
+    # Compare cities is NOT a sequence — three independent views, so no numbers / Prev-Next.
+    st.caption("Compare-cities views")
+    for col, page in zip(st.columns(len(compare_pages)), compare_pages):
+        with col:
+            st.page_link(page, label=page.title)
+
+st.divider()
+
+# ── Per-group chrome — shown above the active page's body ──────────────────────
+if within_active:
     # Geographic unit — one global control for the Within-Baltimore pages. Writes the
     # shared `geo_level` state every such page reads; the Areas view is the exception (it
     # shows tracts and CSAs together and ignores this toggle).
