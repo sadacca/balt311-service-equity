@@ -262,23 +262,14 @@ hr {{ border-color: var(--border); }}
 }}
 .app-tagline {{ color: var(--muted-ink); font-size: 0.95rem; }}
 
-/* ── Top nav: frame switcher + story stepper ─────────────────────────────────── */
-/* Active frame = filled pill (non-clickable); the other frame is a page_link below. */
-.frame-pill {{
-    display: inline-block; padding: 0.34rem 0.95rem; border-radius: 999px;
-    font-family: 'Space Grotesk', 'Inter', sans-serif; font-weight: 600; font-size: 0.92rem;
-    background: var(--primary); color: #fff; white-space: nowrap;
+/* ── Top nav: compact frame + view segmented controls ────────────────────────── */
+/* Small text + tight padding so both controls stay ~one line each and use the width;
+   the buttons wrap (rather than stack full-width like columns) on narrow screens. */
+[data-testid="stSegmentedControl"] {{ margin-bottom: 0.2rem; }}
+[data-testid="stSegmentedControl"] button {{
+    padding: 0.12rem 0.62rem; font-size: 0.82rem; min-height: 0;
 }}
-/* page_links rendered as pills; Streamlit flags the current page with aria-current. */
-[data-testid="stPageLink"] a {{
-    border-radius: 999px; padding: 0.3rem 0.7rem;
-    transition: background .15s ease, color .15s ease;
-}}
-[data-testid="stPageLink"] a:hover {{ background: var(--surface); }}
-[data-testid="stPageLink"] a[aria-current="page"] {{
-    background: var(--primary); font-weight: 600;
-}}
-[data-testid="stPageLink"] a[aria-current="page"] * {{ color: #fff !important; }}
+[data-testid="stSegmentedControl"] button p {{ font-size: 0.82rem; }}
 </style>
 """
 

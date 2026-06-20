@@ -276,49 +276,41 @@ pg = st.navigation(
     position="hidden",
 )
 
-# ── Top navigation — frame switcher + story stepper (replaces the sidebar nav) ─
-# Identity check against the page list (not pg.url_path): Streamlit blanks the default
-# page's url_path to "" at the app root, so a string match would misfire on the landing page.
+# ── Top navigation — compact frame + view selectors (replaces the sidebar nav) ─
+# Two horizontal segmented controls (frame on one line, views on the next) keep the nav to
+# ~two lines and wrap to use the screen width, instead of stacking full-width like st.columns
+# does on mobile. Keys are scoped to the current page's url_path, so every page renders a
+# fresh control seeded (default=) to the active selection — there's no stale state to fight,
+# so a plain body-level switch_page on change works. required=True blocks empty selection.
 within_active = pg in within_pages
 
-# Frame switcher: the active frame is a filled, non-clickable pill; the other frame is a
-# page_link to its landing page. This keeps "which of the two frames am I in" always clear.
-fcol1, fcol2, _ = st.columns([2.4, 2.4, 5.2])
-with fcol1:
-    if within_active:
-        st.markdown("<span class='frame-pill'>🏙 Within Baltimore</span>",
-                    unsafe_allow_html=True)
-    else:
-        st.page_link(within_pages[0], label="🏙 Within Baltimore")
-with fcol2:
-    if within_active:
-        st.page_link(compare_pages[0], label="🌐 Compare cities")
-    else:
-        st.markdown("<span class='frame-pill'>🌐 Compare cities</span>",
-                    unsafe_allow_html=True)
+# Short labels — drop the numbers/icons and trim the long titles so all six views fit on a
+# line or two. Order is the story order (left→right); the segmented control implies it.
+_SHORT = {
+    "Operations": "Operations", "Services": "Services",
+    "Area Service Usage": "Areas", "Equity": "Equity",
+    "Service Equity": "Service Equity", "Mix-Adjusted Equity": "Mix-Adjusted",
+    "Service Delivery": "Service Delivery", "Maturity Index": "Maturity",
+}
+_FRAMES = ["Within Baltimore", "Compare cities"]
+desired_frame = _FRAMES[0] if within_active else _FRAMES[1]
 
-if within_active:
-    # Numbered story stepper — the six within-Baltimore views are a sequence, so number
-    # them and add Prev/Next. st.page_link auto-highlights the current page.
-    idx = within_pages.index(pg)
-    for col, (i, page) in zip(st.columns(len(within_pages)),
-                              enumerate(within_pages, start=1)):
-        with col:
-            st.page_link(page, label=f"{i} · {page.title}")
-    prev_col, next_col, _ = st.columns([1.2, 1.2, 7.6])
-    with prev_col:
-        st.page_link(within_pages[max(idx - 1, 0)], label="◀ Prev", disabled=idx == 0)
-    with next_col:
-        st.page_link(within_pages[min(idx + 1, len(within_pages) - 1)],
-                     label="Next ▶", disabled=idx == len(within_pages) - 1)
-else:
-    # Compare cities is NOT a sequence — three independent views, so no numbers / Prev-Next.
-    st.caption("Compare-cities views")
-    for col, page in zip(st.columns(len(compare_pages)), compare_pages):
-        with col:
-            st.page_link(page, label=page.title)
+sel_frame = st.segmented_control(
+    "Section", _FRAMES, default=desired_frame, required=True,
+    key=f"nav_frame::{pg.url_path}", label_visibility="collapsed",
+)
+if sel_frame != desired_frame:
+    st.switch_page(within_pages[0] if sel_frame == _FRAMES[0] else compare_pages[0])
 
-st.divider()
+view_pages = within_pages if within_active else compare_pages
+_label_to_page = {_SHORT[p.title]: p for p in view_pages}
+current_label = _SHORT[pg.title]
+sel_view = st.segmented_control(
+    "View", list(_label_to_page), default=current_label, required=True,
+    key=f"nav_view::{pg.url_path}", label_visibility="collapsed",
+)
+if sel_view != current_label:
+    st.switch_page(_label_to_page[sel_view])
 
 # ── Per-group chrome — shown above the active page's body ──────────────────────
 if within_active:
