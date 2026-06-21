@@ -1,0 +1,162 @@
+name: "Baltimore: ingest → process → adjusted, one or more years (feeds all 6 within-Baltimore tabs)"
+
+# Replaces update_data.yml (single year) and backfill.yml (multi-year) — both ran the exact
+# same ingest → process → srtype → adjusted chain; a single year is just a backfill of length
+# one. This workflow takes a space-separated `years` list (default one year) and loops, so it
+# covers both old use cases with one code path.
+#
+# Feeds: Operations, Services, Areas, Equity, Service Equity, Mix-Adjusted Equity — every
+#   within-Baltimore tab reads tract/csa_metrics, srtype_metrics, adjusted_metrics, and the
+#   tract/csa boundary GeoJSONs this workflow produces.
+# Requires: nothing to run. pipeline_nsa_crosswalk.yml requires THIS to have run at least once
+#   (for tract_boundaries.geojson) before it can build the neighborhood-name crosswalk.
+
+on:
+  workflow_dispatch:
+    inputs:
+      years:
+        description: "Space-separated years to process, oldest first (one year = single-year run)"
+        required: false
+        default: "2025"
+        type: string
+      is_live_year:
+        description: "Treat the LAST year in the list as live? (applies 30-day right-censoring)"
+        required: false
+        default: false
+        type: boolean
+      pause_seconds:
+        description: "Pause between years (seconds) — courtesy delay for ESRI servers; ignored for a single year"
+        required: false
+        default: "180"
+        type: string
+
+jobs:
+  # ── Demographic reference files (year-independent) ──────────────────────────
+  # Fetches ACS 2023 5-year demographics and commits tract_demographics.csv +
+  # csa_demographics.csv if they don't already exist. Use pipeline_demographics_regen.yml
+  # to force-regenerate files that already exist (e.g. after adding new ACS variables).
+  demographics:
+    name: "Demographics — ACS reference files"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Skip if demographic files already committed
+        id: check
+        run: |
+          if [ -f data/processed/tract_demographics.csv ] && [ -f data/processed/csa_demographics.csv ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Demographic files already present — use pipeline_demographics_regen.yml to force-regenerate."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.check.outputs.skip == 'false'
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        if: steps.check.outputs.skip == 'false'
+        run: pip install pandas pyarrow
+
+      - name: Fetch ACS demographics
+        if: steps.check.outputs.skip == 'false'
+        env:
+          CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
+        run: python scripts/pipeline.py --stage demographics
+
+      - name: Commit demographic files
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/processed/tract_demographics.csv data/processed/csa_demographics.csv
+          if git diff --staged --quiet; then
+            echo "No demographic files to commit."
+          else
+            git commit -m "pipeline: add ACS demographic reference files"
+            git push origin main
+          fi
+
+  # ── Ingest + process + srtype + adjusted, one or more years sequentially ────
+  pipeline:
+    name: "Years: ${{ inputs.years }}"
+    needs: demographics
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pandas pyarrow geopandas
+
+      - name: Process years sequentially
+        env:
+          CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          years=(${{ inputs.years }})
+          last_index=$((${#years[@]} - 1))
+          first=true
+          for i in "${!years[@]}"; do
+            year="${years[$i]}"
+
+            # Pause before every year except the first
+            if [ "$first" = "false" ]; then
+              echo "--- Pausing ${{ inputs.pause_seconds }}s before $year ---"
+              sleep ${{ inputs.pause_seconds }}
+            fi
+            first=false
+
+            echo "=============================="
+            echo "  Year: $year"
+            echo "=============================="
+
+            LIVE_FLAG=""
+            if [ "${{ inputs.is_live_year }}" = "true" ] && [ "$i" = "$last_index" ]; then
+              LIVE_FLAG="--live"
+            fi
+
+            # Ingest — skip year on failure so one bad endpoint doesn't abort the run
+            if ! python scripts/pipeline.py --year $year --stage ingest; then
+              echo "WARNING: ingest failed for $year — skipping"
+              continue
+            fi
+
+            python scripts/pipeline.py --year $year --stage process $LIVE_FLAG
+            python scripts/pipeline.py --year $year --stage srtype
+            python scripts/pipeline.py --year $year --stage adjusted $LIVE_FLAG
+
+            # Commit processed outputs for this year before moving on
+            git pull --rebase --autostash origin main
+            git add data/processed/
+            if git diff --staged --quiet; then
+              echo "No processed-data changes for $year"
+            else
+              git commit -m "pipeline: update processed data for $year"
+              git push origin main
+            fi
+
+            # Clean up raw + interim to keep runner disk use flat across years
+            rm -f data/raw/requests_${year}.parquet
+            rm -f data/interim/requests_${year}_clean.parquet
+          done

@@ -70,8 +70,9 @@ python scripts/pipeline.py --year 2026 --live                # current-year with
 ```
 
 GitHub Actions workflows:
-- `update_data.yml` — single year, manual trigger
-- `backfill.yml` — multiple years, sequential, 180s pause between years (configurable), skips year on ingest failure, commits after each year
+- `pipeline_baltimore.yml` — one or more years (space-separated `years` input), sequential, 180s
+  pause between years (configurable), skips year on ingest failure, commits after each year.
+  Replaces the old `update_data.yml`/`backfill.yml` split (kept temporarily, marked deprecated).
 
 ### Data endpoints
 - 2023–present: `311_Customer_Service_Requests_{YEAR}/FeatureServer/0`
@@ -206,18 +207,33 @@ src/balt311/
                                   #   baltimore, dc, philadelphia, nyc, chicago, sf, austin, nashville, kansas_city, boston,
                                   #   memphis, cincinnati, seattle, dallas, los_angeles (Socrata wave 3)
 
-.github/workflows/
-  update_data.yml                 # Single-year workflow
-  backfill.yml                    # Multi-year sequential backfill
-  peer_city.yml                   # Cross-city metrics, single year (Phase 5)
-  peer_city_backfill.yml          # Cross-city metrics, multi-year sequential (Phase 5)
-  peer_city_matrix.yml            # Cross-city metrics, one job PER CITY in parallel + single merge/commit (Phase 5)
-  peer_city_equity.yml            # Per-city tract median income, income-only (Phase 5.5-1)
-  peer_city_audit.yml             # Internal data audit, workflow_dispatch — uploads report as
-                                  #   an artifact (not committed); not a user-facing feature
-  maturity_refresh.yml            # workflow_dispatch — fetch ACS population → re-verify census
-                                  #   endpoints → re-derive the maturity scorecard, then commit the
-                                  #   refreshed CSVs (Phase 5.8/5.9); hardens skeleton top-50 cities
+.github/workflows/                # Each workflow's `name:` states its feeds-which-tab /
+                                  #   requires-which-other-workflow relationship — see there
+                                  #   first; this list is a quick index, not the source of truth.
+  pipeline_baltimore.yml          # Within-Baltimore: ingest→process→srtype→adjusted, 1+ years.
+                                  #   Feeds all 6 within-Baltimore tabs.
+  pipeline_demographics_regen.yml # Within-Baltimore: force-regenerate ACS demographics.
+  pipeline_nsa_crosswalk.yml      # Within-Baltimore: tract→NSA name crosswalk (Areas tab only).
+                                  #   Requires pipeline_baltimore.yml to have run once first.
+  peer_city_sequential.yml        # Cross-city delivery metrics, 1+ years, smart-skip reuse.
+                                  #   Feeds Compare-cities → Service Delivery (+ the
+                                  #   tract×SRType/tract grains peer_city_equity.yml needs).
+  peer_city_parallel.yml          # Cross-city delivery metrics, one job PER CITY in parallel +
+                                  #   single merge/commit — faster bulk refresh, always
+                                  #   force-refetches (no smart-skip). Same feeds as above.
+  peer_city_equity.yml            # Cross-city tract median income + mix-adjusted income equity
+                                  #   score (Phase 5.5-1/5.5-3). Feeds Compare-cities → Service
+                                  #   Equity. Requires peer_city_sequential.yml or
+                                  #   peer_city_parallel.yml to have run first.
+  maturity_refresh.yml            # Fetch ACS population → re-verify census endpoints →
+                                  #   re-derive the maturity scorecard (Phase 5.8/5.9). Feeds
+                                  #   Compare-cities → Maturity Index. No prerequisites.
+  peer_city_audit.yml             # Internal data audit — uploads a report as a workflow
+                                  #   artifact (not committed); not tab-facing.
+  update_data.yml, backfill.yml, peer_city.yml, peer_city_backfill.yml
+                                  # [DEPRECATED] superseded by pipeline_baltimore.yml /
+                                  #   peer_city_sequential.yml above; kept temporarily for
+                                  #   rollback safety, scheduled for deletion.
 
 data/processed/                   # Committed — app reads only from here
 data/raw/                         # Gitignored

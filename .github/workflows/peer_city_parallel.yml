@@ -1,18 +1,23 @@
-name: Parallel cross-city 311 backfill (Phase 5)
+name: "Cross-city: delivery metrics — parallel bulk refresh (feeds: Compare cities → Service Delivery)"
 
-# Fan-out analogue of the sequential backfill: one job PER CITY, so every city's API
+# Fan-out analogue of peer_city_sequential.yml: one job PER CITY, so every city's API
 # (ArcGIS / Carto / Socrata / CKAN) is hit concurrently instead of one-after-another. Each
 # matrix job writes its own per-city artifact (no shared file), then a single merge job
 # upserts them all into the canonical peer_city_metrics.parquet and commits ONCE — so the
-# 10 parallel fetches never race on the binary file or on git push.
+# 10+ parallel fetches never race on the binary file or on git push.
 #
 # Matrix jobs always (re)fetch their city for the requested years (each starts from an empty
-# per-city file). Use the sequential backfill workflow when you want smart "skip what's
-# already present" reuse instead.
+# per-city file — there's no existing data to skip against). Use peer_city_sequential.yml
+# instead when you want smart "skip what's already present" reuse rather than a full refetch.
 #
 # Each (city, year) fetch is wrapped in `timeout` (per_year_timeout_minutes, default 45m) —
 # a single slow/hanging portal year is killed and skipped rather than consuming the whole
 # 180-minute job-level budget and silently losing every other year for that city.
+#
+# Feeds: Compare cities → Service Delivery tab (peer_city_metrics.parquet), plus the
+#   tract×SRType/tract grains that peer_city_equity.yml needs for the Service Equity tab.
+# Requires: nothing to run — but peer_city_equity.yml (Service Equity tab) requires THIS
+#   (or peer_city_sequential.yml) to have populated tract_srtype/tract metrics first.
 
 concurrency:
   group: peer-city-data        # shares the lane with the other peer-city workflows (no races)

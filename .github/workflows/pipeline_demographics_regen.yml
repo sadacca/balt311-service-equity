@@ -1,10 +1,16 @@
-name: Regenerate demographics
+name: "Baltimore: force-regenerate ACS demographics (feeds all 6 within-Baltimore tabs)"
 
 # Force-regenerates tract_demographics.csv and csa_demographics.csv from the
 # Census ACS 2023 5-year API, regardless of whether the files already exist.
 # Use this whenever the demographics pipeline changes (new ACS variables,
 # updated methodology, ACS vintage bump) and you need the committed files to
 # reflect the new code.
+#
+# Feeds: Operations, Services, Areas, Equity, Service Equity, Mix-Adjusted Equity
+#   (every within-Baltimore tab reads tract/csa_demographics.csv).
+# Requires: nothing — demographics are year-independent (ACS 2023 5-year snapshot).
+# Sibling: pipeline_baltimore.yml also has a "create if missing" demographics job;
+#   use this workflow instead when you need to force a refresh of files that already exist.
 
 on:
   workflow_dispatch:

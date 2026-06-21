@@ -1,5 +1,9 @@
-name: Refresh maturity scorecard
+name: "Cross-city: maturity scorecard refresh (feeds: Compare cities → Maturity Index)"
 
+# Feeds: Compare cities → Maturity Index tab (peer_city_coverage_census.csv,
+#   peer_city_maturity.csv).
+# Requires: nothing — independent of the delivery/equity cross-city pipelines.
+#
 # Re-verify the 311 coverage census and rebuild the maturity scorecard, end to end:
 #   1. (optional) fetch ACS place population for any city missing one — or all, with refetch
 #   2. (optional) re-probe every census endpoint to refresh the api evidence (verify_census)

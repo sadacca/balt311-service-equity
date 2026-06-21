@@ -1,5 +1,13 @@
-name: Cross-city equity data — tract income (Phase 5.5)
+name: "Cross-city: tract income equity score (feeds: Compare cities → Service Equity)"
 
+# Feeds: Compare cities → Service Equity tab (peer_city_tract_income.parquet,
+#   peer_city_equity.parquet — the mix-adjusted income equity score).
+# Requires: peer_city_sequential.yml or peer_city_parallel.yml must have already populated
+#   peer_city_tract_srtype_metrics.parquet / peer_city_tract_metrics.parquet for the requested
+#   cities — the equity-score step below joins against those files and no-ops per city if
+#   they're missing (silent partial result, not a hard failure), so the "Verify prerequisite
+#   data" step catches a totally-missing prerequisite early instead of producing an empty score.
+#
 # Serialize against the other cross-city data writers so concurrent runs never race on a
 # shared file (this writes its own peer_city_tract_income.parquet, but queue anyway for
 # a predictable commit history on the data branch).
@@ -40,6 +48,15 @@ jobs:
 
       - name: Install dependencies
         run: pip install pandas pyarrow
+
+      - name: Verify prerequisite cross-city delivery metrics exist
+        run: |
+          if [ ! -f data/processed/peer_city_tract_srtype_metrics.parquet ] || [ ! -f data/processed/peer_city_tract_metrics.parquet ]; then
+            echo "ERROR: peer_city_tract_srtype_metrics.parquet / peer_city_tract_metrics.parquet not found."
+            echo "Run peer_city_sequential.yml or peer_city_parallel.yml first to populate them."
+            exit 1
+          fi
+          echo "Prerequisite delivery-metrics files found."
 
       - name: Fetch per-city tract median income
         env:

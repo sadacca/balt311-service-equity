@@ -1,4 +1,4 @@
-name: Build NSA crosswalk
+name: "Baltimore: build NSA neighborhood-name crosswalk (feeds: Areas tab)"
 
 # Generates data/processed/tract_to_nsa.csv — the tract → Baltimore Neighborhood
 # Statistical Area name crosswalk used by the Area Embedding tab to label scatter
@@ -11,8 +11,9 @@ name: Build NSA crosswalk
 # change. The output file is committed to the repo so the app can read it without
 # network access at runtime.
 #
-# Prerequisite: data/processed/tract_boundaries.geojson must exist in the target
-# branch (produced by --stage process and committed by update_data.yml or backfill.yml).
+# Feeds: Areas tab only (neighborhood-name labels on the embedding scatter).
+# Requires: pipeline_baltimore.yml must have run for at least one year first —
+#   data/processed/tract_boundaries.geojson must already exist in the target branch.
 
 on:
   workflow_dispatch:
@@ -47,7 +48,7 @@ jobs:
         run: |
           if [ ! -f data/processed/tract_boundaries.geojson ]; then
             echo "ERROR: data/processed/tract_boundaries.geojson not found."
-            echo "Run update_data.yml for any available year first to generate it."
+            echo "Run pipeline_baltimore.yml for any available year first to generate it."
             exit 1
           fi
           echo "tract_boundaries.geojson found ($(wc -c < data/processed/tract_boundaries.geojson | tr -d ' ') bytes)"

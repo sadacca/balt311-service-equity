@@ -1,4 +1,9 @@
-name: Cross-city data audit (internal)
+name: "Cross-city: internal data audit (not tab-facing — QA report only)"
+
+# Feeds: nothing — internal fill-rate/plausibility/schema-mapping QA report, uploaded as a
+#   workflow artifact (not committed, not read by any app tab).
+# Requires: nothing — reads whatever cross-city data is already committed; the live-schema
+#   check additionally needs network access to each city's raw API.
 
 on:
   workflow_dispatch:
