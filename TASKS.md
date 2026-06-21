@@ -153,7 +153,12 @@ remains is recording the **actual cohort findings** into `cross_city_comparison.
   `api_key` query param; there is no anonymous read path. Needs a registered key, not a code or
   URL fix — out of scope until one is obtained.
 
-  Raleigh/Louisville still open — cross-checking them against
+  Louisville fixed: pinned `endpoint_url` to the plain ArcGIS REST FeatureServer/0 layer
+  (`services1.arcgis.com/79kfd2K6fskCAkyg/.../Louisville_Metro_KY_Metro_311_Service_Requets_2024/FeatureServer/0`,
+  user-supplied) instead of the Hub dataset page — already a numbered layer URL, so it resolves
+  straight through the existing `_arcgis_rest_fields()` `/query` path with no code change needed.
+
+  Raleigh still open — cross-checking it against
   `us-city.census.okfn.org/dataset/service-requests.html` was suggested but the sandbox can't
   reach that host (network allowlist + a 403 via WebFetch); deferred until someone with browser
   access can pull the relevant rows.
