@@ -326,7 +326,7 @@ def probe(endpoint: str) -> dict:
     try:
         fields, geo_hint = _first_record_fields(endpoint)
     except Exception as exc:
-        return {**blank, "error": str(exc)[:140]}
+        return {**blank, "error": str(exc)}
     if not fields:
         return {**blank, "error": "no records returned"}
     return {
@@ -368,10 +368,9 @@ def main() -> int:
         verdict = "OK" if res["ok"] else f"FAIL: {res['error']}"
         if res["ok"] and not (res["created"] and res["geo"]):
             verdict = "THIN (missing created/geo)"
-        # GitHub Actions' log capture hard-truncates any single line at ~218 chars (confirmed: two
-        # unrelated long FAIL messages both cut at exactly that offset, regardless of ASCII vs
-        # Unicode flags) — so long verdicts get wrapped across short continuation lines instead of
-        # one giant line, which would otherwise silently lose the diagnostic detail.
+        # Long verdicts (chained geojson + hub-api fallback errors) get wrapped across short
+        # continuation lines instead of one giant table row, so the full diagnostic detail stays
+        # readable rather than blowing out the fixed-width table.
         short_verdict = verdict if len(verdict) <= 60 else verdict[:57] + "..."
         print(f"{row['city']:28} {row.get('status',''):11} {row.get('evidence',''):11} {flags} {short_verdict}")
         if short_verdict != verdict:
