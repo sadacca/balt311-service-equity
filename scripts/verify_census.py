@@ -363,7 +363,10 @@ def main() -> int:
         if not endpoint:
             continue
         res = probe(endpoint)
-        flags = "".join("  ✓   " if res[k] else "  ·   " for k in ("created", "closed", "geo"))
+        # ASCII only — non-ASCII flag glyphs (previously checkmark/middle-dot) appear to interact
+        # with a buffering/encoding quirk in GitHub Actions' log capture that hard-truncates the
+        # line at a fixed byte offset, silently cutting off long FAIL messages.
+        flags = "".join("  Y   " if res[k] else "  .   " for k in ("created", "closed", "geo"))
         verdict = "OK" if res["ok"] else f"FAIL: {res['error']}"
         if res["ok"] and not (res["created"] and res["geo"]):
             verdict = "THIN (missing created/geo)"
