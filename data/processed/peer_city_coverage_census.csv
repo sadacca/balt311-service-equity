@@ -1,15 +1,15 @@
 rank,city,status,evidence,endpoint_url,note,population,api_checked,api_fields,field_count,has_channel,has_agency
 1,"New York, NY",scoreable,city_docs,https://data.cityofnewyork.us/Social-Services/311-Service-Requests-from-2020-to-Present/erm2-nwe9,"Socrata erm2-nwe9; created_date, closed_date, lat/lon",8516202,ok,created+closed+geo,41,y,y
-2,"Los Angeles, CA",scoreable,city_docs,https://data.lacity.org/City-Infrastructure-Service-Requests/MyLA311-Service-Request-Data-2024/b7dx-7gc3,MyLA311 Socrata; annual datasets 2018–2025,3857897,ok,created+closed+geo,34,y,y
+2,"Los Angeles, CA",scoreable,city_docs,https://data.lacity.org/City-Infrastructure-Service-Requests/MyLA311-Service-Request-Data-2024/b7dx-7gc3,MyLA311 Socrata; annual datasets 2018–2025,3857897,fail,,0,,
 3,"Chicago, IL",scoreable,city_docs,https://data.cityofchicago.org/Service-Requests/311-Service-Requests/v6vf-nfxy,"Socrata v6vf-nfxy; created_date, closed_date, lat/lon",2707648,ok,created+closed+geo,42,,y
 4,"Houston, TX",partial,city_docs,https://houston-mycity.opendata.arcgis.com/datasets/MyCity::feature-layer-houston-311-weekly-cases-layer,ArcGIS; rolling 7-day closed cases only,2304580,fail,,0,,
 5,"Phoenix, AZ",partial,city_docs,https://www.phoenixopendata.com/dataset/311-service-request-data,ArcGIS; 7-day lookback per docs,1608139,fail,,0,,
 6,"Philadelphia, PA",scoreable,city_docs,https://phl.carto.com/api/v2/sql?q=SELECT+*+FROM+public_cases_fc+LIMIT+1&format=json,"Carto public_cases_fc; requested_datetime, API",1582432,ok,created+closed+geo,21,,y
-7,"San Antonio, TX",scoreable,city_docs,https://opendata-cosagis.opendata.arcgis.com/datasets/CoSAGIS::311-all-service-calls,ArcGIS Open Data SA; since 2011,1434625,fail,,0,,
+7,"San Antonio, TX",scoreable,city_docs,https://opendata-cosagis.opendata.arcgis.com/datasets/CoSAGIS::311-all-service-calls,ArcGIS Open Data SA; since 2011,1434625,ok,created+closed+geo,18,y,y
 8,"San Diego, CA",scoreable,city_docs,https://data.sandiego.gov/datasets/get-it-done-311/,Get It Done; annual CSV + rolling; lat/lng,1386932,fail,,0,,
 9,"Dallas, TX",scoreable,city_docs,https://www.dallasopendata.com/Services/311-Service-Request-Based/wwr9-8ha7,Socrata; since Oct 2018,1299553,fail,,0,,
 10,"San Jose, CA",partial,city_docs,https://data.sanjoseca.gov/dataset/311-service-request-data,Open Data; daily; limited doc,1013240,ok,created+geo,11,y,y
-11,"Austin, TX",scoreable,city_docs,https://data.austintexas.gov/Utilities-and-City-Services/Austin-311-Public-Data/xwdj-i9he,Socrata xwdj-i9he; since 2014; half-hourly,967862,ok,created+closed+geo,23,y,y
+11,"Austin, TX",scoreable,city_docs,https://data.austintexas.gov/Utilities-and-City-Services/Austin-311-Public-Data/xwdj-i9he,Socrata xwdj-i9he; since 2014; half-hourly,967862,fail,,0,,
 12,"Jacksonville, FL",unconfirmed,third_party,https://andrew-friedman.github.io/jkan/datasets/311-City-of-Jacksonville/,National 311 Data Portal; no direct API,949611,fail,,0,,
 13,"Fort Worth, TX",partial,city_docs,https://data.fortworthtexas.gov/,Socrata portal; 311 unclear,918915,fail,,0,,
 14,"Columbus, OH",partial,city_docs,https://gis.columbus.gov/coc311map/,GIS map; no downloadable dataset,905748,fail,,0,,
@@ -25,12 +25,12 @@ rank,city,status,evidence,endpoint_url,note,population,api_checked,api_fields,fi
 24,"Boston, MA",scoreable,api,https://data.boston.gov/dataset/311-service-requests,Analyze Boston; multiple years; Open311 API,663972,ok,created+closed+geo,29,y,y
 25,"Detroit, MI",partial,api,https://data-detroitmi.hub.arcgis.com/datasets/improve-detroit-issues,Improve Detroit ArcGIS; app-channel only,639111,fail,,0,,
 26,"Portland, OR",partial,api,https://seeclickfix.com/web_portal/9Sds4Ebv9yf9nC8e9yhDf5MP/,SeeClickFix; Open311 API; no bulk export,652503,fail,,0,,
-27,"Memphis, TN",scoreable,api,https://maps.memphistn.gov/mapping/rest/services/OPM/COM_311_REQUESTS_OPM/FeatureServer,Migrated off Socrata (data.memphistn.gov retired) to OPM ArcGIS FeatureServer,629063,fail,,0,,
-28,"Louisville, KY",scoreable,api,https://services1.arcgis.com/79kfd2K6fskCAkyg/ArcGIS/rest/services/Louisville_Metro_KY_Metro_311_Service_Requets_2024/FeatureServer/0,LOJIC plain ArcGIS FeatureServer (2024 layer); pinned to the live REST query endpoint for verification,633045,fail,,0,,
-29,"Baltimore, MD",scoreable,api,https://services1.arcgis.com/UWYHeuuJISiGmgXx/arcgis/rest/services/311_Customer_Service_Requests_2024/FeatureServer/0,Per-year ArcGIS; 2016-present; API confirmed,577193,fail,,0,,
+27,"Memphis, TN",scoreable,api,https://maps.memphistn.gov/mapping/rest/services/OPM/COM_311_REQUESTS_OPM/FeatureServer,Migrated off Socrata (data.memphistn.gov retired) to OPM ArcGIS FeatureServer,629063,ok,created+closed+geo,101,y,y
+28,"Louisville, KY",scoreable,api,https://services1.arcgis.com/79kfd2K6fskCAkyg/ArcGIS/rest/services/Louisville_Metro_KY_Metro_311_Service_Requets_2024/FeatureServer/0,LOJIC plain ArcGIS FeatureServer (2024 layer); pinned to the live REST query endpoint for verification,633045,ok,created+closed+geo,19,y,y
+29,"Baltimore, MD",scoreable,api,https://services1.arcgis.com/UWYHeuuJISiGmgXx/arcgis/rest/services/311_Customer_Service_Requests_2024/FeatureServer/0,Per-year ArcGIS; 2016-present; API confirmed,577193,ok,created+closed+geo,23,,y
 30,"Milwaukee, WI",unconfirmed,city_docs,https://data.milwaukee.gov/,Portal exists; 311 status unclear,577222,fail,,0,,
 31,"Albuquerque, NM",partial,third_party,https://seeclickfix.com/web_portal/Y2UDAwYmghxaeq4V337k2sau/issues/map,ABQ311 via SeeClickFix; no central export,564559,fail,,0,,
-32,"Sacramento, CA",scoreable,city_docs,https://data.cityofsacramento.org/datasets/5b9a9448663f41b1898643b6d91201c4_0/data,Sacramento 311 Socrata portal,524943,fail,,0,,
+32,"Sacramento, CA",scoreable,city_docs,https://data.cityofsacramento.org/datasets/5b9a9448663f41b1898643b6d91201c4_0/data,Sacramento 311 Socrata portal,524943,ok,created+closed,18,y,
 33,"Kansas City, MO",scoreable,api,https://data.kcmo.org/311/311-Call-Center-Reported-Issues/d4px-6rwg,OpenData KC Socrata; daily; API,508233,ok,created+closed+geo,24,y,y
 34,"Atlanta, GA",partial,city_docs,https://www.atlantaga.gov/government/mayor-s-office/executive-offices/office-of-innovation-delivery-and-performance/dataatlanta,DataAtlanta portal; ATL311 not API-accessible,498715,fail,,0,,
 35,"Colorado Springs, CO",unconfirmed,none,https://coloradosprings.gov/gocos,GoCOS portal; CORA records only,478961,fail,,0,,
@@ -50,6 +50,6 @@ rank,city,status,evidence,endpoint_url,note,population,api_checked,api_fields,fi
 49,"Arlington, TX",unconfirmed,none,,Pending verification — top-50 canvass expansion; add a 311 endpoint then run verify_census,394266,,,,,
 50,"Aurora, CO",unconfirmed,none,,Pending verification — top-50 canvass expansion; add a 311 endpoint then run verify_census,386261,,,,,
 0,"Cincinnati, OH",partial,city_docs,https://data.cincinnati-oh.gov/thriving-neighborhoods/Cincinnati-311-Non-Emergency-Service-Requests/4cjh-bm8b,"Tyler Data & Insights Socrata; dataset now returns ""must be logged in"" on every API path (resource/ and api/views/rows) regardless of app token/API key — not fetchable headlessly as of June 2026",309317,fail,,0,,
-0,"Pittsburgh, PA",scoreable,api,https://data.wprdc.org/datastore/dump/5202679a-d243-402e-b82a-63189995a942,WPRDC CKAN; historical + new system Feb 2025; pinned to the live 311 resource id (the /dataset page's package_show was landing on a different/legacy resource),302971,fail,,0,,
-0,"New Orleans, LA",scoreable,api,https://data.nola.gov/api/v3/views/3iz8-nghx/query.json,Socrata v3 API; resource 3iz8-nghx; pinned to the live query endpoint for verification,383997,fail,,0,,
+0,"Pittsburgh, PA",scoreable,api,https://data.wprdc.org/datastore/dump/5202679a-d243-402e-b82a-63189995a942,WPRDC CKAN; historical + new system Feb 2025; pinned to the live 311 resource id (the /dataset page's package_show was landing on a different/legacy resource),302971,ok,created+closed+geo,26,,y
+0,"New Orleans, LA",scoreable,api,https://data.nola.gov/api/v3/views/3iz8-nghx/query.json,Socrata v3 API; resource 3iz8-nghx; pinned to the live query endpoint for verification,383997,ok,created+closed+geo,17,,
 0,"St. Louis, MO",scoreable,api,https://www.stlouis-mo.gov/data/datasets/dataset.cfm?id=5,CSB Request API (Open311 v2); requires key,301578,fail,,0,,
