@@ -64,7 +64,9 @@ _AGENCY = ("agency", "department", "owner", "work_group", "dept", "bureau", "res
 
 # Socrata dataset pages end in a 4-4 alphanumeric resource id (e.g. .../erm2-nwe9) — the
 # census records the human-facing landing page, but the SODA API lives at /resource/{id}.json.
-_SOCRATA_ID = re.compile(r"([a-z0-9]{4}-[a-z0-9]{4})/?$", re.IGNORECASE)
+# Also matches the id mid-path (e.g. New Orleans' .../api/v3/views/3iz8-nghx/query.json), since
+# some recorded URLs are already a v3 API call rather than the human-facing dataset page.
+_SOCRATA_ID = re.compile(r"([a-z0-9]{4}-[a-z0-9]{4})(?=/|$)", re.IGNORECASE)
 # CKAN dataset pages: /dataset/<slug> (singular) — package_show resolves the slug to a package.
 _CKAN_DATASET = re.compile(r"/dataset/([^/]+)/?$")
 # CKAN datastore dump links: /datastore/dump/<resource-id> — already names the exact resource,

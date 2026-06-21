@@ -141,7 +141,14 @@ remains is recording the **actual cohort findings** into `cross_city_comparison.
   (`opendata.minneapolismn.gov/datasets/public-311-2020/api`) — resolves cleanly through the
   existing Hub `.geojson` proxy path, no code change needed.
 
-  Raleigh/New Orleans/St. Louis/Louisville still open — cross-checking them against
+  New Orleans fixed: pinned `endpoint_url` to the Socrata v3 API call
+  (`data.nola.gov/api/v3/views/3iz8-nghx/query.json`) the user supplied directly. The recorded
+  URL put the resource id mid-path rather than at the end, which `_SOCRATA_ID`'s end-anchored
+  regex couldn't see — broadened the regex to match the id followed by `/` or end-of-string,
+  not just end-of-string, so both the human-facing dataset-page shape and this v3 API-call shape
+  resolve through the same `/resource/{id}.json` rewrite.
+
+  Raleigh/St. Louis/Louisville still open — cross-checking them against
   `us-city.census.okfn.org/dataset/service-requests.html` was suggested but the sandbox can't
   reach that host (network allowlist + a 403 via WebFetch); deferred until someone with browser
   access can pull the relevant rows.
@@ -158,9 +165,10 @@ remains is recording the **actual cohort findings** into `cross_city_comparison.
     (Mayor's Action Center — Indy's name for 311).
   - **Raleigh** — `data-wake.opendata.arcgis.com/datasets/ral::ask-raleigh-requests`
     ("Ask Raleigh" — Raleigh's name for 311).
-  - **New Orleans** — Socrata `data.nola.gov` resource `3iz8-nghx`, but documented as
-    "Historic Data: 2012-2018" — likely superseded by a newer dataset; needs checking, not a
-    straight swap.
+  - **New Orleans** — RESOLVED, see above (`data.nola.gov/api/v3/views/3iz8-nghx/query.json`,
+    user-supplied; resource `3iz8-nghx` was previously flagged "Historic Data: 2012-2018" in a
+    web search but the user's direct query against the live v3 API confirms it's the active
+    endpoint, not a stale snapshot).
   - **Minneapolis** — RESOLVED, see above (`opendata.minneapolismn.gov/datasets/public-311-2020/api`,
     the Hub `.geojson` proxy path; no org-hash service host lookup needed).
   - **St. Louis** — has a documented Open311 GeoReport v2 API, but it requires an API key
