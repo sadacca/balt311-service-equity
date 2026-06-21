@@ -148,7 +148,12 @@ remains is recording the **actual cohort findings** into `cross_city_comparison.
   not just end-of-string, so both the human-facing dataset-page shape and this v3 API-call shape
   resolve through the same `/resource/{id}.json` rewrite.
 
-  Raleigh/St. Louis/Louisville still open — cross-checking them against
+  St. Louis confirmed blocked (not a prober bug): the user pulled the live CSB API docs page
+  directly — Open311 GeoReport v2, but every method (including GET) requires a registered
+  `api_key` query param; there is no anonymous read path. Needs a registered key, not a code or
+  URL fix — out of scope until one is obtained.
+
+  Raleigh/Louisville still open — cross-checking them against
   `us-city.census.okfn.org/dataset/service-requests.html` was suggested but the sandbox can't
   reach that host (network allowlist + a 403 via WebFetch); deferred until someone with browser
   access can pull the relevant rows.
@@ -171,8 +176,9 @@ remains is recording the **actual cohort findings** into `cross_city_comparison.
     endpoint, not a stale snapshot).
   - **Minneapolis** — RESOLVED, see above (`opendata.minneapolismn.gov/datasets/public-311-2020/api`,
     the Hub `.geojson` proxy path; no org-hash service host lookup needed).
-  - **St. Louis** — has a documented Open311 GeoReport v2 API, but it requires an API key
-    (not anonymously fetchable) — needs a registered key, not a URL fix.
+  - **St. Louis** — CONFIRMED blocked, see above — documented Open311 GeoReport v2 API,
+    every method requires a registered `api_key`; not anonymously fetchable. Needs a
+    registered key, not a URL fix.
   - **Phoenix, San Jose, Tucson** — portal is plausibly CKAN/ArcGIS already (Phoenix and San
     Jose's recorded URLs already match the new CKAN `/dataset/<slug>` rewrite and will be
     auto-probed), but no specific 311 resource/dataset id could be confirmed via search.
