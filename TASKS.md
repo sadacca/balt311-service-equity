@@ -105,6 +105,24 @@ remains is recording the **actual cohort findings** into `cross_city_comparison.
   (Consolidated)" note, but no confirmed replacement URL) — needs a live re-run to see how many
   of today's prober fixes already resolve them before further URL guessing.
 
+  **June 21 live re-run (`maturity_refresh.yml` → `verify_census.py --write`)** surfaced 9
+  api-tier regressions, all real prober bugs (not data rot): the geometry-hint fix never
+  fired for plain ArcGIS REST FeatureServer/MapServer URLs (Memphis) because `_to_api_url`'s
+  `?f=json` only ever returns layer *metadata* (schema, no `features`) — fixed by adding
+  `_arcgis_rest_fields()`, which resolves to a layer and hits `/query?...&f=json` for real
+  records, mirroring `cities/arcgis.py`'s live request shape. Separately, the created/closed
+  field-name heuristics missed real production field names — `open_date_time` (Kansas City),
+  `requestdate` (Memphis), `resolution_date`/`completion_date` — because the substrings
+  weren't contiguous in those names; fixed by grounding `_CREATED`/`_CLOSED` in the actual
+  `CANDIDATES`/`field_overrides` lists the live adapters (`socrata.py`, `memphis.py`,
+  `nashville.py`, `dc.py`) already match against real data. Also found `maturity_refresh.yml`
+  never passed `SOCRATA_APP_TOKEN` to the verify step, so every Socrata-platform probe ran
+  anonymously-throttled (Dallas's "no records returned" is the textbook symptom) — now wired
+  through. Genuinely unresolved (stale/unconfirmed URLs, not a prober bug): Raleigh, Pittsburgh,
+  New Orleans, St. Louis, Minneapolis, Louisville — consistent with the leads below not yet
+  confirming a replacement URL. Needs another live re-run to confirm these fixes close out
+  Memphis/Kansas City/Dallas and to see the net regression count drop.
+
   The fixes above cover every census row whose `endpoint_url` already names a specific
   dataset. The cities below only have a portal
   *homepage* recorded, so there's no dataset-specific URL to rewrite — each needs a human (or

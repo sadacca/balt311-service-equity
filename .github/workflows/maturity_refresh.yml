@@ -8,9 +8,10 @@ name: "Cross-city: maturity scorecard refresh (feeds: Compare cities → Maturit
 #   1. (optional) fetch ACS place population for any city missing one — or all, with refetch
 #   2. (optional) re-probe every census endpoint to refresh the api evidence (verify_census)
 #   3. re-derive the scorecard (score_maturity) and commit the refreshed CSVs
-# Manual trigger only. Needs network + CENSUS_API_KEY (a repo secret) for steps 1–2; step 3 is
-# a pure local recompute. New top-50 cities added as a skeleton get hardened here once they
-# carry a 311 endpoint.
+# Manual trigger only. Needs network + CENSUS_API_KEY (a repo secret) for step 1; step 2 also
+# passes SOCRATA_APP_TOKEN (optional secret) to lift anonymous-throttling failures on the
+# Socrata-platform rows in the census — step 3 is a pure local recompute. New top-50 cities
+# added as a skeleton get hardened here once they carry a 311 endpoint.
 
 on:
   workflow_dispatch:
@@ -39,6 +40,7 @@ jobs:
       contents: write
     env:
       CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
+      SOCRATA_APP_TOKEN: ${{ secrets.SOCRATA_APP_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
