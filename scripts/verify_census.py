@@ -205,26 +205,31 @@ def _ckan_fields(url: str) -> list[str] | None:
 _FEATURE_SERVER_URL = re.compile(r'https://[^"\\\s]+?/(?:FeatureServer|MapServer)(?:/\d+)?')
 
 
-def _arcgis_hub_resolve(slug: str) -> str | None:
+def _arcgis_hub_resolve(slug: str) -> tuple[str | None, list[str]]:
     """Best-effort resolution of a Hub dataset's friendly `owner::slug` (or bare `slug`) to its
     underlying FeatureServer/MapServer URL via the Hub Datasets API — used when the `.geojson`
     download proxy itself is blocked (some Hub sites 403 the proxy at the CDN level even with a
     browser UA, e.g. Minneapolis, while the page and its real service are otherwise reachable).
     Tries both the bare-id and slug-filter request shapes Hub's API accepts, then regex-scans the
     raw JSON for a service URL rather than parsing a specific schema — Hub's JSON:API response
-    shape isn't documented/stable enough to depend on exact field paths."""
+    shape isn't documented/stable enough to depend on exact field paths. Returns `(url, errors)`:
+    `errors` records why each attempt failed (or "no match") so a failure here surfaces *why*
+    instead of a single opaque "didn't work" message."""
+    errors: list[str] = []
     for api_url in (
         f"https://hub.arcgis.com/api/v3/datasets/{slug}",
         f"https://hub.arcgis.com/api/v3/datasets?filter[slug]={urllib.parse.quote(slug, safe=':')}",
     ):
         try:
             data = _fetch_json(api_url)
-        except Exception:
+        except Exception as exc:
+            errors.append(f"{api_url} -> {exc}")
             continue
         found = _FEATURE_SERVER_URL.search(json.dumps(data))
         if found:
-            return found.group(0)
-    return None
+            return found.group(0), errors
+        errors.append(f"{api_url} -> no FeatureServer/MapServer URL in response")
+    return None, errors
 
 
 def _arcgis_hub_fields(url: str) -> tuple[list[str], bool] | None:
@@ -240,11 +245,13 @@ def _arcgis_hub_fields(url: str) -> tuple[list[str], bool] | None:
     if not m:
         return None
     geo_url = m.group(1) + ".geojson"
+    geojson_err = None
     try:
         data = _fetch_json(geo_url)
         feats = (data.get("features") or [])[:_PROBE_LIMIT]
-    except Exception:
+    except Exception as exc:
         feats = []
+        geojson_err = str(exc)
     if feats:
         keys: dict[str, None] = {}
         for feat in feats:
@@ -252,12 +259,15 @@ def _arcgis_hub_fields(url: str) -> tuple[list[str], bool] | None:
         geo_hint = any(feat.get("geometry") for feat in feats)
         return list(keys), geo_hint
     slug = m.group(1).rsplit("/datasets/", 1)[-1]
-    resolved = _arcgis_hub_resolve(slug)
+    resolved, hub_errors = _arcgis_hub_resolve(slug)
     if resolved:
         rest = _arcgis_rest_fields(resolved)
         if rest is not None:
             return rest
-    raise RuntimeError("no features in hub .geojson export (Hub API fallback also failed)")
+        hub_errors.append(f"{resolved} -> not a queryable FeatureServer/MapServer")
+    detail = f"geojson {geo_url} -> {geojson_err or 'no features'}"
+    detail += "; hub api: " + ("; ".join(hub_errors) if hub_errors else "no match")
+    raise RuntimeError(detail)
 
 
 def _fetch_json(url: str):
