@@ -250,11 +250,21 @@ def _render_full_table(df: pd.DataFrame, max_total: int) -> None:
         if "status" in disp.columns else ""
     if "derived" in disp.columns:
         disp["Basis"] = disp["derived"].map({True: "census", False: "hand"})
-    disp = disp.rename(columns={"rank": "#", "city": "City", "evidence": "Evidence",
-                                "total": "Total", **_DIM_SHORT})
-    order = ["#", "City", "Status", "Evidence", "Basis", "Total", *_DIM_SHORT.values()]
+    disp = disp.rename(columns={"rank": "#", "city": "City", "population": "Population",
+                                "evidence": "Evidence", "total": "Total", **_DIM_SHORT})
+    # Population sits up front so the table can be sorted by city size — surfacing the biggest
+    # cities (which carry the most 311 data) and, just as tellingly, which large cities publish
+    # nothing (a big city with a 0 Total).
+    order = ["#", "City", "Population", "Status", "Evidence", "Basis", "Total", *_DIM_SHORT.values()]
     order = [c for c in order if c in disp.columns]
     st.dataframe(
         disp[order], hide_index=True, use_container_width=True, height=560,
-        column_config={"Total": st.column_config.NumberColumn("Total", help=f"out of {max_total}")},
+        column_config={
+            "Total": st.column_config.NumberColumn("Total", help=f"out of {max_total}"),
+            "Population": st.column_config.NumberColumn(
+                "Population", format="localized",
+                help="City (Census place) population — click to sort by size. Cohort cities use "
+                     "our ACS figure; others use the 2020 Census.",
+            ),
+        },
     )
