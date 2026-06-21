@@ -158,10 +158,27 @@ remains is recording the **actual cohort findings** into `cross_city_comparison.
   user-supplied) instead of the Hub dataset page — already a numbered layer URL, so it resolves
   straight through the existing `_arcgis_rest_fields()` `/query` path with no code change needed.
 
-  Raleigh still open — cross-checking it against
-  `us-city.census.okfn.org/dataset/service-requests.html` was suggested but the sandbox can't
-  reach that host (network allowlist + a 403 via WebFetch); deferred until someone with browser
-  access can pull the relevant rows.
+  **June 21 second live re-run** (post-Louisville/New-Orleans fixes) confirmed those two and
+  surfaced exactly 3 api-tier regressions: Raleigh (`THIN — missing created`, the heuristic
+  field-name list doesn't match Raleigh's real "created" field name, which the census's
+  `api_fields` column doesn't expose since it only records the matched created/closed/geo tier,
+  not raw field names — needs either the live field list or another fix), Minneapolis (now
+  `403 Forbidden` on the Hub `.geojson` download proxy even with the browser UA — unlike
+  Charlotte/Indianapolis/Denver/Atlanta, the UA fix doesn't help here, suggesting the proxy
+  itself is blocked at the CDN level for this Hub site rather than a UA-sniffing 403), and St.
+  Louis (expected — the confirmed API-key requirement above, not a new regression).
+
+  Added a generic fix for the Minneapolis-shaped failure: `_arcgis_hub_resolve()` +
+  `_FEATURE_SERVER_URL` regex in `verify_census.py` — when the `.geojson` proxy 403s or returns
+  no features, resolve the dataset's real FeatureServer/MapServer URL via the Hub Datasets API
+  (`hub.arcgis.com/api/v3/datasets/<slug>`, trying both the bare-slug and `owner::slug` filter
+  forms) and query it directly through the existing `_arcgis_rest_fields()` path — a regex scan
+  over the raw JSON for a `FeatureServer`/`MapServer` URL rather than parsing Hub's
+  undocumented/unstable JSON:API schema. Should fix both Minneapolis and (if its "created" field
+  issue is actually a `.geojson`-proxy underreporting symptom rather than a true heuristic miss)
+  possibly Raleigh too — needs a live re-run (GitHub Actions has real network access; this
+  sandbox doesn't) to confirm. If Raleigh still comes back THIN after this, the next step is
+  getting its real field list (the user pulling the ArcGIS REST page, as done for Louisville).
 
   The fixes above cover every census row whose `endpoint_url` already names a specific
   dataset. The cities below only have a portal

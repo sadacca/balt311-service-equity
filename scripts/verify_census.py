@@ -202,26 +202,62 @@ def _ckan_fields(url: str) -> list[str] | None:
     raise RuntimeError("no DataStore-active resource found in package")
 
 
+_FEATURE_SERVER_URL = re.compile(r'https://[^"\\\s]+?/(?:FeatureServer|MapServer)(?:/\d+)?')
+
+
+def _arcgis_hub_resolve(slug: str) -> str | None:
+    """Best-effort resolution of a Hub dataset's friendly `owner::slug` (or bare `slug`) to its
+    underlying FeatureServer/MapServer URL via the Hub Datasets API — used when the `.geojson`
+    download proxy itself is blocked (some Hub sites 403 the proxy at the CDN level even with a
+    browser UA, e.g. Minneapolis, while the page and its real service are otherwise reachable).
+    Tries both the bare-id and slug-filter request shapes Hub's API accepts, then regex-scans the
+    raw JSON for a service URL rather than parsing a specific schema — Hub's JSON:API response
+    shape isn't documented/stable enough to depend on exact field paths."""
+    for api_url in (
+        f"https://hub.arcgis.com/api/v3/datasets/{slug}",
+        f"https://hub.arcgis.com/api/v3/datasets?filter[slug]={urllib.parse.quote(slug, safe=':')}",
+    ):
+        try:
+            data = _fetch_json(api_url)
+        except Exception:
+            continue
+        found = _FEATURE_SERVER_URL.search(json.dumps(data))
+        if found:
+            return found.group(0)
+    return None
+
+
 def _arcgis_hub_fields(url: str) -> tuple[list[str], bool] | None:
     """`None` if `url` isn't an ArcGIS Hub/Open Data dataset page; otherwise `(fields, geo_hint)`
     — property names (unioned across several features) from the dataset's `.geojson` download
     proxy (no item-id lookup needed — Hub resolves the friendly `Owner::slug` page URL itself),
     plus whether any sampled feature actually carries a structural `geometry` object. GeoJSON
     stores coordinates as a top-level `geometry` key, never as a named property, so a
-    property-name geo check alone would always read as "no geo" even for fully geocoded data."""
+    property-name geo check alone would always read as "no geo" even for fully geocoded data.
+    Falls back to resolving and querying the real FeatureServer/MapServer directly (via
+    `_arcgis_hub_resolve` + `_arcgis_rest_fields`) when the `.geojson` proxy itself fails."""
     m = _HUB_DATASET.search(url)
     if not m:
         return None
     geo_url = m.group(1) + ".geojson"
-    data = _fetch_json(geo_url)
-    feats = (data.get("features") or [])[:_PROBE_LIMIT]
-    if not feats:
-        raise RuntimeError("no features in hub .geojson export")
-    keys: dict[str, None] = {}
-    for feat in feats:
-        keys.update(dict.fromkeys((feat.get("properties") or {}).keys()))
-    geo_hint = any(feat.get("geometry") for feat in feats)
-    return list(keys), geo_hint
+    try:
+        data = _fetch_json(geo_url)
+        feats = (data.get("features") or [])[:_PROBE_LIMIT]
+    except Exception:
+        feats = []
+    if feats:
+        keys: dict[str, None] = {}
+        for feat in feats:
+            keys.update(dict.fromkeys((feat.get("properties") or {}).keys()))
+        geo_hint = any(feat.get("geometry") for feat in feats)
+        return list(keys), geo_hint
+    slug = m.group(1).rsplit("/datasets/", 1)[-1]
+    resolved = _arcgis_hub_resolve(slug)
+    if resolved:
+        rest = _arcgis_rest_fields(resolved)
+        if rest is not None:
+            return rest
+    raise RuntimeError("no features in hub .geojson export (Hub API fallback also failed)")
 
 
 def _fetch_json(url: str):
