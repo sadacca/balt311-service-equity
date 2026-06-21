@@ -30,7 +30,7 @@ rank,city,status,evidence,endpoint_url,note,population,api_checked,api_fields,fi
 29,"Baltimore, MD",scoreable,api,https://services1.arcgis.com/UWYHeuuJISiGmgXx/arcgis/rest/services/311_Customer_Service_Requests_2024/FeatureServer/0,Per-year ArcGIS; 2016-present; API confirmed,577193,ok,created+closed+geo,23,,y
 30,"Milwaukee, WI",unconfirmed,city_docs,https://data.milwaukee.gov/,Portal exists; 311 status unclear,577222,fail,,0,,
 31,"Albuquerque, NM",partial,third_party,https://seeclickfix.com/web_portal/Y2UDAwYmghxaeq4V337k2sau/issues/map,ABQ311 via SeeClickFix; no central export,564559,fail,,0,,
-32,"Sacramento, CA",scoreable,city_docs,https://data.cityofsacramento.org/datasets/5b9a9448663f41b1898643b6d91201c4_0/data,Sacramento 311 Socrata portal,524943,ok,created+closed+geo,18,y,
+32,"Sacramento, CA",scoreable,city_docs,https://data.cityofsacramento.org/datasets/5b9a9448663f41b1898643b6d91201c4_0/data,Sacramento 311 Socrata portal,524943,ok,created+closed,18,y,
 33,"Kansas City, MO",scoreable,api,https://data.kcmo.org/311/311-Call-Center-Reported-Issues/d4px-6rwg,OpenData KC Socrata; daily; API,508233,ok,created+closed+geo,24,y,y
 34,"Atlanta, GA",partial,city_docs,https://www.atlantaga.gov/government/mayor-s-office/executive-offices/office-of-innovation-delivery-and-performance/dataatlanta,DataAtlanta portal; ATL311 not API-accessible,498715,fail,,0,,
 35,"Colorado Springs, CO",unconfirmed,none,https://coloradosprings.gov/gocos,GoCOS portal; CORA records only,478961,fail,,0,,
