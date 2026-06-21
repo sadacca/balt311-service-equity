@@ -1,4 +1,8 @@
-name: Backfill 311 data — multiple years
+name: "[DEPRECATED — use pipeline_baltimore.yml] Backfill 311 data — multiple years"
+
+# Superseded by pipeline_baltimore.yml (pass a multi-year `years` input). Note this workflow
+# never ran the demographics job — pipeline_baltimore.yml fixes that gap. Kept temporarily for
+# rollback safety; scheduled for deletion once pipeline_baltimore.yml has a few clean runs.
 
 on:
   workflow_dispatch:

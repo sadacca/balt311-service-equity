@@ -1,4 +1,9 @@
-name: Cross-city 311 metrics (Phase 5)
+name: "[DEPRECATED — use peer_city_sequential.yml] Cross-city 311 metrics (Phase 5)"
+
+# Superseded by peer_city_sequential.yml, which takes a space-separated `years` input (one
+# year = the same single-year run this workflow does) and folds in peer_city_backfill.yml's
+# multi-year loop. Kept temporarily for rollback safety; scheduled for deletion once
+# peer_city_sequential.yml has a few clean runs under its belt.
 
 # Serialize all cross-city data writers (this + the backfill) so two runs never race on
 # the binary peer_city_metrics.parquet. Queue rather than cancel.

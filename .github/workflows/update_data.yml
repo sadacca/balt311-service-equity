@@ -1,4 +1,9 @@
-name: Update 311 processed data
+name: "[DEPRECATED — use pipeline_baltimore.yml] Update 311 processed data"
+
+# Superseded by pipeline_baltimore.yml, which takes a space-separated `years` input (one year
+# = the same single-year run this workflow does) and folds in backfill.yml's multi-year loop.
+# Kept temporarily for rollback safety; scheduled for deletion once pipeline_baltimore.yml has
+# a few clean runs under its belt.
 
 on:
   workflow_dispatch:
