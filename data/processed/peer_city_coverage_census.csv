@@ -43,7 +43,7 @@ rank,city,status,evidence,endpoint_url,note,population,api_checked,api_fields,fi
 42,"Virginia Beach, VA",unconfirmed,none,,Pending verification — top-50 canvass expansion; add a 311 endpoint then run verify_census,459470,,,,,
 43,"Miami, FL",unconfirmed,none,,Pending verification — top-50 canvass expansion; add a 311 endpoint then run verify_census,442241,,,,,
 44,"Oakland, CA",unconfirmed,none,,Pending verification — top-50 canvass expansion; add a 311 endpoint then run verify_census,440646,,,,,
-45,"Minneapolis, MN",scoreable,api,https://opendata.minneapolismn.gov/,ArcGIS FeatureServer; 525K+ records; Jan 2021+,429954,fail,,0,,
+45,"Minneapolis, MN",scoreable,api,https://opendata.minneapolismn.gov/datasets/public-311-2020/api,ArcGIS Hub; one FeatureServer per year (Public_311_YYYY); pinned to the 2020 dataset page for verification,429954,fail,,0,,
 46,"Tulsa, OK",unconfirmed,none,,Pending verification — top-50 canvass expansion; add a 311 endpoint then run verify_census,413066,,,,,
 47,"Bakersfield, CA",unconfirmed,none,,Pending verification — top-50 canvass expansion; add a 311 endpoint then run verify_census,403455,,,,,
 48,"Wichita, KS",unconfirmed,none,,Pending verification — top-50 canvass expansion; add a 311 endpoint then run verify_census,397532,,,,,

@@ -137,7 +137,11 @@ remains is recording the **actual cohort findings** into `cross_city_comparison.
   recognize that URL form and call `datastore_search` on it directly, bypassing package_show's
   "first DataStore-active resource" guess (`_CKAN_DUMP` regex + `_ckan_resource_fields()`).
 
-  Raleigh/New Orleans/St. Louis/Minneapolis/Louisville still open — cross-checking them against
+  Minneapolis fixed: pinned `endpoint_url` to the live dataset page
+  (`opendata.minneapolismn.gov/datasets/public-311-2020/api`) — resolves cleanly through the
+  existing Hub `.geojson` proxy path, no code change needed.
+
+  Raleigh/New Orleans/St. Louis/Louisville still open — cross-checking them against
   `us-city.census.okfn.org/dataset/service-requests.html` was suggested but the sandbox can't
   reach that host (network allowlist + a 403 via WebFetch); deferred until someone with browser
   access can pull the relevant rows.
@@ -157,10 +161,8 @@ remains is recording the **actual cohort findings** into `cross_city_comparison.
   - **New Orleans** — Socrata `data.nola.gov` resource `3iz8-nghx`, but documented as
     "Historic Data: 2012-2018" — likely superseded by a newer dataset; needs checking, not a
     straight swap.
-  - **Minneapolis** — confirmed on ArcGIS Hub (`opendata.minneapolismn.gov`), one
-    FeatureServer per year named `Public_311_YYYY`, but the org-specific service host (the
-    `services#.arcgis.com/<org-hash>/...` part) wasn't found via search — needs a live
-    browse to get the real service URL.
+  - **Minneapolis** — RESOLVED, see above (`opendata.minneapolismn.gov/datasets/public-311-2020/api`,
+    the Hub `.geojson` proxy path; no org-hash service host lookup needed).
   - **St. Louis** — has a documented Open311 GeoReport v2 API, but it requires an API key
     (not anonymously fetchable) — needs a registered key, not a URL fix.
   - **Phoenix, San Jose, Tucson** — portal is plausibly CKAN/ArcGIS already (Phoenix and San
