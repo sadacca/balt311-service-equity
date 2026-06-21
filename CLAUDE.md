@@ -112,7 +112,7 @@ Everything else (System/Internal source, ECC types, ungeocoded) is excluded from
 | `peer_city_tract_metrics.parquet` | city × year × tract | `geoid`, total_requests, closed_requests, closure_rate, median_days_to_close — per-city tract metrics pooled across SRType (Phase 5.5-2), the **raw** (non-stratified) grain P5.5-3 compares against the within-category `peer_city_tract_srtype_metrics.parquet` figure. Built alongside the tract×SRType grain in the same `peer_city.py` pass via `peer_metrics.compute_tract_and_srtype_metrics()` (one spatial join, both grains); Baltimore reuses its own `tract_metrics_{year}.parquet` via the `precomputed_tract` adapter hook. |
 | `peer_city_equity.parquet` | city × year × metric | `metric` (`median_days_to_close` or `closure_rate` — same two metrics as the within-Baltimore `equity_adjusted._SRTYPE_METRICS` selector), `adj_income_score` (within-SRType, volume-weighted overlap score — "how the same service is delivered"), `raw_income_score` (pooled overlap score — "overall, including which services an area requests"), `raw_gap` (below- minus above-median-income pooled value of `metric`; positive = poorer half waits longer for days, closes a higher share for closure rate), `n_tracts`, `n_srtypes_scored` — the per-city mix-adjusted income equity score (Phase 5.5-3/5.6-4, the primary Phase 5.5 deliverable). Built by `scripts/peer_city_equity_score.py` from the three other Phase 5.5 parquet files (scored once per metric); a pure local recompute, not a fetch, so it's cheap to re-run whenever its inputs change. |
 | `peer_city_maturity.csv` | city | 311 open-data publishing maturity scorecard — all 54 cities (top 50 + 4 enablers), 9 rubric dimensions 0–3 + population/in_cohort/status/evidence/derived; hand-scored anchors, the rest derived from the census by `scripts/score_maturity.py` (inaccessible cities → 0). `population` is the city's Census place population (cohort cities = our ACS figure, others = 2020 Census; curated in `score_maturity.POPULATION`) so the Maturity tab's full table sorts by city size. Phase 5.8/5.9 |
-| `peer_city_coverage_census.csv` | city | scoreable/partial/unconfirmed status of the 50 largest US cities (ranks 1–50) + 4 mid-size enablers (rank 0, below the top 50), each with an `evidence` tier (api/city_docs/third_party/none) and `endpoint_url` — Phase 5.8, verified canvass (`scripts/verify_census.py` re-probes the live endpoints). Ranks 41–50 were added as a skeleton (population + rank, status `unconfirmed`, empty endpoint) pending a network verify pass — fill an endpoint and re-run `verify_census` + `score_maturity` to harden them. |
+| `peer_city_coverage_census.csv` | city | scoreable/partial/unconfirmed status of the 50 largest US cities (ranks 1–50) + 4 mid-size enablers (rank 0, below the top 50), each with `population`, an `evidence` tier (api/city_docs/third_party/none) and `endpoint_url` — Phase 5.8, verified canvass (`scripts/verify_census.py` re-probes the live endpoints; `fetch_census_population.py` refreshes `population` from the ACS). Ranks 41–50 were added as a skeleton (population + rank, status `unconfirmed`, empty endpoint) pending a network verify pass — fill an endpoint and re-run `verify_census` + `score_maturity` to harden them. The `maturity_refresh.yml` workflow runs the whole chain. |
 
 `data/raw/` and `data/interim/` are gitignored and rebuilt by the pipeline.
 
@@ -184,8 +184,13 @@ scripts/
   peer_city.py                    # Cross-city ingestion + metrics (Phase 5)
   peer_city_equity.py             # Per-city tract median income, income-only (Phase 5.5-1)
   peer_city_equity_score.py       # Per-city mix-adjusted income equity score (Phase 5.5-3)
-  score_maturity.py               # Derive the 45-metro maturity scorecard from the census (Phase 5.9)
+  score_maturity.py               # Derive the maturity scorecard from the census (Phase 5.9); reads
+                                  #   each city's population from the census CSV (else the curated
+                                  #   POPULATION seed) so the Maturity table sorts by size
   verify_census.py                # Re-probe census endpoints to refresh the api evidence tier (Phase 5.8)
+  fetch_census_population.py      # Fill the census `population` column from the live ACS place table
+                                  #   (B01003), name-matched; default fills only missing cities,
+                                  #   --all refetches. Stdlib + optional CENSUS_API_KEY (network/CI)
   audit_peer_city_data.py         # Internal cross-city data audit — fill-rate/plausibility checks
                                   #   (Tier 1, no network) + live raw-schema mis-mapping check via
                                   #   CityAdapter.schema_fields() (Tier 2, network/CI). Writes JSON
@@ -210,6 +215,9 @@ src/balt311/
   peer_city_equity.yml            # Per-city tract median income, income-only (Phase 5.5-1)
   peer_city_audit.yml             # Internal data audit, workflow_dispatch — uploads report as
                                   #   an artifact (not committed); not a user-facing feature
+  maturity_refresh.yml            # workflow_dispatch — fetch ACS population → re-verify census
+                                  #   endpoints → re-derive the maturity scorecard, then commit the
+                                  #   refreshed CSVs (Phase 5.8/5.9); hardens skeleton top-50 cities
 
 data/processed/                   # Committed — app reads only from here
 data/raw/                         # Gitignored

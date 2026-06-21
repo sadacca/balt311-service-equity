@@ -90,6 +90,19 @@ POPULATION: dict[str, int] = {
 IN_COHORT = set(ANCHORS)
 
 
+def resolve_population(census_row, city: str):
+    """Population for a city: prefer a `population` value carried in the census CSV (e.g.
+    written by `fetch_census_population.py` from the live ACS), else the curated seed above,
+    else NA. So a freshly-added city auto-gets its size from the ACS step without a code edit."""
+    raw = census_row.get("population")
+    if raw is not None and pd.notna(raw) and str(raw).strip() != "":
+        try:
+            return int(float(raw))
+        except (TypeError, ValueError):
+            pass
+    return POPULATION.get(city, pd.NA)
+
+
 def derive_scores(status: str, evidence: str, note: str) -> dict:
     """Map a census row to 0–3 rubric scores. Inaccessible ('unconfirmed') → all zeros."""
     note = (note or "").lower()
@@ -133,10 +146,6 @@ def derive_scores(status: str, evidence: str, note: str) -> dict:
 def main() -> None:
     census = pd.read_csv(CENSUS)
 
-    missing_pop = sorted(set(census["city"]) - set(POPULATION))
-    if missing_pop:
-        print(f"WARNING: no population for {len(missing_pop)} census cities: {missing_pop}")
-
     rows = []
     for _, c in census.iterrows():
         city = c["city"]
@@ -146,7 +155,7 @@ def main() -> None:
             scores = derive_scores(c["status"], c.get("evidence", ""), c.get("note", ""))
         rows.append({
             "city": city,
-            "population": POPULATION.get(city, pd.NA),
+            "population": resolve_population(c, city),
             "in_cohort": city in IN_COHORT,
             "status": c["status"],
             "evidence": c.get("evidence", ""),
@@ -162,6 +171,11 @@ def main() -> None:
     out = out.sort_values("total", ascending=False).reset_index(drop=True)
     out.drop(columns="total").to_csv(MATURITY, index=False)
 
+    missing_pop = out.loc[out["population"].isna(), "city"].tolist()
+    if missing_pop:
+        print(f"WARNING: no population (census column or seed) for {len(missing_pop)} "
+              f"cities: {missing_pop} — add to score_maturity.POPULATION or run "
+              f"fetch_census_population.py.")
     n_anchor = sum(~out["derived"])
     print(f"Wrote {len(out)} cities to {MATURITY.name} "
           f"({n_anchor} hand-scored anchors, {len(out) - n_anchor} derived; "

@@ -1,0 +1,74 @@
+name: Refresh maturity scorecard
+
+# Re-verify the 311 coverage census and rebuild the maturity scorecard, end to end:
+#   1. (optional) fetch ACS place population for any city missing one — or all, with refetch
+#   2. (optional) re-probe every census endpoint to refresh the api evidence (verify_census)
+#   3. re-derive the scorecard (score_maturity) and commit the refreshed CSVs
+# Manual trigger only. Needs network + CENSUS_API_KEY (a repo secret) for steps 1–2; step 3 is
+# a pure local recompute. New top-50 cities added as a skeleton get hardened here once they
+# carry a 311 endpoint.
+
+on:
+  workflow_dispatch:
+    inputs:
+      fetch_population:
+        description: "Fetch ACS place population for cities missing one"
+        required: false
+        default: true
+        type: boolean
+      refetch_all_population:
+        description: "Refetch population for ALL cities from ACS (override curated values)"
+        required: false
+        default: false
+        type: boolean
+      reverify:
+        description: "Re-probe every census endpoint (verify_census --write)"
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  refresh:
+    name: Refresh census + maturity scorecard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pandas pyarrow
+
+      - name: Fetch ACS population
+        if: ${{ inputs.fetch_population }}
+        run: |
+          FLAGS=""
+          [ "${{ inputs.refetch_all_population }}" = "true" ] && FLAGS="--all"
+          python scripts/fetch_census_population.py $FLAGS
+
+      - name: Re-verify census endpoints
+        if: ${{ inputs.reverify }}
+        run: python scripts/verify_census.py --write
+
+      - name: Re-derive maturity scorecard
+        run: python scripts/score_maturity.py
+
+      - name: Commit refreshed CSVs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/processed/peer_city_coverage_census.csv data/processed/peer_city_maturity.csv
+          if git diff --cached --quiet; then
+            echo "No changes — census and scorecard already up to date."
+          else
+            git commit -m "Refresh 311 coverage census + maturity scorecard (automated)"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
