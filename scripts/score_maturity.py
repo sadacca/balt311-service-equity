@@ -75,8 +75,13 @@ POPULATION: dict[str, int] = {
     "Tucson, AZ": 542_629, "Fresno, CA": 542_107, "Sacramento, CA": 524_943,
     "Mesa, AZ": 504_258, "Atlanta, GA": 498_715, "Omaha, NE": 486_051,
     "Colorado Springs, CO": 478_961, "Raleigh, NC": 467_665,
-    # Mid-size enablers (census rank 0).
-    "Minneapolis, MN": 429_954, "New Orleans, LA": 383_997, "Cincinnati, OH": 309_317,
+    # Ranks 41–50 — top-50 canvass expansion (2020 Census place population).
+    "Long Beach, CA": 466_742, "Virginia Beach, VA": 459_470, "Miami, FL": 442_241,
+    "Oakland, CA": 440_646, "Minneapolis, MN": 429_954, "Tulsa, OK": 413_066,
+    "Bakersfield, CA": 403_455, "Wichita, KS": 397_532, "Arlington, TX": 394_266,
+    "Aurora, CO": 386_261,
+    # Mid-size enablers (census rank 0, below the top 50).
+    "New Orleans, LA": 383_997, "Cincinnati, OH": 309_317,
     "Pittsburgh, PA": 302_971, "St. Louis, MO": 301_578,
 }
 

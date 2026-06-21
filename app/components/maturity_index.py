@@ -236,7 +236,7 @@ def _render_full_table(df: pd.DataFrame, max_total: int) -> None:
     """Full numerical ranking of all metros — every rubric dimension, sortable, with the
     inaccessible cities scored 0 sitting at the bottom."""
     counts = df["status"].value_counts() if "status" in df.columns else {}
-    st.subheader("Full numerical ranking — all 45 metros (sortable)")
+    st.subheader(f"Full numerical ranking — all {len(df)} cities (sortable)")
     st.markdown(
         f"✅ {int(counts.get('scoreable', 0))} scoreable · 🟡 {int(counts.get('partial', 0))} "
         f"partial · ❔ {int(counts.get('unconfirmed', 0))} none/unconfirmed. **Cities whose "

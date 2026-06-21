@@ -39,8 +39,17 @@ rank,city,status,evidence,endpoint_url,note
 38,"Mesa, AZ",unconfirmed,city_docs,https://data.mesaaz.gov/,Mesa Data Hub; no 311-specific dataset
 39,"Omaha, NE",unconfirmed,third_party,https://www.omahahotline.com/,Omaha Hotline; interactive map; no API
 40,"Raleigh, NC",scoreable,api,https://data.raleighnc.gov/,Open Data Raleigh ArcGIS; 311 present
+41,"Long Beach, CA",unconfirmed,none,,Pending verification — top-50 canvass expansion; add a 311 endpoint then run verify_census
+42,"Virginia Beach, VA",unconfirmed,none,,Pending verification — top-50 canvass expansion; add a 311 endpoint then run verify_census
+43,"Miami, FL",unconfirmed,none,,Pending verification — top-50 canvass expansion; add a 311 endpoint then run verify_census
+44,"Oakland, CA",unconfirmed,none,,Pending verification — top-50 canvass expansion; add a 311 endpoint then run verify_census
+45,"Minneapolis, MN",scoreable,api,https://opendata.minneapolismn.gov/,ArcGIS FeatureServer; 525K+ records; Jan 2021+
+46,"Tulsa, OK",unconfirmed,none,,Pending verification — top-50 canvass expansion; add a 311 endpoint then run verify_census
+47,"Bakersfield, CA",unconfirmed,none,,Pending verification — top-50 canvass expansion; add a 311 endpoint then run verify_census
+48,"Wichita, KS",unconfirmed,none,,Pending verification — top-50 canvass expansion; add a 311 endpoint then run verify_census
+49,"Arlington, TX",unconfirmed,none,,Pending verification — top-50 canvass expansion; add a 311 endpoint then run verify_census
+50,"Aurora, CO",unconfirmed,none,,Pending verification — top-50 canvass expansion; add a 311 endpoint then run verify_census
 0,"Cincinnati, OH",partial,city_docs,https://data.cincinnati-oh.gov/thriving-neighborhoods/Cincinnati-311-Non-Emergency-Service-Requests/4cjh-bm8b,Tyler Data & Insights Socrata; dataset now returns "must be logged in" on every API path (resource/ and api/views/rows) regardless of app token/API key — not fetchable headlessly as of June 2026
 0,"Pittsburgh, PA",scoreable,api,https://data.wprdc.org/dataset/311-data,WPRDC CKAN; historical + new system Feb 2025
-0,"Minneapolis, MN",scoreable,api,https://opendata.minneapolismn.gov/,ArcGIS FeatureServer; 525K+ records; Jan 2021+
 0,"New Orleans, LA",scoreable,api,https://datadriven.nola.gov/open-data/featured/311-calls/,DataDriven ArcGIS Hub; GIS API support
 0,"St. Louis, MO",scoreable,api,https://www.stlouis-mo.gov/data/datasets/dataset.cfm?id=5,CSB Request API (Open311 v2); requires key
