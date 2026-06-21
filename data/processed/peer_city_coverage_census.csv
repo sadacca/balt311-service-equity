@@ -50,6 +50,6 @@ rank,city,status,evidence,endpoint_url,note,population,api_checked,api_fields,fi
 49,"Arlington, TX",unconfirmed,none,,Pending verification — top-50 canvass expansion; add a 311 endpoint then run verify_census,394266,,,,,
 50,"Aurora, CO",unconfirmed,none,,Pending verification — top-50 canvass expansion; add a 311 endpoint then run verify_census,386261,,,,,
 0,"Cincinnati, OH",partial,city_docs,https://data.cincinnati-oh.gov/thriving-neighborhoods/Cincinnati-311-Non-Emergency-Service-Requests/4cjh-bm8b,"Tyler Data & Insights Socrata; dataset now returns ""must be logged in"" on every API path (resource/ and api/views/rows) regardless of app token/API key — not fetchable headlessly as of June 2026",309317,fail,,0,,
-0,"Pittsburgh, PA",scoreable,api,https://data.wprdc.org/dataset/311-data,WPRDC CKAN; historical + new system Feb 2025,302971,fail,,0,,
+0,"Pittsburgh, PA",scoreable,api,https://data.wprdc.org/datastore/dump/5202679a-d243-402e-b82a-63189995a942,WPRDC CKAN; historical + new system Feb 2025; pinned to the live 311 resource id (the /dataset page's package_show was landing on a different/legacy resource),302971,fail,,0,,
 0,"New Orleans, LA",scoreable,api,https://datadriven.nola.gov/open-data/featured/311-calls/,DataDriven ArcGIS Hub; GIS API support,383997,fail,,0,,
 0,"St. Louis, MO",scoreable,api,https://www.stlouis-mo.gov/data/datasets/dataset.cfm?id=5,CSB Request API (Open311 v2); requires key,301578,fail,,0,,

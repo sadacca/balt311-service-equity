@@ -120,8 +120,27 @@ remains is recording the **actual cohort findings** into `cross_city_comparison.
   anonymously-throttled (Dallas's "no records returned" is the textbook symptom) — now wired
   through. Genuinely unresolved (stale/unconfirmed URLs, not a prober bug): Raleigh, Pittsburgh,
   New Orleans, St. Louis, Minneapolis, Louisville — consistent with the leads below not yet
-  confirming a replacement URL. Needs another live re-run to confirm these fixes close out
-  Memphis/Kansas City/Dallas and to see the net regression count drop.
+  confirming a replacement URL.
+
+  **June 21 follow-up re-run** confirmed the fixes: Memphis, Kansas City, Boston, Baltimore
+  all now read `created+closed+geo` ✓. Regressions dropped 9 → 6 (Louisville, Raleigh,
+  Pittsburgh, New Orleans, St. Louis, Minneapolis — the exact backlog above). Two *new*
+  failures appeared in the same run — San Antonio and Sacramento, both `"no features in hub
+  .geojson export"` — through `_arcgis_hub_fields()`, which neither commit touched; San Antonio
+  was a clean `OK` the run before, so this looks like a transient ArcGIS Hub blip (or
+  rate-limiting from probing ~50 endpoints back-to-back) rather than a real regression — watch
+  the next run before treating it as a bug to chase.
+
+  Pittsburgh fixed: `package_show` was resolving `/dataset/311-data` to a different/legacy
+  resource than the live one. Pinned `endpoint_url` to the exact live resource id
+  (`/datastore/dump/5202679a-d243-402e-b82a-63189995a942`) and taught `verify_census.py` to
+  recognize that URL form and call `datastore_search` on it directly, bypassing package_show's
+  "first DataStore-active resource" guess (`_CKAN_DUMP` regex + `_ckan_resource_fields()`).
+
+  Raleigh/New Orleans/St. Louis/Minneapolis/Louisville still open — cross-checking them against
+  `us-city.census.okfn.org/dataset/service-requests.html` was suggested but the sandbox can't
+  reach that host (network allowlist + a 403 via WebFetch); deferred until someone with browser
+  access can pull the relevant rows.
 
   The fixes above cover every census row whose `endpoint_url` already names a specific
   dataset. The cities below only have a portal
