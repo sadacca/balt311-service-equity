@@ -86,8 +86,27 @@ remains is recording the **actual cohort findings** into `cross_city_comparison.
 - [ ] **Census endpoint canvass — remaining ~20 cities (P5.8 follow-up)** —
   `scripts/verify_census.py` now rewrites Socrata/CKAN dataset pages and resolves ArcGIS
   Hub/Open Data pages via their `.geojson` download proxy (no item-id lookup needed), on top
-  of the original ArcGIS FeatureServer `?f=json` fix. That covers every census row whose
-  `endpoint_url` already names a specific dataset. The cities below only have a portal
+  of the original ArcGIS FeatureServer `?f=json` fix. A live CI `--write` run surfaced four more
+  fixable bugs in the prober itself (not the census data): a generic urllib User-Agent 403'd on
+  several Hub domains (Charlotte, Indianapolis, Denver, Detroit, Atlanta — fixed with a real
+  browser UA), a 1-row probe under-reported fields that were null on the sampled row (fixed by
+  unioning keys across ~20 rows for Socrata/CKAN/ArcGIS/Hub), Dallas's correct dataset id
+  returned nothing (likely anonymous throttling — fixed by sending `$$app_token` /
+  `SOCRATA_APP_TOKEN`), and ArcGIS/GeoJSON store coordinates structurally (a `geometry` object)
+  rather than in a named field, so several geocoded cities (NYC, Chicago, Boston, Memphis, KC,
+  Raleigh, Pittsburgh) read as "no geo" until geometry-presence became its own signal. Cincinnati
+  additionally got a `/api/views/{id}/rows.json` fallback mirroring its adapter's documented
+  Tyler-portal workaround, though the census `note` already records that as of June 2026 the
+  portal blocks *all* API paths without login — likely unfixable until that changes.
+  San Diego/Phoenix/San Antonio/Houston/Louisville/Sacramento still errored (404/500/empty) on
+  existing recorded URLs even after CKAN+Hub support landed; a web canvass didn't turn up a
+  clearly-different correct URL for any of them (Houston's specific FeatureServer dataset may
+  be stale — search turned up a "deprecated effective April 2025, see Calls for Service
+  (Consolidated)" note, but no confirmed replacement URL) — needs a live re-run to see how many
+  of today's prober fixes already resolve them before further URL guessing.
+
+  The fixes above cover every census row whose `endpoint_url` already names a specific
+  dataset. The cities below only have a portal
   *homepage* recorded, so there's no dataset-specific URL to rewrite — each needs a human (or
   an agent with real network access; this sandbox blocks all outbound fetches, including
   `WebFetch`, to literally every external host tested) to open the portal and find the actual
