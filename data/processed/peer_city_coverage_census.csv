@@ -27,7 +27,7 @@ rank,city,status,evidence,endpoint_url,note,population,api_checked,api_fields,fi
 26,"Portland, OR",partial,api,https://seeclickfix.com/web_portal/9Sds4Ebv9yf9nC8e9yhDf5MP/,SeeClickFix; Open311 API; no bulk export,652503,fail,,0,,
 27,"Memphis, TN",scoreable,api,https://maps.memphistn.gov/mapping/rest/services/OPM/COM_311_REQUESTS_OPM/FeatureServer,Migrated off Socrata (data.memphistn.gov retired) to OPM ArcGIS FeatureServer,629063,fail,,0,,
 28,"Louisville, KY",scoreable,api,https://louisville-metro-opendata-lojic.hub.arcgis.com/datasets/LOJIC::louisville-metro-ky-metro-311-service-request-2025,LOJIC ArcGIS Hub; 2014-2025; weekly,633045,fail,,0,,
-29,"Baltimore, MD",scoreable,api,https://services.arcgisonline.com/arcgis/rest/services/311_Customer_Service_Requests_2024/FeatureServer/0,Per-year ArcGIS; 2016-present; API confirmed,577193,fail,,0,,
+29,"Baltimore, MD",scoreable,api,https://services1.arcgis.com/UWYHeuuJISiGmgXx/arcgis/rest/services/311_Customer_Service_Requests_2024/FeatureServer/0,Per-year ArcGIS; 2016-present; API confirmed,577193,fail,,0,,
 30,"Milwaukee, WI",unconfirmed,city_docs,https://data.milwaukee.gov/,Portal exists; 311 status unclear,577222,fail,,0,,
 31,"Albuquerque, NM",partial,third_party,https://seeclickfix.com/web_portal/Y2UDAwYmghxaeq4V337k2sau/issues/map,ABQ311 via SeeClickFix; no central export,564559,fail,,0,,
 32,"Sacramento, CA",scoreable,city_docs,https://data.cityofsacramento.org/search?tags=311,Sacramento 311 Socrata portal,524943,fail,,0,,

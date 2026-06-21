@@ -20,6 +20,7 @@ with no install step.
 import argparse
 import csv
 import json
+import re
 import sys
 import urllib.parse
 import urllib.request
@@ -38,6 +39,32 @@ _CHANNEL = ("channel", "source", "method_received", "report_source", "intake", "
 _AGENCY = ("agency", "department", "owner", "work_group", "dept", "bureau", "responsible")
 
 
+# Socrata dataset pages end in a 4-4 alphanumeric resource id (e.g. .../erm2-nwe9) — the
+# census records the human-facing landing page, but the SODA API lives at /resource/{id}.json.
+_SOCRATA_ID = re.compile(r"([a-z0-9]{4}-[a-z0-9]{4})/?$", re.IGNORECASE)
+
+
+def _to_api_url(url: str) -> str:
+    """Best-effort rewrite of a recorded (often human-facing) endpoint into a callable JSON
+    API URL. Handles the two platforms this census can detect from the URL shape alone —
+    Socrata dataset pages and ArcGIS FeatureServer/MapServer layers — mirroring the request
+    construction `cities/socrata.py` and `cities/arcgis.py` already use for the live cohort.
+    Anything else (Hub/CKAN/SeeClickFix landing pages, generic portal homepages) is returned
+    unchanged since deriving its API call requires a per-site dataset lookup, not a URL rewrite.
+    """
+    parsed = urllib.parse.urlsplit(url)
+    m = _SOCRATA_ID.search(parsed.path)
+    if m:
+        return f"https://{parsed.netloc}/resource/{m.group(1)}.json?$limit=1"
+    if "FeatureServer" in url or "MapServer" in url:
+        base = url.rstrip("/")
+        if re.search(r"(FeatureServer|MapServer)$", base):
+            base += "/0"  # bare service root with no layer index — assume layer 0
+        sep = "&" if "?" in base else "?"
+        return f"{base}{sep}f=json"
+    return url
+
+
 def _fetch_json(url: str):
     req = urllib.request.Request(url, headers=_HEADERS)
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
@@ -46,7 +73,7 @@ def _fetch_json(url: str):
 
 def _first_record_fields(endpoint: str) -> list[str]:
     """Fetch one record from a Socrata / ArcGIS / Carto endpoint and return its field names."""
-    data = _fetch_json(endpoint)
+    data = _fetch_json(_to_api_url(endpoint))
     if isinstance(data, list):                       # Socrata: [ {field: val, ...} ]
         return list(data[0].keys()) if data else []
     if isinstance(data, dict):
@@ -55,8 +82,13 @@ def _first_record_fields(endpoint: str) -> list[str]:
             return list((feat.get("attributes") or feat.get("properties") or {}).keys())
         if "rows" in data and data["rows"]:           # Carto: {rows:[{...}]}
             return list(data["rows"][0].keys())
-        if "fields" in data:                          # ArcGIS metadata fallback
+        if "fields" in data:                          # ArcGIS layer metadata fallback
             return [f.get("name", "") for f in data["fields"]]
+        if "layers" in data and data["layers"]:       # ArcGIS service root — descend to layer 0
+            layer_id = data["layers"][0].get("id", 0)
+            base = endpoint.rstrip("/")
+            base = re.sub(r"\?.*$", "", base)
+            return _first_record_fields(f"{base}/{layer_id}")
     return []
 
 
