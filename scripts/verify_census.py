@@ -64,9 +64,16 @@ _AGENCY = ("agency", "department", "owner", "work_group", "dept", "bureau", "res
 
 # Socrata dataset pages end in a 4-4 alphanumeric resource id (e.g. .../erm2-nwe9) — the
 # census records the human-facing landing page, but the SODA API lives at /resource/{id}.json.
-_SOCRATA_ID = re.compile(r"([a-z0-9]{4}-[a-z0-9]{4})/?$", re.IGNORECASE)
+# Also matches the id mid-path (e.g. New Orleans' .../api/v3/views/3iz8-nghx/query.json), since
+# some recorded URLs are already a v3 API call rather than the human-facing dataset page.
+_SOCRATA_ID = re.compile(r"([a-z0-9]{4}-[a-z0-9]{4})(?=/|$)", re.IGNORECASE)
 # CKAN dataset pages: /dataset/<slug> (singular) — package_show resolves the slug to a package.
 _CKAN_DATASET = re.compile(r"/dataset/([^/]+)/?$")
+# CKAN datastore dump links: /datastore/dump/<resource-id> — already names the exact resource,
+# so datastore_search can be called directly without a package_show lookup first (useful when
+# a dataset page has several resources and package_show's "first DataStore-active one" picks
+# the wrong one, e.g. an old/legacy resource with a different schema).
+_CKAN_DUMP = re.compile(r"/datastore/dump/([0-9a-f-]{8,})/?$", re.IGNORECASE)
 # ArcGIS Hub/Open Data dataset pages: /datasets/<owner::slug> (plural) — Hub serves a
 # `<page>.geojson` download proxy that resolves the friendly slug to its FeatureServer query
 # without needing the item id, so no separate Hub Search API call is required.
@@ -136,17 +143,45 @@ def _socrata_views_fields(netloc: str, dataset_id: str) -> list[str]:
     return [c.get("fieldName") or c.get("name") or "" for c in columns]
 
 
+def _ckan_resource_fields(api_base: str, rid: str) -> list[str] | None:
+    """Field names from one CKAN DataStore resource via `datastore_search`, or `None` if it
+    has no DataStore-active records/schema. Used both for a known resource id (a /datastore/
+    dump link) and for each candidate resource discovered via package_show."""
+    ds = _fetch_json(
+        f"{api_base}/datastore_search?"
+        f"{urllib.parse.urlencode({'resource_id': rid, 'limit': _PROBE_LIMIT})}"
+    )
+    if not ds.get("success"):
+        return None
+    records = ds.get("result", {}).get("records", [])
+    if records:
+        keys: dict[str, None] = {}
+        for rec in records:
+            keys.update(dict.fromkeys(rec.keys()))
+        return list(keys)
+    fields = ds.get("result", {}).get("fields", [])
+    if fields:
+        return [f["id"] for f in fields if f.get("id") != "_id"]
+    return None
+
+
 def _ckan_fields(url: str) -> list[str] | None:
-    """`None` if `url` isn't a CKAN dataset page; otherwise the union of field names across
-    several rows of its first DataStore-active resource (package_show → datastore_search),
-    mirroring `cities/ckan.py`. Unioning rows (rather than trusting one) avoids a false
-    "missing field" negative when that field happens to be null/absent on the sampled row."""
+    """`None` if `url` isn't a CKAN dataset/datastore page; otherwise the union of field names
+    across several rows of the relevant resource, mirroring `cities/ckan.py`. Unioning rows
+    (rather than trusting one) avoids a false "missing field" negative when that field happens
+    to be null/absent on the sampled row."""
     parsed = urllib.parse.urlsplit(url)
+    api_base = f"https://{parsed.netloc}/api/3/action"
+    dump = _CKAN_DUMP.search(parsed.path)
+    if dump:
+        fields = _ckan_resource_fields(api_base, dump.group(1))
+        if fields is None:
+            raise RuntimeError("datastore_search failed or returned no schema for this resource")
+        return fields
     m = _CKAN_DATASET.search(parsed.path)
     if not m:
         return None
     slug = m.group(1)
-    api_base = f"https://{parsed.netloc}/api/3/action"
     pkg = _fetch_json(f"{api_base}/package_show?{urllib.parse.urlencode({'id': slug})}")
     if not pkg.get("success"):
         raise RuntimeError(f"ckan package_show failed: {str(pkg.get('error'))[:100]}")
@@ -156,24 +191,12 @@ def _ckan_fields(url: str) -> list[str] | None:
         if not rid:
             continue
         try:
-            ds = _fetch_json(
-                f"{api_base}/datastore_search?"
-                f"{urllib.parse.urlencode({'resource_id': rid, 'limit': _PROBE_LIMIT})}"
-            )
+            fields = _ckan_resource_fields(api_base, rid)
         except Exception as exc:
             last_exc = exc
             continue
-        if not ds.get("success"):
-            continue
-        records = ds.get("result", {}).get("records", [])
-        if records:
-            keys: dict[str, None] = {}
-            for rec in records:
-                keys.update(dict.fromkeys(rec.keys()))
-            return list(keys)
-        fields = ds.get("result", {}).get("fields", [])
         if fields:
-            return [f["id"] for f in fields if f.get("id") != "_id"]
+            return fields
     if last_exc:
         raise last_exc
     raise RuntimeError("no DataStore-active resource found in package")

@@ -120,8 +120,48 @@ remains is recording the **actual cohort findings** into `cross_city_comparison.
   anonymously-throttled (Dallas's "no records returned" is the textbook symptom) — now wired
   through. Genuinely unresolved (stale/unconfirmed URLs, not a prober bug): Raleigh, Pittsburgh,
   New Orleans, St. Louis, Minneapolis, Louisville — consistent with the leads below not yet
-  confirming a replacement URL. Needs another live re-run to confirm these fixes close out
-  Memphis/Kansas City/Dallas and to see the net regression count drop.
+  confirming a replacement URL.
+
+  **June 21 follow-up re-run** confirmed the fixes: Memphis, Kansas City, Boston, Baltimore
+  all now read `created+closed+geo` ✓. Regressions dropped 9 → 6 (Louisville, Raleigh,
+  Pittsburgh, New Orleans, St. Louis, Minneapolis — the exact backlog above). Two *new*
+  failures appeared in the same run — San Antonio and Sacramento, both `"no features in hub
+  .geojson export"` — through `_arcgis_hub_fields()`, which neither commit touched; San Antonio
+  was a clean `OK` the run before, so this looks like a transient ArcGIS Hub blip (or
+  rate-limiting from probing ~50 endpoints back-to-back) rather than a real regression — watch
+  the next run before treating it as a bug to chase.
+
+  Pittsburgh fixed: `package_show` was resolving `/dataset/311-data` to a different/legacy
+  resource than the live one. Pinned `endpoint_url` to the exact live resource id
+  (`/datastore/dump/5202679a-d243-402e-b82a-63189995a942`) and taught `verify_census.py` to
+  recognize that URL form and call `datastore_search` on it directly, bypassing package_show's
+  "first DataStore-active resource" guess (`_CKAN_DUMP` regex + `_ckan_resource_fields()`).
+
+  Minneapolis fixed: pinned `endpoint_url` to the live dataset page
+  (`opendata.minneapolismn.gov/datasets/public-311-2020/api`) — resolves cleanly through the
+  existing Hub `.geojson` proxy path, no code change needed.
+
+  New Orleans fixed: pinned `endpoint_url` to the Socrata v3 API call
+  (`data.nola.gov/api/v3/views/3iz8-nghx/query.json`) the user supplied directly. The recorded
+  URL put the resource id mid-path rather than at the end, which `_SOCRATA_ID`'s end-anchored
+  regex couldn't see — broadened the regex to match the id followed by `/` or end-of-string,
+  not just end-of-string, so both the human-facing dataset-page shape and this v3 API-call shape
+  resolve through the same `/resource/{id}.json` rewrite.
+
+  St. Louis confirmed blocked (not a prober bug): the user pulled the live CSB API docs page
+  directly — Open311 GeoReport v2, but every method (including GET) requires a registered
+  `api_key` query param; there is no anonymous read path. Needs a registered key, not a code or
+  URL fix — out of scope until one is obtained.
+
+  Louisville fixed: pinned `endpoint_url` to the plain ArcGIS REST FeatureServer/0 layer
+  (`services1.arcgis.com/79kfd2K6fskCAkyg/.../Louisville_Metro_KY_Metro_311_Service_Requets_2024/FeatureServer/0`,
+  user-supplied) instead of the Hub dataset page — already a numbered layer URL, so it resolves
+  straight through the existing `_arcgis_rest_fields()` `/query` path with no code change needed.
+
+  Raleigh still open — cross-checking it against
+  `us-city.census.okfn.org/dataset/service-requests.html` was suggested but the sandbox can't
+  reach that host (network allowlist + a 403 via WebFetch); deferred until someone with browser
+  access can pull the relevant rows.
 
   The fixes above cover every census row whose `endpoint_url` already names a specific
   dataset. The cities below only have a portal
@@ -135,15 +175,15 @@ remains is recording the **actual cohort findings** into `cross_city_comparison.
     (Mayor's Action Center — Indy's name for 311).
   - **Raleigh** — `data-wake.opendata.arcgis.com/datasets/ral::ask-raleigh-requests`
     ("Ask Raleigh" — Raleigh's name for 311).
-  - **New Orleans** — Socrata `data.nola.gov` resource `3iz8-nghx`, but documented as
-    "Historic Data: 2012-2018" — likely superseded by a newer dataset; needs checking, not a
-    straight swap.
-  - **Minneapolis** — confirmed on ArcGIS Hub (`opendata.minneapolismn.gov`), one
-    FeatureServer per year named `Public_311_YYYY`, but the org-specific service host (the
-    `services#.arcgis.com/<org-hash>/...` part) wasn't found via search — needs a live
-    browse to get the real service URL.
-  - **St. Louis** — has a documented Open311 GeoReport v2 API, but it requires an API key
-    (not anonymously fetchable) — needs a registered key, not a URL fix.
+  - **New Orleans** — RESOLVED, see above (`data.nola.gov/api/v3/views/3iz8-nghx/query.json`,
+    user-supplied; resource `3iz8-nghx` was previously flagged "Historic Data: 2012-2018" in a
+    web search but the user's direct query against the live v3 API confirms it's the active
+    endpoint, not a stale snapshot).
+  - **Minneapolis** — RESOLVED, see above (`opendata.minneapolismn.gov/datasets/public-311-2020/api`,
+    the Hub `.geojson` proxy path; no org-hash service host lookup needed).
+  - **St. Louis** — CONFIRMED blocked, see above — documented Open311 GeoReport v2 API,
+    every method requires a registered `api_key`; not anonymously fetchable. Needs a
+    registered key, not a URL fix.
   - **Phoenix, San Jose, Tucson** — portal is plausibly CKAN/ArcGIS already (Phoenix and San
     Jose's recorded URLs already match the new CKAN `/dataset/<slug>` rewrite and will be
     auto-probed), but no specific 311 resource/dataset id could be confirmed via search.
