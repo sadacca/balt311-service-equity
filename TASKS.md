@@ -83,6 +83,36 @@ remains is recording the **actual cohort findings** into `cross_city_comparison.
   delivery figures (≥50% same-day, sub-day median, ≥99% closure) via
   `city_delivery._quality_flags`; surface a ⚠ reason column. Folds in the `field_completeness`
   "schema presence ≠ fill rate" fix (the Chicago/Memphis finding).
+- [ ] **Census endpoint canvass — remaining ~20 cities (P5.8 follow-up)** —
+  `scripts/verify_census.py` now rewrites Socrata/CKAN dataset pages and resolves ArcGIS
+  Hub/Open Data pages via their `.geojson` download proxy (no item-id lookup needed), on top
+  of the original ArcGIS FeatureServer `?f=json` fix. That covers every census row whose
+  `endpoint_url` already names a specific dataset. The cities below only have a portal
+  *homepage* recorded, so there's no dataset-specific URL to rewrite — each needs a human (or
+  an agent with real network access; this sandbox blocks all outbound fetches, including
+  `WebFetch`, to literally every external host tested) to open the portal and find the actual
+  dataset. Leads gathered via web search, **unconfirmed, do not trust without a live probe**:
+  - **Sacramento** — current view `data.cityofsacramento.org/datasets/5b9a9448663f41b1898643b6d91201c4_0/data`
+    (older yearly snapshots also exist for 2014-2016; this is the "current" one).
+  - **Indianapolis** — `data-indygis.opendata.arcgis.com/datasets/mayors-action-center-request-indy-service-requests`
+    (Mayor's Action Center — Indy's name for 311).
+  - **Raleigh** — `data-wake.opendata.arcgis.com/datasets/ral::ask-raleigh-requests`
+    ("Ask Raleigh" — Raleigh's name for 311).
+  - **New Orleans** — Socrata `data.nola.gov` resource `3iz8-nghx`, but documented as
+    "Historic Data: 2012-2018" — likely superseded by a newer dataset; needs checking, not a
+    straight swap.
+  - **Minneapolis** — confirmed on ArcGIS Hub (`opendata.minneapolismn.gov`), one
+    FeatureServer per year named `Public_311_YYYY`, but the org-specific service host (the
+    `services#.arcgis.com/<org-hash>/...` part) wasn't found via search — needs a live
+    browse to get the real service URL.
+  - **St. Louis** — has a documented Open311 GeoReport v2 API, but it requires an API key
+    (not anonymously fetchable) — needs a registered key, not a URL fix.
+  - **Phoenix, San Jose, Tucson** — portal is plausibly CKAN/ArcGIS already (Phoenix and San
+    Jose's recorded URLs already match the new CKAN `/dataset/<slug>` rewrite and will be
+    auto-probed), but no specific 311 resource/dataset id could be confirmed via search.
+  - **Milwaukee, Atlanta, Colorado Springs, Fresno, Mesa, Omaha, Jacksonville, Fort Worth,
+    Columbus, Oklahoma City, El Paso** — only the portal homepage is confirmed; no specific
+    311 dataset id surfaced.
 
 ---
 
