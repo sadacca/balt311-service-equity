@@ -20,15 +20,32 @@ with no install step.
 import argparse
 import csv
 import json
+import os
 import re
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
 CENSUS = Path(__file__).resolve().parents[1] / "data" / "processed" / "peer_city_coverage_census.csv"
-_HEADERS = {"User-Agent": "Mozilla/5.0 (balt311-census-verify)"}
+# A generic urllib UA gets a flat 403 from several ArcGIS Hub / Open Data domains (Charlotte,
+# Indianapolis, Denver, Detroit, Atlanta) that otherwise serve the same .geojson proxy fine to a
+# browser — they're doing basic UA sniffing, not real bot defense, so a realistic browser UA
+# string is enough to get through.
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    )
+}
 TIMEOUT = 45
+# Sampling more than one row and unioning field keys avoids false "missing field" negatives on
+# Socrata/CKAN, whose JSON omits a key entirely (rather than emitting it as null) when that row's
+# value for it is empty — a single-row probe can easily land on a row where e.g. closed_date is
+# null even though the field exists and is usually populated.
+_PROBE_LIMIT = 20
+_SOCRATA_TOKEN = os.environ.get("SOCRATA_APP_TOKEN", "").strip()
 
 # Heuristic field-name matchers — open-311 schemas vary in naming across platforms.
 _CREATED = ("created", "requested", "opened", "open_dt", "start", "intake", "receiv")
@@ -50,6 +67,13 @@ _CKAN_DATASET = re.compile(r"/dataset/([^/]+)/?$")
 _HUB_DATASET = re.compile(r"^(.*/datasets/[^/]+)")
 
 
+def _socrata_resource_url(netloc: str, dataset_id: str) -> str:
+    url = f"https://{netloc}/resource/{dataset_id}.json?$limit={_PROBE_LIMIT}"
+    if _SOCRATA_TOKEN:
+        url += f"&$$app_token={urllib.parse.quote(_SOCRATA_TOKEN, safe='')}"
+    return url
+
+
 def _to_api_url(url: str) -> str:
     """Best-effort rewrite of a recorded (often human-facing) endpoint into a callable JSON
     API URL. Handles the platforms this census can detect from the URL shape alone — Socrata
@@ -62,7 +86,7 @@ def _to_api_url(url: str) -> str:
     parsed = urllib.parse.urlsplit(url)
     m = _SOCRATA_ID.search(parsed.path)
     if m:
-        return f"https://{parsed.netloc}/resource/{m.group(1)}.json?$limit=1"
+        return _socrata_resource_url(parsed.netloc, m.group(1))
     if "FeatureServer" in url or "MapServer" in url:
         base = url.rstrip("/")
         sep = "&" if "?" in base else "?"
@@ -70,9 +94,23 @@ def _to_api_url(url: str) -> str:
     return url
 
 
+def _socrata_views_fields(netloc: str, dataset_id: str) -> list[str]:
+    """Some Socrata-branded portals (Tyler Data & Insights, e.g. Cincinnati's
+    data.cincinnati-oh.gov) 403 the standard SODA `/resource/{id}.json` endpoint without
+    portal-specific credentials but leave the older `/api/views/{id}/rows.json` endpoint public
+    — see `cities/cincinnati.py`'s adapter override, which already relies on this fallback in
+    production. Its payload shape is `{"meta": {"view": {"columns": [...]}}, "data": [[...]]}`
+    (positional rows), so field names come from the column metadata, not the row values."""
+    data = _fetch_json(f"https://{netloc}/api/views/{dataset_id}/rows.json?$limit={_PROBE_LIMIT}")
+    columns = (data.get("meta") or {}).get("view", {}).get("columns", [])
+    return [c.get("fieldName") or c.get("name") or "" for c in columns]
+
+
 def _ckan_fields(url: str) -> list[str] | None:
-    """`None` if `url` isn't a CKAN dataset page; otherwise the field names of its first
-    DataStore-active resource (package_show → datastore_search), mirroring `cities/ckan.py`."""
+    """`None` if `url` isn't a CKAN dataset page; otherwise the union of field names across
+    several rows of its first DataStore-active resource (package_show → datastore_search),
+    mirroring `cities/ckan.py`. Unioning rows (rather than trusting one) avoids a false
+    "missing field" negative when that field happens to be null/absent on the sampled row."""
     parsed = urllib.parse.urlsplit(url)
     m = _CKAN_DATASET.search(parsed.path)
     if not m:
@@ -89,7 +127,8 @@ def _ckan_fields(url: str) -> list[str] | None:
             continue
         try:
             ds = _fetch_json(
-                f"{api_base}/datastore_search?{urllib.parse.urlencode({'resource_id': rid, 'limit': 1})}"
+                f"{api_base}/datastore_search?"
+                f"{urllib.parse.urlencode({'resource_id': rid, 'limit': _PROBE_LIMIT})}"
             )
         except Exception as exc:
             last_exc = exc
@@ -98,7 +137,10 @@ def _ckan_fields(url: str) -> list[str] | None:
             continue
         records = ds.get("result", {}).get("records", [])
         if records:
-            return list(records[0].keys())
+            keys: dict[str, None] = {}
+            for rec in records:
+                keys.update(dict.fromkeys(rec.keys()))
+            return list(keys)
         fields = ds.get("result", {}).get("fields", [])
         if fields:
             return [f["id"] for f in fields if f.get("id") != "_id"]
@@ -107,19 +149,26 @@ def _ckan_fields(url: str) -> list[str] | None:
     raise RuntimeError("no DataStore-active resource found in package")
 
 
-def _arcgis_hub_fields(url: str) -> list[str] | None:
-    """`None` if `url` isn't an ArcGIS Hub/Open Data dataset page; otherwise the property
-    names from the dataset's `.geojson` download proxy (no item-id lookup needed — Hub
-    resolves the friendly `Owner::slug` page URL itself)."""
+def _arcgis_hub_fields(url: str) -> tuple[list[str], bool] | None:
+    """`None` if `url` isn't an ArcGIS Hub/Open Data dataset page; otherwise `(fields, geo_hint)`
+    — property names (unioned across several features) from the dataset's `.geojson` download
+    proxy (no item-id lookup needed — Hub resolves the friendly `Owner::slug` page URL itself),
+    plus whether any sampled feature actually carries a structural `geometry` object. GeoJSON
+    stores coordinates as a top-level `geometry` key, never as a named property, so a
+    property-name geo check alone would always read as "no geo" even for fully geocoded data."""
     m = _HUB_DATASET.search(url)
     if not m:
         return None
     geo_url = m.group(1) + ".geojson"
     data = _fetch_json(geo_url)
-    feats = data.get("features") or []
+    feats = (data.get("features") or [])[:_PROBE_LIMIT]
     if not feats:
         raise RuntimeError("no features in hub .geojson export")
-    return list((feats[0].get("properties") or {}).keys())
+    keys: dict[str, None] = {}
+    for feat in feats:
+        keys.update(dict.fromkeys((feat.get("properties") or {}).keys()))
+    geo_hint = any(feat.get("geometry") for feat in feats)
+    return list(keys), geo_hint
 
 
 def _fetch_json(url: str):
@@ -128,31 +177,52 @@ def _fetch_json(url: str):
         return json.loads(r.read())
 
 
-def _first_record_fields(endpoint: str) -> list[str]:
-    """Fetch one record from a Socrata / ArcGIS / Carto / CKAN / ArcGIS Hub endpoint and
-    return its field names."""
+def _first_record_fields(endpoint: str) -> tuple[list[str], bool]:
+    """Fetch records from a Socrata / ArcGIS / Carto / CKAN / ArcGIS Hub endpoint and return
+    `(field_names, geo_hint)` — `geo_hint` is True when the response structurally carries
+    coordinates (ArcGIS `geometry`/`x`/`y`) even if no field is *named* like a coordinate."""
     ckan = _ckan_fields(endpoint)
     if ckan is not None:
-        return ckan
+        return ckan, False
     hub = _arcgis_hub_fields(endpoint)
     if hub is not None:
         return hub
-    data = _fetch_json(_to_api_url(endpoint))
+    parsed = urllib.parse.urlsplit(endpoint)
+    socrata_id = _SOCRATA_ID.search(parsed.path)
+    if socrata_id:
+        try:
+            data = _fetch_json(_socrata_resource_url(parsed.netloc, socrata_id.group(1)))
+        except urllib.error.HTTPError as exc:
+            if exc.code != 403:
+                raise
+            return _socrata_views_fields(parsed.netloc, socrata_id.group(1)), False
+    else:
+        data = _fetch_json(_to_api_url(endpoint))
     if isinstance(data, list):                       # Socrata: [ {field: val, ...} ]
-        return list(data[0].keys()) if data else []
+        keys: dict[str, None] = {}
+        for rec in data:
+            keys.update(dict.fromkeys(rec.keys()))
+        return list(keys), False
     if isinstance(data, dict):
         if "features" in data and data["features"]:  # ArcGIS: {features:[{attributes:{...}}]}
-            feat = data["features"][0]
-            return list((feat.get("attributes") or feat.get("properties") or {}).keys())
+            feats = data["features"][:_PROBE_LIMIT]
+            keys = {}
+            for feat in feats:
+                keys.update(dict.fromkeys((feat.get("attributes") or feat.get("properties") or {}).keys()))
+            geo_hint = any(feat.get("geometry") for feat in feats)
+            return list(keys), geo_hint
         if "rows" in data and data["rows"]:           # Carto: {rows:[{...}]}
-            return list(data["rows"][0].keys())
+            keys = {}
+            for row in data["rows"][:_PROBE_LIMIT]:
+                keys.update(dict.fromkeys(row.keys()))
+            return list(keys), False
         if "fields" in data:                          # ArcGIS layer metadata fallback
-            return [f.get("name", "") for f in data["fields"]]
+            return [f.get("name", "") for f in data["fields"]], False
         if "layers" in data and data["layers"]:       # ArcGIS service root — descend to first layer
             layer_id = data["layers"][0].get("id", 0)
             base = re.sub(r"\?.*$", "", endpoint.rstrip("/"))
             return _first_record_fields(f"{base}/{layer_id}")
-    return []
+    return [], False
 
 
 def _has(fields: list[str], needles: tuple[str, ...]) -> bool:
@@ -164,7 +234,7 @@ def probe(endpoint: str) -> dict:
     blank = {"ok": False, "created": False, "closed": False, "geo": False,
              "channel": False, "agency": False, "n_fields": 0}
     try:
-        fields = _first_record_fields(endpoint)
+        fields, geo_hint = _first_record_fields(endpoint)
     except Exception as exc:
         return {**blank, "error": str(exc)[:140]}
     if not fields:
@@ -173,7 +243,7 @@ def probe(endpoint: str) -> dict:
         "ok": True, "error": "",
         "created": _has(fields, _CREATED),
         "closed": _has(fields, _CLOSED),
-        "geo": _has(fields, _GEO),
+        "geo": _has(fields, _GEO) or geo_hint,
         "channel": _has(fields, _CHANNEL),   # intake-channel field → field-completeness signal
         "agency": _has(fields, _AGENCY),
         "n_fields": len(fields),
