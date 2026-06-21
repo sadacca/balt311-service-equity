@@ -47,9 +47,15 @@ TIMEOUT = 45
 _PROBE_LIMIT = 20
 _SOCRATA_TOKEN = os.environ.get("SOCRATA_APP_TOKEN", "").strip()
 
-# Heuristic field-name matchers — open-311 schemas vary in naming across platforms.
-_CREATED = ("created", "requested", "opened", "open_dt", "start", "intake", "receiv")
-_CLOSED = ("closed", "resolved", "completed", "close_dt", "closeddate", "resolution_dt")
+# Heuristic field-name matchers — open-311 schemas vary in naming across platforms. Grounded in
+# the actual CANDIDATES/field_overrides lists the production adapters (socrata.py, memphis.py,
+# nashville.py, dc.py, ...) already match against live data, not guesswork: a live CI run found
+# real schemas this missed — "open_date_time" (Kansas City), "requestdate" (Memphis) — neither
+# "opened" nor "requested" catches them since the words aren't contiguous substrings.
+_CREATED = ("created", "requested", "opened", "open_dt", "open_date", "start", "intake", "init",
+            "receiv", "requestdate", "request_date", "submit", "creation", "adddate")
+_CLOSED = ("closed", "resolved", "completed", "close_dt", "closeddate", "resolution_dt",
+           "resolution", "completion")
 _GEO = ("lat", "lon", "latitude", "longitude", "the_geom", "geom", "point", "shape", "x_coord", "y_coord")
 # Depth signals for the maturity rubric's field-completeness dimension (P5.9-4).
 _CHANNEL = ("channel", "source", "method_received", "report_source", "intake", "requestsource")
@@ -77,9 +83,8 @@ def _socrata_resource_url(netloc: str, dataset_id: str) -> str:
 def _to_api_url(url: str) -> str:
     """Best-effort rewrite of a recorded (often human-facing) endpoint into a callable JSON
     API URL. Handles the platforms this census can detect from the URL shape alone — Socrata
-    dataset pages and ArcGIS FeatureServer/MapServer layers — mirroring the request
-    construction `cities/socrata.py` and `cities/arcgis.py` already use for the live cohort.
-    CKAN and ArcGIS Hub pages need a multi-step lookup (package_show / a .geojson proxy) and
+    dataset pages — mirroring the request construction `cities/socrata.py` already uses for the
+    live cohort. ArcGIS FeatureServer/MapServer/Hub and CKAN pages need a multi-step lookup and
     are handled separately in `_first_record_fields`. Generic portal homepages with no
     dataset-specific path are returned unchanged — there's nothing in the URL to rewrite.
     """
@@ -87,11 +92,36 @@ def _to_api_url(url: str) -> str:
     m = _SOCRATA_ID.search(parsed.path)
     if m:
         return _socrata_resource_url(parsed.netloc, m.group(1))
-    if "FeatureServer" in url or "MapServer" in url:
-        base = url.rstrip("/")
-        sep = "&" if "?" in base else "?"
-        return f"{base}{sep}f=json"
     return url
+
+
+def _arcgis_rest_fields(url: str) -> tuple[list[str], bool] | None:
+    """`None` if `url` isn't a plain ArcGIS REST FeatureServer/MapServer URL (the Hub/Open Data
+    proxy is handled separately by `_arcgis_hub_fields`); otherwise `(fields, geo_hint)` from an
+    actual `/query` against the first layer — mirroring `cities/arcgis.py`'s live request shape.
+    A bare `?f=json` on the service root or a numbered layer only returns *metadata* (the layer's
+    schema / the service's layer list), never a `features` array, so it can never see real
+    geometry — that under-reported `geo` as missing for every plain-REST city (e.g. Memphis)
+    even though the live data is fully geocoded."""
+    if "FeatureServer" not in url and "MapServer" not in url:
+        return None
+    layer_url = re.sub(r"\?.*$", "", url.rstrip("/"))
+    if not re.search(r"/\d+$", layer_url):
+        meta = _fetch_json(f"{layer_url}?f=json")
+        layers = meta.get("layers") or []
+        if not layers:
+            raise RuntimeError("ArcGIS service root has no layers")
+        layer_url = f"{layer_url}/{layers[0].get('id', 0)}"
+    query_url = f"{layer_url}/query?where=1%3D1&outFields=*&resultRecordCount={_PROBE_LIMIT}&f=json"
+    data = _fetch_json(query_url)
+    feats = (data.get("features") or [])[:_PROBE_LIMIT]
+    if not feats:
+        raise RuntimeError("no features in arcgis query response")
+    keys: dict[str, None] = {}
+    for feat in feats:
+        keys.update(dict.fromkeys((feat.get("attributes") or {}).keys()))
+    geo_hint = any(feat.get("geometry") for feat in feats)
+    return list(keys), geo_hint
 
 
 def _socrata_views_fields(netloc: str, dataset_id: str) -> list[str]:
@@ -187,6 +217,9 @@ def _first_record_fields(endpoint: str) -> tuple[list[str], bool]:
     hub = _arcgis_hub_fields(endpoint)
     if hub is not None:
         return hub
+    arcgis_rest = _arcgis_rest_fields(endpoint)
+    if arcgis_rest is not None:
+        return arcgis_rest
     parsed = urllib.parse.urlsplit(endpoint)
     socrata_id = _SOCRATA_ID.search(parsed.path)
     if socrata_id:
@@ -204,24 +237,11 @@ def _first_record_fields(endpoint: str) -> tuple[list[str], bool]:
             keys.update(dict.fromkeys(rec.keys()))
         return list(keys), False
     if isinstance(data, dict):
-        if "features" in data and data["features"]:  # ArcGIS: {features:[{attributes:{...}}]}
-            feats = data["features"][:_PROBE_LIMIT]
-            keys = {}
-            for feat in feats:
-                keys.update(dict.fromkeys((feat.get("attributes") or feat.get("properties") or {}).keys()))
-            geo_hint = any(feat.get("geometry") for feat in feats)
-            return list(keys), geo_hint
         if "rows" in data and data["rows"]:           # Carto: {rows:[{...}]}
             keys = {}
             for row in data["rows"][:_PROBE_LIMIT]:
                 keys.update(dict.fromkeys(row.keys()))
             return list(keys), False
-        if "fields" in data:                          # ArcGIS layer metadata fallback
-            return [f.get("name", "") for f in data["fields"]], False
-        if "layers" in data and data["layers"]:       # ArcGIS service root — descend to first layer
-            layer_id = data["layers"][0].get("id", 0)
-            base = re.sub(r"\?.*$", "", endpoint.rstrip("/"))
-            return _first_record_fields(f"{base}/{layer_id}")
     return [], False
 
 
