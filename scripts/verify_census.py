@@ -23,6 +23,7 @@ import json
 import os
 import re
 import sys
+import textwrap
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -363,14 +364,19 @@ def main() -> int:
         if not endpoint:
             continue
         res = probe(endpoint)
-        # ASCII only — non-ASCII flag glyphs (previously checkmark/middle-dot) appear to interact
-        # with a buffering/encoding quirk in GitHub Actions' log capture that hard-truncates the
-        # line at a fixed byte offset, silently cutting off long FAIL messages.
         flags = "".join("  Y   " if res[k] else "  .   " for k in ("created", "closed", "geo"))
         verdict = "OK" if res["ok"] else f"FAIL: {res['error']}"
         if res["ok"] and not (res["created"] and res["geo"]):
             verdict = "THIN (missing created/geo)"
-        print(f"{row['city']:28} {row.get('status',''):11} {row.get('evidence',''):11} {flags} {verdict}")
+        # GitHub Actions' log capture hard-truncates any single line at ~218 chars (confirmed: two
+        # unrelated long FAIL messages both cut at exactly that offset, regardless of ASCII vs
+        # Unicode flags) — so long verdicts get wrapped across short continuation lines instead of
+        # one giant line, which would otherwise silently lose the diagnostic detail.
+        short_verdict = verdict if len(verdict) <= 60 else verdict[:57] + "..."
+        print(f"{row['city']:28} {row.get('status',''):11} {row.get('evidence',''):11} {flags} {short_verdict}")
+        if short_verdict != verdict:
+            for chunk in textwrap.wrap(verdict, width=150):
+                print(f"    {chunk}")
         # an api-tier scoreable row that no longer returns the core fields is a regression
         if row.get("evidence") == "api" and row.get("status") == "scoreable" and not (
             res["ok"] and res["created"] and res["geo"]
