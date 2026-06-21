@@ -27,13 +27,44 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Clean-light polish layer (Inter + card/nav/heading restyle). Static, injected once.
+theme.inject_global_css()
+
 try:
     MAPBOX_TOKEN = st.secrets["mapbox"]["token"]
 except (KeyError, FileNotFoundError):
     MAPBOX_TOKEN = ""
 
 
+# ── Cached loaders ────────────────────────────────────────────────────────────
+@st.cache_data
+def available_years(gk: str) -> list[int]:
+    files = sorted(DATA_DIR.glob(f"{gk}_metrics_*.parquet"))
+    years = [int(f.stem.split("_")[-1]) for f in files]
+    return sorted(years, reverse=True) if years else [2024]
+
+
+@st.cache_data
+def load_metrics(path: Path) -> pd.DataFrame:
+    return pd.read_parquet(path)
+
+
+@st.cache_data
+def load_geojson(path: Path) -> dict:
+    with open(path) as f:
+        return json.load(f)
+
+
+@st.cache_data
+def load_demographics(path: Path) -> pd.DataFrame | None:
+    if not path.exists():
+        return None
+    return pd.read_csv(path, dtype={"geoid": str})
+
+
 # ── Sidebar — dashboard overview ──────────────────────────────────────────────
+# Navigation now lives in a custom top nav (st.navigation position="hidden"); the sidebar
+# is reference only — overview, what-is-311, key terms, data credits.
 with st.sidebar:
     st.title("Baltimore 311\nService Equity")
     st.markdown(
@@ -59,86 +90,6 @@ with st.sidebar:
         "of peer cities on the same metrics — Service Delivery, Service Equity, and "
         "Open-Data Maturity are all live."
     )
-    st.divider()
-    st.markdown("### Within Baltimore — the story")
-    st.markdown(
-        "**Operations** — start here\n\n"
-        "*A citywide health check: request volume and performance trends.* "
-        "Breakdown by service type with year-over-year comparison, plus "
-        "geographic distribution of requests by census tract or CSA."
-    )
-    st.markdown(
-        "**Services** — then, by department\n\n"
-        "*How individual service categories perform and compare* — usage "
-        "volume, closure rate, time to close, on-time rate — trended across "
-        "years, with no race or income framing yet."
-    )
-    st.markdown(
-        "**Areas** — then, by neighborhood pattern\n\n"
-        "*Which neighborhoods use 311 similarly — and which look alike "
-        "demographically?* Two complementary 2D embeddings in a shared "
-        "coordinate space. Cross-color them to see whether demographic "
-        "similarity predicts 311-usage similarity. Tract dots labeled with "
-        "NSA neighborhood names; a service-type bar and neighborhood list "
-        "by quadrant sit below the scatter."
-    )
-    st.markdown(
-        "**Equity** — then, citywide\n\n"
-        "*Does service quality differ systematically by where it's delivered "
-        "and who it's delivered to?* Choropleth map, demographic comparisons "
-        "(race, income) via Mann-Whitney overlap scores, and a year-over-year "
-        "equity trend — though differences here can reflect *which* services "
-        "an area requests as much as delivery quality, which the next tab "
-        "investigates."
-    )
-    st.markdown(
-        "**Service Equity** — finally, by department\n\n"
-        "*Does the citywide equity picture hold up or differ within individual "
-        "service categories and types?* The same equity lens, scored within "
-        "and across categories instead of citywide. The picture improves "
-        "substantially at that finer grain — evidence that some of the "
-        "citywide gap reflects *which* services different neighborhoods "
-        "request, not just how they're delivered — though it doesn't fully "
-        "close, so real disparities remain even after accounting for that."
-    )
-    st.markdown(
-        "**Mix-Adjusted Equity** — the payoff\n\n"
-        "*How much of the citywide gap is about which services an area requests "
-        "versus how the same service is delivered?* A year-over-year trend of the "
-        "raw vs. mix-adjusted equity score, a per-neighborhood map and raw-vs-adjusted "
-        "scatter that reweight every area to the citywide service mix (so slowness "
-        "caused by *what* an area requests is held constant), a ranking of the most "
-        "unequally delivered types, and a fixed-effects regression as an independent check."
-    )
-    st.divider()
-    st.markdown("### Compare cities")
-    st.markdown(
-        "*Baltimore against peer and leading cities at the city level.* Different data, "
-        "different caveats; a separate group so the city-to-city comparison never gets "
-        "confused with the within-Baltimore story."
-    )
-    st.markdown(
-        "**Service Delivery** — live\n\n"
-        "*Baltimore vs. a cohort of peer cities on the same delivery metrics* — requests per "
-        "1,000 residents, median days to close, closure rate — as rates, never raw "
-        "counts, with Baltimore highlighted. The cohort spans four data platforms "
-        "(ArcGIS, Carto, Socrata, CKAN). Median days-to-close is a record-level "
-        "pooled median computed the same way for every city — the same canonical figure "
-        "the Operations tab reports for Baltimore's citizen-initiated median."
-    )
-    st.markdown(
-        "**Maturity index** — live\n\n"
-        "*How maturely each city publishes its 311 open data* — a scored rubric that "
-        "credits the openness making this analysis possible, Baltimore's rank and gap "
-        "profile, and a census of how few large US cities can be scored at all."
-    )
-    st.markdown(
-        "**Service Equity** — live\n\n"
-        "*Each city's own income-based service gaps* — a mix-adjusted score (volume-weighted "
-        "Mann-Whitney overlap, within SRType) for median days-to-close and closure rate, "
-        "raw vs. adjusted, comparing below- vs. above-median-income tracts. Income only for "
-        "now; a race-based score is future work."
-    )
     with st.expander("Key terms"):
         st.markdown(
             "**Closure rate** — the share of requests marked resolved. "
@@ -155,7 +106,7 @@ with st.sidebar:
             "neighborhood groupings used for city data tracking and planning.\n\n"
             "**Requests per 1,000 residents** — request count adjusted for "
             "neighborhood size so areas of different populations can be compared fairly.\n\n"
-            "**Embedding / PCA** — in the Area tab, each neighborhood's 2D position "
+            "**Embedding / PCA** — in the Areas view, each neighborhood's 2D position "
             "is computed by a method (Principal Component Analysis) that places "
             "neighborhoods with similar profiles close together. "
             "Position = similarity, not geography."
@@ -169,35 +120,52 @@ with st.sidebar:
 
 
 # ── Geographic unit — shared session state ────────────────────────────────────
-# State only here; the toggle widget lives inside the Within-Baltimore group below
-# (geo level is meaningless for the city-level Compare-cities group).
+# State only here; the toggle widget renders below for the Within-Baltimore pages only
+# (geo level is meaningless for the city-level Compare-cities pages).
 if "geo_level" not in st.session_state:
     st.session_state["geo_level"] = "CSA"
 geo_level = st.session_state["geo_level"]
 geo_key = "tract" if geo_level == "Census Tract" else "csa"
 featureidkey = "properties.GEOID" if geo_level == "Census Tract" else "properties.csa_name"
 
-
-@st.cache_data
-def available_years(gk: str) -> list[int]:
-    files = sorted(DATA_DIR.glob(f"{gk}_metrics_*.parquet"))
-    years = [int(f.stem.split("_")[-1]) for f in files]
-    return sorted(years, reverse=True) if years else [2024]
-
+# ── Persist the cross-page metric selection ───────────────────────────────────
+# Each view is now its own st.navigation page, so only the active page runs. Streamlit
+# garbage-collects the state of a widget on runs where its page isn't rendered, which
+# would drop the Equity page's `eq_metric` that the Mix-Adjusted page reads. Re-committing
+# it here (the entry script runs on every rerun, before any page) keeps it alive. The
+# selectbox sets no default=, so the re-commit is warning-free.
+if "eq_metric" in st.session_state:
+    st.session_state["eq_metric"] = st.session_state["eq_metric"]
 
 years = available_years(geo_key)
 
-# ── Header + year navigation ──────────────────────────────────────────────────
-# Year is global to both groups (cross-city data is also city × year).
-st.title("Baltimore 311 Service Equity")
-
+# ── Single-line header + global year selector ─────────────────────────────────
+# Title/tagline on the left; the global year filter is a compact dropdown pinned to the
+# top-right of the same line. Year is shared by both page groups (cross-city data is also
+# city × year) but isn't central to the story, so it stays unobtrusive here rather than a
+# full-width radio row + caption that pushed content below the fold. The ACS note moves into
+# the dropdown's tooltip.
 if "ops_year_clicked" in st.session_state:
     clicked = st.session_state.pop("ops_year_clicked")
     if clicked in years:
         st.session_state["year_select"] = clicked
 
-year = st.radio("Year", years, horizontal=True, key="year_select")
-st.caption("Demographics from ACS 2023 5-Year Estimates")
+head_col, year_col = st.columns([8, 2], vertical_alignment="bottom")
+with head_col:
+    st.markdown(
+        "<div class='app-header'>"
+        "<span class='app-title'>Baltimore 311 · Service Equity</span>"
+        "<span class='app-tagline'>Does your block change the wait? "
+        "A decade of city service data, read by neighborhood.</span>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+with year_col:
+    year = st.selectbox(
+        "Year", years, key="year_select", label_visibility="collapsed",
+        help="Year of 311 data shown across every view. "
+        "Demographics are ACS 2023 5-Year Estimates (year-independent).",
+    )
 
 # ── Data loading ──────────────────────────────────────────────────────────────
 parquet_path = DATA_DIR / f"{geo_key}_metrics_{year}.parquet"
@@ -209,25 +177,6 @@ _NO_DATA_MSG = (
     "Run the pipeline to generate it."
 )
 
-
-@st.cache_data
-def load_metrics(path: Path) -> pd.DataFrame:
-    return pd.read_parquet(path)
-
-
-@st.cache_data
-def load_geojson(path: Path) -> dict:
-    with open(path) as f:
-        return json.load(f)
-
-
-@st.cache_data
-def load_demographics(path: Path) -> pd.DataFrame | None:
-    if not path.exists():
-        return None
-    return pd.read_csv(path, dtype={"geoid": str})
-
-
 if data_ready:
     df_full = load_metrics(parquet_path)
     geojson = load_geojson(geojson_path)
@@ -236,27 +185,146 @@ else:
 
 demographics = load_demographics(DATA_DIR / f"{geo_key}_demographics.csv")
 
-# ── Two groups: the within-Baltimore story, and the cross-city comparison ─────
-# A segmented control (not st.tabs) so only the ACTIVE group's body executes. st.tabs renders
-# every tab body on every run, which made opening Compare cities pay the full cost of the six
-# within-Baltimore tabs underneath (the Areas PCA embeddings and the Mix-Adjusted regression).
-# Gating here means Compare cities renders just its three light tabs.
-group = st.segmented_control(
-    "View", ["🏙️ Within Baltimore", "🌐 Compare cities"],
-    default="🏙️ Within Baltimore", label_visibility="collapsed", key="top_group",
-) or "🏙️ Within Baltimore"
 
-# ══ Within Baltimore — the sequenced six-step story ═══════════════════════════
-if group == "🏙️ Within Baltimore":
-    st.caption(
-        "A six-step story: how Baltimore delivers 311 service, then whether it does so "
-        "equitably — read left to right."
+# ── Pages ─────────────────────────────────────────────────────────────────────
+# Thin wrappers that close over the shared state computed above (year, geo, loaded data).
+# st.navigation runs only the selected page, so the heavy views (Areas PCA, Service-Equity
+# scoring, Mix-Adjusted regression) compute only when you're actually on them.
+def page_operations() -> None:
+    if not data_ready:
+        theme.notice_pending(_NO_DATA_MSG)
+        return
+    render_operations(
+        DATA_DIR, geo_key, year,
+        df=df_full, geojson=geojson, geo_id_col="geoid",
+        featureidkey=featureidkey, mapbox_token=MAPBOX_TOKEN,
     )
 
-    # ── Geographic unit — one global control for the whole group ──────────────
-    # Writes the shared `geo_level` state every within-Baltimore tab reads. The Area
-    # Service Usage tab is the exception: it shows tracts and CSAs together and ignores
-    # this toggle.
+
+def page_services() -> None:
+    if not data_ready:
+        theme.notice_pending(_NO_DATA_MSG)
+        return
+    render_category_explorer(DATA_DIR, year)
+
+
+def page_areas() -> None:
+    render_area_embedding(DATA_DIR, year)
+
+
+def page_equity() -> None:
+    if not data_ready:
+        theme.notice_pending(_NO_DATA_MSG)
+        return
+    render_equity(
+        DATA_DIR, geo_key, year,
+        df_full=df_full, geojson=geojson, featureidkey=featureidkey,
+        mapbox_token=MAPBOX_TOKEN, demographics=demographics,
+    )
+
+
+def page_service_equity() -> None:
+    if not data_ready:
+        theme.notice_pending(_NO_DATA_MSG)
+        return
+    render_category_equity_explorer(DATA_DIR, demographics, geo_key, year)
+
+
+def page_mix_adjusted() -> None:
+    if not data_ready:
+        theme.notice_pending(_NO_DATA_MSG)
+        return
+    # Carry over the Equity page's metric selection so the two equity views stay aligned;
+    # falls back to days-to-close inside the component when that metric doesn't exist at the
+    # service-type grain. The persist above keeps `eq_metric` alive across the page switch.
+    render_equity_adjusted(
+        DATA_DIR, demographics, geo_key, year,
+        geojson=geojson, featureidkey=featureidkey,
+        mapbox_token=MAPBOX_TOKEN, eq_metric_label=st.session_state.get("eq_metric"),
+    )
+
+
+def page_city_delivery() -> None:
+    render_city_delivery(DATA_DIR, year)
+
+
+def page_city_equity() -> None:
+    render_city_equity(DATA_DIR, year)
+
+
+def page_maturity() -> None:
+    render_maturity_index(DATA_DIR)
+
+
+# url_paths of the Within-Baltimore pages — used to gate the geo toggle / group intros.
+within_pages = [
+    st.Page(page_operations, title="Operations", icon="📊",
+            url_path="operations", default=True),
+    st.Page(page_services, title="Services", icon="🧰", url_path="services"),
+    st.Page(page_areas, title="Area Service Usage", icon="🗺️", url_path="areas"),
+    st.Page(page_equity, title="Equity", icon="⚖️", url_path="equity"),
+    st.Page(page_service_equity, title="Service Equity", icon="🔍",
+            url_path="service-equity"),
+    st.Page(page_mix_adjusted, title="Mix-Adjusted Equity", icon="🎛️",
+            url_path="mix-adjusted"),
+]
+compare_pages = [
+    st.Page(page_city_delivery, title="Service Delivery", icon="🏙️",
+            url_path="city-delivery"),
+    st.Page(page_city_equity, title="Service Equity", icon="⚖️",
+            url_path="city-equity"),
+    st.Page(page_maturity, title="Maturity Index", icon="🏅", url_path="maturity"),
+]
+
+# position="hidden" suppresses the default sidebar nav; we render our own top nav below so
+# the two frames and the six-step story are always visible (and mobile-friendly). Only the
+# active page still runs, so the per-page performance win is unchanged.
+pg = st.navigation(
+    {"Within Baltimore": within_pages, "Compare cities": compare_pages},
+    position="hidden",
+)
+
+# ── Top navigation — compact frame + view selectors (replaces the sidebar nav) ─
+# Two horizontal segmented controls (frame on one line, views on the next) keep the nav to
+# ~two lines and wrap to use the screen width, instead of stacking full-width like st.columns
+# does on mobile. Keys are scoped to the current page's url_path, so every page renders a
+# fresh control seeded (default=) to the active selection — there's no stale state to fight,
+# so a plain body-level switch_page on change works. required=True blocks empty selection.
+within_active = pg in within_pages
+
+# Short labels — drop the numbers/icons and trim the long titles so all six views fit on a
+# line or two. Order is the story order (left→right); the segmented control implies it.
+_SHORT = {
+    "Operations": "Operations", "Services": "Services",
+    "Area Service Usage": "Areas", "Equity": "Equity",
+    "Service Equity": "Service Equity", "Mix-Adjusted Equity": "Mix-Adjusted",
+    "Service Delivery": "Service Delivery", "Maturity Index": "Maturity",
+}
+_FRAMES = ["Within Baltimore", "Compare cities"]
+desired_frame = _FRAMES[0] if within_active else _FRAMES[1]
+
+sel_frame = st.segmented_control(
+    "Section", _FRAMES, default=desired_frame, required=True,
+    key=f"nav_frame::{pg.url_path}", label_visibility="collapsed",
+)
+if sel_frame != desired_frame:
+    st.switch_page(within_pages[0] if sel_frame == _FRAMES[0] else compare_pages[0])
+
+view_pages = within_pages if within_active else compare_pages
+_label_to_page = {_SHORT[p.title]: p for p in view_pages}
+current_label = _SHORT[pg.title]
+sel_view = st.segmented_control(
+    "View", list(_label_to_page), default=current_label, required=True,
+    key=f"nav_view::{pg.url_path}", label_visibility="collapsed",
+)
+if sel_view != current_label:
+    st.switch_page(_label_to_page[sel_view])
+
+# ── Per-group chrome — shown above the active page's body ──────────────────────
+if within_active:
+    # Geographic unit — one global control for the Within-Baltimore pages. Writes the
+    # shared `geo_level` state every such page reads; the Areas view is the exception (it
+    # shows tracts and CSAs together and ignores this toggle).
     geo_col, _ = st.columns([2, 8])
     with geo_col:
         new_geo = st.radio(
@@ -264,82 +332,13 @@ if group == "🏙️ Within Baltimore":
             ["Census Tract", "CSA"],
             index=0 if geo_level == "Census Tract" else 1,
             horizontal=True,
-            help="Applies to every tab in this group except Area Service Usage.",
+            help="Applies to every Within-Baltimore view except Area Service Usage.",
         )
         if new_geo != geo_level:
             st.session_state["geo_level"] = new_geo
             st.rerun()
-
-    tab_ops, tab_cat, tab_areas, tab_eq, tab_cat_eq, tab_adj = st.tabs([
-        "Operations", "Services", "Area Service Usage", "Equity", "Service Equity",
-        "Mix-Adjusted Equity",
-    ])
-
-    with tab_ops:
-        if not data_ready:
-            theme.notice_pending(_NO_DATA_MSG)
-        else:
-            render_operations(
-                DATA_DIR, geo_key, year,
-                df=df_full,
-                geojson=geojson,
-                geo_id_col="geoid",
-                featureidkey=featureidkey,
-                mapbox_token=MAPBOX_TOKEN,
-            )
-
-    with tab_cat:
-        if not data_ready:
-            theme.notice_pending(_NO_DATA_MSG)
-        else:
-            render_category_explorer(DATA_DIR, year)
-
-    with tab_areas:
-        render_area_embedding(DATA_DIR, year)
-
-    with tab_eq:
-        if not data_ready:
-            theme.notice_pending(_NO_DATA_MSG)
-        else:
-            render_equity(
-                DATA_DIR, geo_key, year,
-                df_full=df_full,
-                geojson=geojson,
-                featureidkey=featureidkey,
-                mapbox_token=MAPBOX_TOKEN,
-                demographics=demographics,
-            )
-
-    with tab_cat_eq:
-        if not data_ready:
-            theme.notice_pending(_NO_DATA_MSG)
-        else:
-            render_category_equity_explorer(DATA_DIR, demographics, geo_key, year)
-
-    with tab_adj:
-        if not data_ready:
-            theme.notice_pending(_NO_DATA_MSG)
-        else:
-            # Carry over the Equity tab's metric selection so the two equity tabs stay
-            # aligned; falls back to days-to-close inside the component when that metric
-            # doesn't exist at the service-type grain.
-            render_equity_adjusted(
-                DATA_DIR, demographics, geo_key, year,
-                geojson=geojson,
-                featureidkey=featureidkey,
-                mapbox_token=MAPBOX_TOKEN,
-                eq_metric_label=st.session_state.get("eq_metric"),
-            )
-
-# ══ Compare cities — Phase 5 (scaffold) ═══════════════════════════════════════
 else:
+    # Compare-cities group intro + comparability caveats, shown once above each city page.
     render_cross_city_intro()
-    cc_delivery, cc_equity, cc_maturity = st.tabs([
-        "Service Delivery", "Service Equity", "Maturity Index",
-    ])
-    with cc_delivery:
-        render_city_delivery(DATA_DIR, year)
-    with cc_equity:
-        render_city_equity(DATA_DIR, year)
-    with cc_maturity:
-        render_maturity_index(DATA_DIR)
+
+pg.run()

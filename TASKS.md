@@ -30,19 +30,24 @@ Tier 1 → Tier 2 → Tier 3.
   Mix-Adjusted regression.
 
 **Tier 2 — Snappiness (performance):**
-- [ ] **Gate within-Baltimore tabs** — `app.py:273` uses `st.tabs`, which runs all six tab
-  bodies every rerun; apply the group-level `st.segmented_control` gating so only the active
-  tab renders. Biggest perceived-speed win.
-- [ ] **Lean on `@st.fragment`** — wrap each tab render so in-tab interactions don't rerun the
-  whole script (only 2 fragments exist today, both in `area_embedding.py`).
+- [x] **Gate within-Baltimore tabs** — *done, then superseded by the `st.navigation` reorg
+  below: each view is its own page, so only the active page's body runs. Measured warm cost
+  on the Operations landing dropped from ~sum-of-all-six (~5.3s) to just the active tab.*
+- [ ] **Lean on `@st.fragment`** — wrap each page render so in-tab interactions don't rerun the
+  whole script (only 2 fragments exist today, both in `area_embedding.py`). Smaller win now
+  that pages are gated; needs per-page care (e.g. Operations' click-a-year-point relies on a
+  full-script rerun that fragment-scoping would break).
 
 **Tier 3 — Larger redesign (modern structure + visual system):**
-- [ ] **`st.navigation` + `st.Page` multipage** — per-view URLs, browser back/forward, and
-  only the active page runs (solves Tier 2 structurally). Reorganizes `app.py`.
-- [ ] **CSS layer + cards** — `st.container(border=True)` cards around KPI bars / charts, a
-  sticky header band via a centralized `theme.inject_css()` helper, tighter type scale/spacing.
-- [ ] **Custom metric cards** — bordered, token-colored KPI cards (delta as a pill),
-  `theme.py`-driven.
+- [x] **`st.navigation` + `st.Page` multipage** — *done. `app.py` is an entry script (shared
+  year/geo state + masthead/sidebar) dispatching nine page-function wrappers via
+  `st.navigation`; per-view URLs + browser back/forward, only the active page runs. `eq_metric`
+  re-committed in the entry script so it survives the Equity→Mix-Adjusted page hop.*
+- [x] **CSS layer + cards** — *done via `theme.inject_global_css()` (single static `<style>`):
+  Inter + Space Grotesk display headings, soft rounded cards, pill nav, transparent toolbar,
+  editorial masthead band, tighter type scale.*
+- [x] **Custom metric cards** — *done: bordered, token-colored KPI cards with a primary accent
+  top-edge, hover lift, and delta-as-pill — all `theme.py`-driven.*
 
 ---
 

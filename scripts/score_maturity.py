@@ -52,9 +52,55 @@ ANCHORS: dict[str, tuple] = {
 }
 ANCHOR_CITIES = set(ANCHORS)
 
+# City population — so Tab 9's full table can be sorted by size (surfacing the biggest
+# cities, which carry the most 311 data, and exposing which large cities publish nothing).
+# Cohort cities use our pipeline's own ACS figure (the same number the Service Delivery tab
+# reports — one source of truth); every other city uses its 2020 Decennial Census place
+# population. Curated here (like ANCHORS) because the runner has no Census network access;
+# edit a value and re-run to correct it.
+POPULATION: dict[str, int] = {
+    # Cohort — exact, from peer_city_metrics.parquet (matches the Service Delivery tab).
+    "New York, NY": 8_516_202, "Los Angeles, CA": 3_857_897, "Chicago, IL": 2_707_648,
+    "Philadelphia, PA": 1_582_432, "Dallas, TX": 1_299_553, "Austin, TX": 967_862,
+    "San Francisco, CA": 836_321, "Seattle, WA": 741_440, "Nashville, TN": 709_846,
+    "Washington, DC": 672_079, "Boston, MA": 663_972, "Memphis, TN": 629_063,
+    "Baltimore, MD": 577_193, "Kansas City, MO": 508_233,
+    # Non-cohort — 2020 Decennial Census place population.
+    "Houston, TX": 2_304_580, "Phoenix, AZ": 1_608_139, "San Antonio, TX": 1_434_625,
+    "San Diego, CA": 1_386_932, "San Jose, CA": 1_013_240, "Jacksonville, FL": 949_611,
+    "Fort Worth, TX": 918_915, "Columbus, OH": 905_748, "Indianapolis, IN": 887_642,
+    "Charlotte, NC": 874_579, "Denver, CO": 715_522, "Oklahoma City, OK": 681_054,
+    "El Paso, TX": 678_815, "Portland, OR": 652_503, "Detroit, MI": 639_111,
+    "Louisville, KY": 633_045, "Milwaukee, WI": 577_222, "Albuquerque, NM": 564_559,
+    "Tucson, AZ": 542_629, "Fresno, CA": 542_107, "Sacramento, CA": 524_943,
+    "Mesa, AZ": 504_258, "Atlanta, GA": 498_715, "Omaha, NE": 486_051,
+    "Colorado Springs, CO": 478_961, "Raleigh, NC": 467_665,
+    # Ranks 41–50 — top-50 canvass expansion (2020 Census place population).
+    "Long Beach, CA": 466_742, "Virginia Beach, VA": 459_470, "Miami, FL": 442_241,
+    "Oakland, CA": 440_646, "Minneapolis, MN": 429_954, "Tulsa, OK": 413_066,
+    "Bakersfield, CA": 403_455, "Wichita, KS": 397_532, "Arlington, TX": 394_266,
+    "Aurora, CO": 386_261,
+    # Mid-size enablers (census rank 0, below the top 50).
+    "New Orleans, LA": 383_997, "Cincinnati, OH": 309_317,
+    "Pittsburgh, PA": 302_971, "St. Louis, MO": 301_578,
+}
+
 # Every anchor is a cohort city, but not every cohort city is exhaustively documented; this set
 # is the same 10 and drives the in-cohort flag.
 IN_COHORT = set(ANCHORS)
+
+
+def resolve_population(census_row, city: str):
+    """Population for a city: prefer a `population` value carried in the census CSV (e.g.
+    written by `fetch_census_population.py` from the live ACS), else the curated seed above,
+    else NA. So a freshly-added city auto-gets its size from the ACS step without a code edit."""
+    raw = census_row.get("population")
+    if raw is not None and pd.notna(raw) and str(raw).strip() != "":
+        try:
+            return int(float(raw))
+        except (TypeError, ValueError):
+            pass
+    return POPULATION.get(city, pd.NA)
 
 
 def derive_scores(status: str, evidence: str, note: str) -> dict:
@@ -109,6 +155,7 @@ def main() -> None:
             scores = derive_scores(c["status"], c.get("evidence", ""), c.get("note", ""))
         rows.append({
             "city": city,
+            "population": resolve_population(c, city),
             "in_cohort": city in IN_COHORT,
             "status": c["status"],
             "evidence": c.get("evidence", ""),
@@ -117,11 +164,18 @@ def main() -> None:
             "note": c.get("note", ""),
         })
 
-    out = pd.DataFrame(rows, columns=["city", "in_cohort", "status", "evidence", "derived", *DIMS, "note"])
+    out = pd.DataFrame(rows, columns=["city", "population", "in_cohort", "status", "evidence",
+                                      "derived", *DIMS, "note"])
+    out["population"] = out["population"].astype("Int64")
     out["total"] = out[DIMS].sum(axis=1)
     out = out.sort_values("total", ascending=False).reset_index(drop=True)
     out.drop(columns="total").to_csv(MATURITY, index=False)
 
+    missing_pop = out.loc[out["population"].isna(), "city"].tolist()
+    if missing_pop:
+        print(f"WARNING: no population (census column or seed) for {len(missing_pop)} "
+              f"cities: {missing_pop} — add to score_maturity.POPULATION or run "
+              f"fetch_census_population.py.")
     n_anchor = sum(~out["derived"])
     print(f"Wrote {len(out)} cities to {MATURITY.name} "
           f"({n_anchor} hand-scored anchors, {len(out) - n_anchor} derived; "

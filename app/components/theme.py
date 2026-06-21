@@ -31,10 +31,23 @@ PEER = "#5f6368"       # peer cities — dark enough for white in-bar labels
 MUTED = "#a6a6a6"      # raw / secondary-reference series
 
 # Neutrals
-GRID = "#eeeeee"       # axis gridlines
+GRID = "#EAEFF5"       # axis gridlines (cool, low-contrast to match the surface palette)
 REF_LINE = "#999999"   # dotted reference / vlines / "all other" series
 AXIS_LINE = "#333333"  # emphasized reference line (e.g. citywide-average dashed)
 MARKER_LINE = "#444444"
+
+# Surface palette — Stripe-style near-monochrome cool grays for the app chrome (cards,
+# borders, ink). Kept distinct from the data-series colors above so chart identity is
+# untouched. Mirrored into CSS custom properties by inject_global_css() — keep in sync.
+CANVAS = "#FFFFFF"     # page background
+SURFACE = "#F6F9FC"    # card / secondary background
+BORDER = "#E3E8EF"     # hairline border
+INK = "#0A2540"        # primary text (deep navy)
+MUTED_INK = "#525F7F"  # secondary text
+
+# Hero gradient halo — a single decorative gradient used once behind the header (Phase 2),
+# never behind content. Kept to three stops per Stripe's gradient discipline.
+HALO = ("#1F4E8C", "#3A6FB0", "#C8102E")
 
 # One color per equity metric (the citywide equity-trend lines)
 METRIC_COLORS: dict[str, str] = {
@@ -73,7 +86,8 @@ EMBEDDING_SCALE = "Viridis"         # area-embedding continuous color
 MATURITY_SCALE = "RdYlGn"           # 0–3 rubric scores
 
 # ── Typography ─────────────────────────────────────────────────────────────────
-FONT_FAMILY = "Source Sans Pro, sans-serif"  # matches the Streamlit theme font
+FONT_FAMILY = "Inter, Source Sans Pro, sans-serif"  # body / charts — Inter (loaded by inject_global_css)
+DISPLAY_FAMILY = "Space Grotesk, Inter, sans-serif"  # headlines / masthead — bold editorial display sans
 FONT_SIZE = 12
 LEGEND_FONT_SIZE = 11
 
@@ -101,6 +115,13 @@ def base_layout(**overrides) -> dict:
         "font": {"family": FONT_FAMILY, "size": FONT_SIZE},
     }
     layout.update(overrides)
+    # Unified tooltip styling matching the app's card look — applied unless a caller
+    # overrode it. setdefault so per-chart hoverlabel overrides still win.
+    layout.setdefault("hoverlabel", {
+        "bgcolor": "white",
+        "bordercolor": BORDER,
+        "font": {"family": FONT_FAMILY, "size": FONT_SIZE, "color": INK},
+    })
     return layout
 
 
@@ -113,3 +134,213 @@ def notice_pending(msg: str) -> None:
 def notice_unavailable(msg: str) -> None:
     """Data is missing for the current selection (no construction action implied)."""
     st.info(msg)
+
+
+# ── Global CSS (clean-light polish layer) ─────────────────────────────────────────
+# A single static <style> block injected once from app.py (right after set_page_config).
+# It loads Inter and restyles Streamlit's chrome — cards, headings, pill nav, tabs — into
+# the Stripe / Google-Health clean-light look. No JS, no animation beyond cheap CSS hover
+# transitions, so it adds no per-rerun cost. The CSS custom properties below mirror the
+# Python color tokens above; keep the two in sync.
+_GLOBAL_CSS = f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap');
+
+:root {{
+    --primary: {PRIMARY};
+    --brand: {BRAND};
+    --ink: {INK};
+    --muted-ink: {MUTED_INK};
+    --surface: {SURFACE};
+    --border: {BORDER};
+}}
+
+/* Inter across the whole Streamlit DOM so widget/markdown text matches the charts. */
+html, body, [class*="css"], button, input, textarea, select {{
+    font-family: 'Inter', 'Source Sans Pro', sans-serif !important;
+}}
+
+/* Trim Streamlit's tall default top padding for a tighter, more designed header. */
+.block-container {{ padding-top: 2.6rem; }}
+
+/* Make Streamlit's always-present top toolbar transparent so the page background and
+   the hero halo flow under it seamlessly (it otherwise paints an opaque band that
+   clashes with the gradient). The menu/status controls stay legible at top-right. */
+[data-testid="stHeader"] {{ background: transparent; }}
+[data-testid="stToolbar"] {{ right: 0.5rem; }}
+
+/* Headings — Space Grotesk editorial display face, bigger confident scale, deep-navy
+   ink. Body text stays Inter (set above) for legibility; only headlines get the display
+   face. (The masthead headline sets its own inline Space Grotesk + white color.) */
+h1, h2, h3 {{
+    font-family: 'Space Grotesk', 'Inter', sans-serif !important;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+}}
+h1 {{ font-weight: 700; }}
+h2 {{ font-weight: 700; font-size: 1.55rem; }}
+h3 {{ font-weight: 600; font-size: 1.18rem; }}
+
+/* Cards — st.metric and bordered containers get a soft rounded surface
+   (Google-Health calm cards: hairline border + barely-there shadow). Metrics get a
+   primary accent top-edge and a subtle hover lift for more presence. */
+[data-testid="stMetric"],
+[data-testid="stVerticalBlockBorderWrapper"] {{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.9rem 1.1rem;
+    box-shadow: 0 1px 2px rgba(10,37,64,.04), 0 1px 3px rgba(10,37,64,.06);
+}}
+[data-testid="stMetric"] {{
+    border-top: 3px solid var(--primary);
+    transition: box-shadow .15s ease, transform .15s ease;
+}}
+[data-testid="stMetric"]:hover {{
+    box-shadow: 0 2px 6px rgba(10,37,64,.07), 0 4px 12px rgba(10,37,64,.08);
+    transform: translateY(-1px);
+}}
+/* Airy metric value weight. */
+[data-testid="stMetricValue"] {{ font-weight: 600; color: var(--ink); font-size: 1.9rem; }}
+[data-testid="stMetricLabel"] {{ color: var(--muted-ink); }}
+/* Delta as a rounded chip/pill (keeps Streamlit's up/down color; off-deltas read neutral). */
+[data-testid="stMetricDelta"] {{
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    margin-top: 4px;
+    padding: 1px 9px;
+    border-radius: 999px;
+    background: rgba(10,37,64,.06);
+    font-size: 0.82rem;
+    font-weight: 600;
+}}
+
+/* Horizontal radios (year, geo toggle) → modern rounded pills. */
+div[role="radiogroup"] label {{
+    border-radius: 999px !important;
+    transition: background .15s ease, color .15s ease;
+}}
+
+/* Group switcher → a prominent filled pill nav (the app's primary navigation). */
+[data-testid="stSegmentedControl"] button {{
+    border-radius: 999px !important;
+    padding: 0.45rem 1.15rem !important;
+    font-weight: 600;
+    transition: background .15s ease, color .15s ease;
+}}
+[data-testid="stSegmentedControl"] button[aria-checked="true"],
+[data-testid="stSegmentedControl"] button[aria-selected="true"] {{
+    background: var(--primary) !important;
+    color: #fff !important;
+}}
+
+/* Tab strip — lighter, with a clean primary active indicator. */
+[data-testid="stTabs"] [data-baseweb="tab-list"] {{ gap: 0.4rem; }}
+[data-testid="stTabs"] [data-baseweb="tab"] {{
+    padding: 0.4rem 0.85rem;
+    color: var(--muted-ink);
+}}
+[data-testid="stTabs"] [aria-selected="true"] {{ color: var(--ink); font-weight: 600; }}
+[data-testid="stTabs"] [data-baseweb="tab-highlight"] {{ background: var(--primary); }}
+
+/* Sidebar — calm surface tone. */
+[data-testid="stSidebar"] {{ background: var(--surface); }}
+
+/* Soften dividers and expanders. */
+hr {{ border-color: var(--border); }}
+[data-testid="stExpander"] {{ border-radius: 10px; border-color: var(--border); }}
+
+/* ── Single-line header ──────────────────────────────────────────────────────── */
+.app-header {{
+    display: flex; align-items: baseline; gap: 0.7rem; flex-wrap: wrap;
+    margin: 0 0 0.4rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border);
+}}
+.app-title {{
+    font-family: 'Space Grotesk', 'Inter', sans-serif; font-weight: 700;
+    font-size: 1.5rem; line-height: 1.1; color: var(--ink); letter-spacing: -0.02em;
+}}
+.app-tagline {{ color: var(--muted-ink); font-size: 0.95rem; }}
+
+/* ── Top nav: compact frame + view segmented controls ────────────────────────── */
+/* Small text + tight padding so both controls stay ~one line each and use the width;
+   the buttons wrap (rather than stack full-width like columns) on narrow screens. */
+[data-testid="stSegmentedControl"] {{ margin-bottom: 0.2rem; }}
+[data-testid="stSegmentedControl"] button {{
+    padding: 0.12rem 0.62rem; font-size: 0.82rem; min-height: 0;
+}}
+[data-testid="stSegmentedControl"] button p {{ font-size: 0.82rem; }}
+</style>
+"""
+
+
+def inject_global_css() -> None:
+    """Inject the clean-light polish CSS once. Call right after st.set_page_config."""
+    st.markdown(_GLOBAL_CSS, unsafe_allow_html=True)
+
+
+def hero_banner(title: str, tagline: str) -> str:
+    """Return the header hero markup — title + tagline over a single soft gradient halo.
+
+    The halo (the HALO token) is the app's one decorative gradient, sat *behind the
+    title only* per Stripe's discipline — a blurred radial glow, not a content
+    background. Pure CSS, no image/canvas/animation. Render with
+    ``st.markdown(theme.hero_banner(...), unsafe_allow_html=True)``.
+    """
+    c0, c1, c2 = HALO
+    halo = (
+        f"radial-gradient(closest-side, {_rgba(c0, 0.18)}, {_rgba(c1, 0.10)}, "
+        f"{_rgba(c2, 0.06)}, transparent 80%)"
+    )
+    return f"""
+<div style="position:relative; padding:0.4rem 0 0.8rem 0; margin-bottom:0.4rem;">
+  <div style="position:absolute; top:-44px; left:-64px; width:420px; height:170px;
+       background:{halo}; filter:blur(20px); z-index:0; pointer-events:none;"></div>
+  <div style="position:relative; z-index:1;">
+    <h1 style="margin:0; font-size:2.35rem; line-height:1.1;
+         background:linear-gradient(100deg, {c0}, {c1} 52%, #8B2230);
+         -webkit-background-clip:text; background-clip:text;
+         color:transparent; -webkit-text-fill-color:transparent;">{title}</h1>
+    <p style="margin:0.35rem 0 0; color:{MUTED_INK}; font-size:1.02rem; max-width:660px;">
+      {tagline}
+    </p>
+  </div>
+</div>
+"""
+
+
+def masthead(kicker: str, title: str, tagline: str) -> str:
+    """Return a bold full-width editorial masthead band (Reuters/Upshot feature-top feel).
+
+    A solid deep-ink → blue gradient band with a soft brand-red glow in the corner, an
+    uppercase letter-spaced kicker, a large Space Grotesk headline, and a tagline — all
+    light-on-dark. Being solid, it also sidesteps the transparent-toolbar seam. Pure CSS,
+    no image/canvas/animation. Render with ``st.markdown(theme.masthead(...), unsafe_allow_html=True)``.
+    """
+    c0, _, c2 = HALO
+    glow = f"radial-gradient(closest-side, {_rgba(c2, 0.45)}, transparent 75%)"
+    return f"""
+<div style="position:relative; margin:0 0 1.5rem 0; padding:1.7rem 1.9rem 1.8rem;
+     border-radius:16px; overflow:hidden;
+     background:linear-gradient(120deg, {INK} 0%, #123A63 48%, {c0} 100%);
+     box-shadow:0 6px 22px rgba(10,37,64,.18);">
+  <div style="position:absolute; top:-70px; right:-50px; width:360px; height:220px;
+       background:{glow}; filter:blur(34px); z-index:0; pointer-events:none;"></div>
+  <div style="position:relative; z-index:1;">
+    <div style="font-family:{DISPLAY_FAMILY}; font-weight:700; font-size:0.76rem;
+         letter-spacing:0.18em; text-transform:uppercase; color:rgba(176,202,234,0.95);">{kicker}</div>
+    <h1 style="font-family:{DISPLAY_FAMILY}; margin:0.4rem 0 0; color:#ffffff;
+         font-size:2.7rem; line-height:1.04; font-weight:700; letter-spacing:-0.01em;
+         -webkit-text-fill-color:#ffffff;">{title}</h1>
+    <p style="margin:0.6rem 0 0; color:rgba(255,255,255,0.80); font-size:1.05rem;
+         max-width:700px;">{tagline}</p>
+  </div>
+</div>
+"""
+
+
+def _rgba(hex_color: str, alpha: float) -> str:
+    """'#RRGGBB' + alpha -> 'rgba(r, g, b, a)' for the hero/masthead gradient stops."""
+    h = hex_color.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({r}, {g}, {b}, {alpha})"
