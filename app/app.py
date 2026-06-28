@@ -81,14 +81,18 @@ with st.sidebar:
             "different neighborhoods."
         )
     st.caption(
-        "The dashboard has two parts. **Within Baltimore** tells one six-step story: "
-        "start with how the city is doing overall → zoom into individual service types "
-        "→ see which neighborhoods look alike → check whether outcomes differ by race or "
-        "income → ask whether that gap holds up within service categories → and finally "
-        "separate how much of it is about *which* services an area requests versus how "
-        "the same service is delivered. **Compare cities** sets Baltimore against a cohort "
-        "of peer cities on the same metrics — Service Delivery, Service Equity, and "
-        "Open-Data Maturity are all live."
+        "The dashboard has two parts.\n\n"
+        "**Within Baltimore** tells one six-step story: start with how the city is doing "
+        "overall → zoom into individual service types → see which neighborhoods look alike "
+        "→ check whether outcomes differ by race or income → ask whether that gap holds up "
+        "within service categories → and finally separate how much of it is about *which* "
+        "services an area requests versus how the same service is delivered. The headline: "
+        "some apparent delivery differences turn out to be service-mix differences.\n\n"
+        "**Compare cities** sets Baltimore against a cohort of peer cities on the same "
+        "metrics — Service Delivery, Service Equity, and Open-Data Maturity are all live. "
+        "The headline: Baltimore handles a higher volume of 311 requests per resident than "
+        "most peer cities, publishes its data more openly, and delivers it more equitably "
+        "than most cities too."
     )
     with st.expander("Key terms"):
         st.markdown(

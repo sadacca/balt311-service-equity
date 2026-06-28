@@ -366,13 +366,13 @@ def _raw_adjusted_scatter_fig(
     is_rate = metric_col == "closure_rate"
     fmt = ".0%" if is_rate else ".1f"
 
-    # Zoom to the central bulk (2nd–98th pct of the combined values) so points spread
-    # across the plot instead of being compressed by a few extreme neighborhoods.
+    # Use the full data range (not a percentile clip) so every neighborhood's dot is
+    # visible — a percentile-based zoom cut points outside the window off the chart.
     combined = pd.concat([df["raw"], df["adjusted"]]).dropna()
-    lo = float(combined.quantile(0.02))
-    hi = float(combined.quantile(0.98))
+    lo = float(combined.min())
+    hi = float(combined.max())
     if hi <= lo:
-        lo, hi = float(combined.min()), float(combined.max() or lo + 1)
+        hi = lo + 1
     pad = (hi - lo) * 0.04 or 1.0
     lo, hi = lo - pad, hi + pad
 

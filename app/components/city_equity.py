@@ -233,25 +233,6 @@ def render_city_equity(data_dir: Path, year: int) -> None:
         else:
             st.caption("No raw (pooled) score available for the selected cities/year.")
 
-        gap_rows = sub.dropna(subset=["raw_gap"])
-        if not gap_rows.empty:
-            if metric_col == "closure_rate":
-                st.markdown("**Below- minus above-median-income pooled closure rate:**")
-                for _, r in gap_rows.sort_values("city").iterrows():
-                    sign = "higher" if r["raw_gap"] > 0 else "lower"
-                    st.markdown(
-                        f"- **{r['city']}** — poorer tracts close **{abs(r['raw_gap']):.1%} "
-                        f"{sign}** a share of requests than richer tracts."
-                    )
-            else:
-                st.markdown("**Below- minus above-median-income pooled median days to close:**")
-                for _, r in gap_rows.sort_values("city").iterrows():
-                    sign = "longer" if r["raw_gap"] > 0 else "shorter"
-                    st.markdown(
-                        f"- **{r['city']}** — poorer tracts wait **{abs(r['raw_gap']):.1f} "
-                        f"days {sign}** (median) than richer tracts."
-                    )
-
     trend_fig = _trend(df, sorted(sub["city"]), metric_col)
     if trend_fig is not None:
         st.plotly_chart(trend_fig, use_container_width=True,
