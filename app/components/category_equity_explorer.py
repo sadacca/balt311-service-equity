@@ -602,7 +602,7 @@ def render_category_equity_explorer(
     geo_key: str,
     year: int,
 ) -> None:
-    st.caption("Does the citywide equity picture hold up or differ within individual service categories and types?")
+    theme.tab_intro("Does the citywide equity picture hold up or differ within individual service categories and types?")
     with st.expander("What to look for"):
         st.markdown(
             "- Does the equity gap shrink when you look within individual service types "
