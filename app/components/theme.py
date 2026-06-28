@@ -136,6 +136,17 @@ def notice_unavailable(msg: str) -> None:
     st.info(msg)
 
 
+def tab_intro(text: str) -> None:
+    """The one-line orientation question/statement at the top of every tab — the
+    reader's first cue for what this view is for, so it renders bolder and a notch
+    larger than a plain `st.caption` rather than competing with it for attention."""
+    st.markdown(
+        f'<p style="font-size:1.05rem; font-weight:600; color:{INK}; '
+        f'margin:0 0 0.6rem;">{text}</p>',
+        unsafe_allow_html=True,
+    )
+
+
 # ── Global CSS (clean-light polish layer) ─────────────────────────────────────────
 # A single static <style> block injected once from app.py (right after set_page_config).
 # It loads Inter and restyles Streamlit's chrome — cards, headings, pill nav, tabs — into

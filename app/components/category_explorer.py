@@ -209,7 +209,10 @@ def _subtype_multiline_fig(
 
 
 def render_category_explorer(data_dir: Path, year: int) -> None:
-    st.caption("How individual service categories perform and compare.")
+    theme.tab_intro(
+        "Overall performance within each service category — how individual categories "
+        "perform and compare to one another."
+    )
     with st.expander("What to look for"):
         st.markdown(
             "- Which categories have the highest and lowest closure rates and wait times?\n"

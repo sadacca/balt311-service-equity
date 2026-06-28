@@ -455,7 +455,10 @@ def render_operations(
     featureidkey: str,
     mapbox_token: str,
 ) -> None:
-    st.caption("A citywide health check: request volume and performance trends.")
+    theme.tab_intro(
+        "A citywide health check — overall performance across all service types, request "
+        "volume and response trends."
+    )
     with st.expander("What to look for"):
         st.markdown(
             "- Are response times (median days to close) improving or getting worse over the years?\n"

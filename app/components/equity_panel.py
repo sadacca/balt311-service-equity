@@ -15,6 +15,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from components import theme
 from components.equity_distributions import render_equity_distributions
 from components.equity_trend import render_equity_trend
 from components.map_view import METRIC_OPTIONS, build_choropleth
@@ -31,10 +32,13 @@ def render_equity(
     mapbox_token: str,
     demographics: pd.DataFrame | None,
 ) -> None:
-    st.caption(
+    theme.tab_intro(
         "Does service quality differ systematically by where it's delivered and who "
-        "it's delivered to? *Note: differences here can reflect the kinds of services "
-        "delivered as much as delivery quality.*"
+        "it's delivered to?"
+    )
+    st.caption(
+        "*Note: differences here can reflect the kinds of services delivered as much "
+        "as delivery quality.*"
     )
     with st.expander("What to look for"):
         st.markdown(

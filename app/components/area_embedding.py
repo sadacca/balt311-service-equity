@@ -853,7 +853,7 @@ def _render_demographic_view(data_dir: Path, year: int, highlight: str = "") -> 
 
 def render_area_embedding(data_dir: Path, year: int) -> None:
     """Render Tab 3 — Area Embedding.  Loads all data from data_dir internally."""
-    st.caption(
+    theme.tab_intro(
         "Do areas that look alike demographically also use 311 the same way?"
     )
     with st.expander("What to look for"):
